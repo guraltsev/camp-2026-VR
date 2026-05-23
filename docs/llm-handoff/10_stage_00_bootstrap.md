@@ -45,9 +45,9 @@ src/classroom/.gitkeep
 src/authoring/.gitkeep
 src/glue/.gitkeep
 tests/smoke.test.ts
-docs/decisions/001-stack.md
-docs/decisions/002-prism-cells-first.md
-docs/decisions/003-no-curvature-engine.md
+docs/design/001-stack.md
+docs/design/002-cell-complex-first.md
+docs/design/003-no-curvature-engine.md
 public/assets/README.md
 ```
 
@@ -96,7 +96,7 @@ Use TypeScript, Vite, Three.js, WebXR, Vitest, and GitHub Pages branch deploymen
 Do not use React, Next.js, A-Frame, Unity, Godot, or a backend for the first implementation.
 ```
 
-`002-prism-cells-first.md`:
+`002-cell-complex-first.md`:
 
 ```text
 The runtime is 3D-cell aware, but the first implemented cell type is a vertical prism over a polygonal base.

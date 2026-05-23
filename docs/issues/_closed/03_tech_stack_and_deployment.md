@@ -134,3 +134,24 @@ GitHub Pages can publish from a selected branch and folder.
 MDN documents WebXR as available only in secure contexts in some or all supporting browsers, and MDN's secure-context page treats localhost as potentially trustworthy for local development.
 
 Three.js documents `WebXRManager` as the abstraction of the WebXR Device API used by `WebGLRenderer`.
+
+## Closing note
+
+Closed as a one-off stack and deployment scaffold issue.
+
+The requested stack is now installed and represented in project files:
+TypeScript, Vite, Three.js, Vitest, configurable Vite base support, and a
+branch-based GitHub Pages deployment script. Playwright and WebXR-specific
+controls remain deferred, as requested by the handoff.
+
+## Evidence for closing
+
+- `package.json` defines `dev`, `typecheck`, `test`, `test:watch`, `build`,
+  `build:pages`, `preview`, and `deploy:pages`.
+- `vite.config.ts` uses `process.env.VITE_BASE ?? "/"` and configures Vitest
+  with the Node environment.
+- `scripts/deploy-pages.sh` builds locally and force-pushes built `dist/`
+  contents to a `gh-pages` branch root with `.nojekyll`.
+- `public/assets/README.md` documents the static asset boundary.
+- `npm.cmd run typecheck`, `npm.cmd test`, and `npm.cmd run build` passed after
+  the scaffold was added.

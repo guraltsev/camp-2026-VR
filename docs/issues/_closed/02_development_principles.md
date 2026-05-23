@@ -111,3 +111,25 @@ Do not put the whole game loop, compiler, movement, tools, and UI in one world c
 Geometry code should use named tolerances near the code that uses them. Do not put a large global tolerance catalog at the top of the project.
 
 When a tolerance is part of a public contract, document it and test behavior around it.
+
+## Closing note
+
+Closed as a one-off development-principles setup issue.
+
+The principles are now reflected in the initial source layout and naming
+conventions. The implementation deliberately uses small public modules with
+domain names, keeps meaningful math/runtime concepts outside `src/render/three`,
+and avoids service/manager/plugin-style architecture.
+
+## Evidence for closing
+
+- Domain concepts were introduced as public types in `src/cell-complex/specs.ts`,
+  `src/cell-complex/forbiddenZones.ts`, `src/movement/playerBody.ts`, and
+  `src/tools/traceStraightRay.ts`.
+- Rendering glue lives under `src/render/three`, while cell specs, prism
+  compilation, movement, and tool contracts live outside the renderer.
+- The first behavior test,
+  `tests/cell-complex/compileCellComplex.test.ts`, checks observable compiled
+  cell output rather than private helper calls.
+- `npm.cmd run typecheck`, `npm.cmd test`, and `npm.cmd run build` passed after
+  the scaffold was added.

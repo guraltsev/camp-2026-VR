@@ -22,7 +22,7 @@ flattened-cube/
   docs/
     llm-handoff/
       ...this packet...
-    decisions/
+    design/
       001-stack.md
       002-cell-complex-first.md
   src/
@@ -195,9 +195,9 @@ Use tiny private decision notes when a choice could otherwise be relitigated by 
 Examples:
 
 ```text
-docs/decisions/001-stack.md
-docs/decisions/002-prism-cells-first.md
-docs/decisions/003-no-curvature-engine.md
+docs/design/001-stack.md
+docs/design/002-cell-complex-first.md
+docs/design/003-no-curvature-engine.md
 ```
 
 Each decision note should answer:
@@ -208,3 +208,27 @@ Each decision note should answer:
 - What would cause us to revisit this?
 
 Do not create a documentation site.
+
+## Closing note
+
+Closed as a one-off repository scaffold issue.
+
+The target single-project Vite structure now exists, with the design-note folder
+renamed to `docs/design` by user request. Placeholder contracts are intentionally
+thin; they establish import boundaries and names without pretending the later
+math, movement, collision, portal, or ray behavior is complete.
+
+## Evidence for closing
+
+- Top-level project files now exist: `index.html`, `package.json`,
+  `package-lock.json`, `tsconfig.json`, and `vite.config.ts`.
+- The requested source directories now exist under `src/`: `math`,
+  `cell-complex`, `movement`, `tools`, `render/three`, `classroom`,
+  `authoring`, and `glue`.
+- `src/main.ts` is a small app entrypoint that wires together world selection,
+  compilation, initial app state, and rendering.
+- Design notes live in `docs/design/001-stack.md`,
+  `docs/design/002-cell-complex-first.md`, and
+  `docs/design/003-no-curvature-engine.md`.
+- `npm.cmd run typecheck`, `npm.cmd test`, and `npm.cmd run build` passed after
+  the scaffold was added.

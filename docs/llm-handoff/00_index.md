@@ -7,10 +7,10 @@ Read the files in numeric order. Each file is written for an LLM-assisted implem
 ## Ordered files
 
 1. `00_index.md` - this reading map.
-2. `01_project_brief.md` - project purpose, audience, non-goals, and corrected teaching stance.
-3. `02_development_principles.md` - code style, testing philosophy, and LLM behavior rules.
-4. `03_tech_stack_and_deployment.md` - TypeScript, Vite, Three.js, WebXR, tests, and GitHub Pages branch deployment.
-5. `04_repository_scaffold.md` - target directory structure and import boundaries.
+2. `../issues/_closed/01_project_brief.md` - closed; project purpose, audience, non-goals, and corrected teaching stance.
+3. `../issues/_closed/02_development_principles.md` - closed; code style, testing philosophy, and LLM behavior rules.
+4. `../issues/_closed/03_tech_stack_and_deployment.md` - closed; TypeScript, Vite, Three.js, WebXR, tests, and GitHub Pages branch deployment.
+5. `../issues/_closed/04_repository_scaffold.md` - closed; target directory structure and import boundaries.
 6. `05_domain_language.md` - shared vocabulary for cells, portals, rays, tools, and forbidden zones.
 7. `06_authoring_model.md` - TypeScript world specs now, compiler/QR authoring later.
 8. `07_runtime_contracts.md` - public data contracts the implementation should stabilize early.

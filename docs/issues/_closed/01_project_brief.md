@@ -87,3 +87,26 @@ The scaffolding should leave room for:
 - cubes, tetrahedra, and arbitrary convex polyhedra.
 
 Do not implement those future directions until a current stage explicitly asks for them.
+
+## Closing note
+
+Closed as a one-off bootstrap/design issue.
+
+The project brief has been translated into the initial implementation posture:
+the repository is now a private, inspectable Vite/TypeScript exploration app
+scaffold rather than only a handoff packet. The code keeps the theorem-engine
+non-goal visible by separating domain modules from rendering and by adding the
+explicit no-curvature decision note.
+
+## Evidence for closing
+
+- `README.md` now describes the implementation scaffold and useful local
+  commands.
+- `src/main.ts` selects a starter prism world, compiles it, creates app state,
+  and starts the Three.js app without embedding compiler, collision, ray, or
+  theorem logic.
+- `docs/design/003-no-curvature-engine.md` records the decision not to build
+  curvature, Gauss-Bonnet, holonomy, Euler characteristic, or point-to-point
+  geodesic machinery in the first runtime.
+- `npm.cmd run typecheck`, `npm.cmd test`, and `npm.cmd run build` passed after
+  the scaffold was added.
