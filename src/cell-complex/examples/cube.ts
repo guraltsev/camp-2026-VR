@@ -32,7 +32,7 @@ export const cube: CellComplexSpec = {
       ["top", 2],
       ["right", 1],
     ]),
-    cubeFace("left", "#d9b44f", "low_poly_tree_wind/scene.gltf", 3, [
+    cubeFace("left", "#d9b44f", "low_poly_tree_wind/scene.gltf", 1, [
       ["bottom", 3],
       ["front", 3],
       ["top", 3],
@@ -71,7 +71,7 @@ function cubeFace(
     baseVertices: squareBase,
     visuals: {
       floorColor,
-      objects: [centerObject(id, assetPath, objectScale)],
+      objects: [centerObject(id, assetPath, objectScale, objectPlacement(id))],
     },
     portals: sideTargets.map(([targetCellId, targetSideIndex], sideIndex): AuthoredPortalSpec => ({
       id: sideId(sideIndex),
@@ -86,12 +86,40 @@ function sideId(sideIndex: number): string {
   return `side-${sideIndex}`;
 }
 
-function centerObject(cellId: string, assetPath: string, scale: number): CellObjectSpec {
+function centerObject(
+  cellId: string,
+  assetPath: string,
+  scale: number,
+  placement: { readonly position: { readonly x: number; readonly y: number; readonly z: number }; readonly yawRadians: number },
+): CellObjectSpec {
   return {
     id: `${cellId}-centerpiece`,
     kind: "asset",
     assetPath,
-    position: { x: 0, y: 0, z: 0 },
+    position: placement.position,
+    yawRadians: placement.yawRadians,
     scale,
   };
+}
+
+function objectPlacement(cellId: string): {
+  readonly position: { readonly x: number; readonly y: number; readonly z: number };
+  readonly yawRadians: number;
+} {
+  switch (cellId) {
+    case "front":
+      return { position: { x: -1.2, y: 0, z: 0.6 }, yawRadians: 0.2 };
+    case "right":
+      return { position: { x: 0.8, y: 0, z: -0.5 }, yawRadians: -0.35 };
+    case "back":
+      return { position: { x: 0.4, y: 0, z: 0.9 }, yawRadians: 1.15 };
+    case "left":
+      return { position: { x: -0.9, y: 0, z: 0.7 }, yawRadians: 0.8 };
+    case "top":
+      return { position: { x: 0.2, y: 0, z: -0.2 }, yawRadians: -0.15 };
+    case "bottom":
+      return { position: { x: -0.5, y: 0, z: -0.8 }, yawRadians: 0.5 };
+    default:
+      return { position: { x: 0, y: 0, z: 0 }, yawRadians: 0 };
+  }
 }

@@ -23,7 +23,7 @@ export const tetrahedron: CellComplexSpec = {
       ["face-d", 1],
       ["face-c", 1],
     ]),
-    tetraFace("face-c", "#5f79d9", "low_poly_tree_wind/scene.gltf", 3, [
+    tetraFace("face-c", "#5f79d9", "low_poly_tree_wind/scene.gltf", 1, [
       ["face-a", 1],
       ["face-b", 2],
       ["face-d", 2],
