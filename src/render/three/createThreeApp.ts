@@ -3,6 +3,11 @@ import type { AppState } from "../../appState";
 import { movePlayer } from "../../movement/movePlayer";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
 import { createDefaultPlayerPose } from "../../movement/playerPose";
+import {
+  createGeodesciMarmotRuntime,
+  isGeodesciMarmotObjectSpec,
+  type GeodesciMarmotRuntime,
+} from "../../world-objects/geodesciMarmot";
 import { buildCellMesh } from "./buildCellMesh";
 import { createDesktopControls } from "./desktopControls";
 
@@ -39,6 +44,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   const cellMeshes = new Map<string, THREE.Object3D>();
   const cellSideCounts = new Map(appState.world.cells.map((cell) => [cell.id, cell.sideCount]));
+  const marmotRuntimes: GeodesciMarmotRuntime[] = [];
 
   for (const cell of appState.world.cells) {
     const cellMesh = buildCellMesh(cell, {
@@ -49,6 +55,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     cellMesh.visible = false;
     cellMeshes.set(cell.id, cellMesh);
     scene.add(cellMesh);
+
+    for (const objectSpec of cell.objects) {
+      if (!isGeodesciMarmotObjectSpec(objectSpec)) {
+        continue;
+      }
+
+      const runtime = createGeodesciMarmotRuntime(objectSpec, cell.id);
+      runtime.syncParent(cellMeshes);
+      marmotRuntimes.push(runtime);
+    }
   }
 
   let visibleCellId: string | undefined;
@@ -81,10 +97,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function renderFrame(): void {
-    const frame = controls.consumeFrame(clock.getDelta());
+    const deltaSeconds = clock.getDelta();
+    const frame = controls.consumeFrame(deltaSeconds);
 
     if (frame.resetRequested) {
       playerPose = createDefaultPlayerPose(appState.playerPose.cellId);
+      for (const runtime of marmotRuntimes) {
+        runtime.reset(cellMeshes);
+      }
     } else {
       playerPose = movePlayer({
         world: appState.world,
@@ -95,6 +115,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         pitchDeltaRadians: frame.pitchDeltaRadians,
         coordinateFrame: "global",
       }).pose;
+    }
+
+    for (const runtime of marmotRuntimes) {
+      runtime.update(appState.world, frame.resetRequested ? 0 : deltaSeconds);
+      runtime.syncParent(cellMeshes);
     }
 
     updateVisibleCell();

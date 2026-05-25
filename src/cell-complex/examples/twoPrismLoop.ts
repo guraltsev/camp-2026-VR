@@ -1,4 +1,5 @@
 import type { CellComplexSpec } from "../specs";
+import { createGeodesciMarmot } from "../../world-objects/geodesciMarmot";
 
 export const twoPrismLoop: CellComplexSpec = {
   cells: [
@@ -21,6 +22,12 @@ export const twoPrismLoop: CellComplexSpec = {
             position: { x: 0, y: 0, z: 0 },
             scale: 3,
           },
+          createGeodesciMarmot({
+            id: "room-a-geodesci-marmot",
+            position: { x: -4.6, y: 0, z: 1.4 },
+            scale: 1.05,
+            velocity: { x: 2.7, z: 0.8 },
+          }),
         ],
       },
       portals: [

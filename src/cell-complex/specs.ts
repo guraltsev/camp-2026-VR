@@ -28,11 +28,31 @@ export interface PrismCellVisualSpec {
   readonly objects?: readonly CellObjectSpec[];
 }
 
-export interface CellObjectSpec {
+export interface PositionedCellObjectSpec {
   readonly id: string;
-  readonly kind: "asset";
-  readonly assetPath: string;
   readonly position: { readonly x: number; readonly y: number; readonly z: number };
   readonly scale?: number;
   readonly yawRadians?: number;
 }
+
+export interface AssetObjectSpec extends PositionedCellObjectSpec {
+  readonly kind: "asset";
+  readonly assetPath: string;
+}
+
+export interface SimpleCollisionBoxSpec {
+  readonly dx: number;
+  readonly dy: number;
+  readonly dz: number;
+  readonly offset?: { readonly x: number; readonly y: number; readonly z: number };
+}
+
+export interface GeodesciMarmotObjectSpec extends PositionedCellObjectSpec {
+  readonly kind: "geodesci-marmot";
+  readonly assetPath: string;
+  readonly velocity: { readonly x: number; readonly z: number };
+  readonly collision: SimpleCollisionBoxSpec;
+  readonly animationClipName?: string;
+}
+
+export type CellObjectSpec = AssetObjectSpec | GeodesciMarmotObjectSpec;

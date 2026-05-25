@@ -1,4 +1,5 @@
 import type { CellComplexSpec } from "../specs";
+import { createGeodesciMarmot } from "../../world-objects/geodesciMarmot";
 
 const roomSizeMeters = 15;
 const roomHeightMeters = 4;
@@ -25,6 +26,12 @@ export const torus: CellComplexSpec = {
             position: { x: 0, y: 0, z: 0 },
             scale: 2,
           },
+          createGeodesciMarmot({
+            id: "torus-geodesci-marmot",
+            position: { x: -4.4, y: 0, z: 1.1 },
+            scale: 1.05,
+            velocity: { x: 2.5, z: 0.9 },
+          }),
         ],
       },
       portals: [

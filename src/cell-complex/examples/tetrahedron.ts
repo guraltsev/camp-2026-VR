@@ -1,5 +1,6 @@
-import type { PrismCellSpec } from "../specs";
+import type { CellObjectSpec, PrismCellSpec } from "../specs";
 import type { CellComplexSpec } from "../specs";
+import { createGeodesciMarmot } from "../../world-objects/geodesciMarmot";
 
 const triangleSideMeters = 23;
 const triangleAltitudeMeters = 20;
@@ -61,6 +62,7 @@ function tetraFace(
           position: { x: 0, y: 0, z: 0 },
           scale: objectScale,
         },
+        ...marmotObjects(id),
       ],
     },
     portals: neighbors.map(([neighborId, targetSideIndex], sideIndex) => ({
@@ -70,4 +72,19 @@ function tetraFace(
       targetPortalId: `edge-${targetSideIndex}`,
     })),
   };
+}
+
+function marmotObjects(cellId: string): readonly CellObjectSpec[] {
+  if (cellId !== "face-a") {
+    return [];
+  }
+
+  return [
+    createGeodesciMarmot({
+      id: "face-a-geodesci-marmot",
+      position: { x: -2.2, y: 0, z: 2.2 },
+      scale: 1.05,
+      velocity: { x: 1.6, z: -0.7 },
+    }),
+  ];
 }

@@ -1,6 +1,7 @@
 import type { CellObjectSpec } from "../specs";
 import type { CellComplexSpec } from "../specs";
 import type { AuthoredPortalSpec } from "../specs";
+import { createGeodesciMarmot } from "../../world-objects/geodesciMarmot";
 
 const sideMeters = 15;
 const heightMeters = 4;
@@ -71,7 +72,7 @@ function cubeFace(
     baseVertices: squareBase,
     visuals: {
       floorColor,
-      objects: [centerObject(id, assetPath, objectScale, objectPlacement(id))],
+      objects: [centerObject(id, assetPath, objectScale, objectPlacement(id)), ...marmotObjects(id)],
     },
     portals: sideTargets.map(([targetCellId, targetSideIndex], sideIndex): AuthoredPortalSpec => ({
       id: sideId(sideIndex),
@@ -80,6 +81,21 @@ function cubeFace(
       targetPortalId: sideId(targetSideIndex),
     })),
   };
+}
+
+function marmotObjects(cellId: string): readonly CellObjectSpec[] {
+  if (cellId !== "front") {
+    return [];
+  }
+
+  return [
+    createGeodesciMarmot({
+      id: "front-geodesci-marmot",
+      position: { x: -4.2, y: 0, z: -1.8 },
+      scale: 1.05,
+      velocity: { x: 2.3, z: 0.65 },
+    }),
+  ];
 }
 
 function sideId(sideIndex: number): string {

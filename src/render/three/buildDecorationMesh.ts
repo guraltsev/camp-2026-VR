@@ -1,11 +1,19 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import type { CellObjectSpec } from "../../cell-complex/specs";
+import type { AssetObjectSpec, CellObjectSpec } from "../../cell-complex/specs";
 import { publicAssetUrl } from "../../glue/assetUrls";
 
 const gltfLoader = new GLTFLoader();
 
 export function buildDecorationMesh(objectSpec: CellObjectSpec): THREE.Object3D {
+  if (objectSpec.kind !== "asset") {
+    throw new Error(`Cannot build static decoration mesh for object kind "${objectSpec.kind}".`);
+  }
+
+  return buildStaticAssetMesh(objectSpec);
+}
+
+function buildStaticAssetMesh(objectSpec: AssetObjectSpec): THREE.Object3D {
   const group = new THREE.Group();
   group.name = `decoration:${objectSpec.id}`;
   group.position.set(objectSpec.position.x, objectSpec.position.y, objectSpec.position.z);
