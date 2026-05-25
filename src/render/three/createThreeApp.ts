@@ -87,7 +87,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       playerPose = createDefaultPlayerPose(appState.playerPose.cellId);
     } else {
       playerPose = movePlayer({
+        world: appState.world,
         pose: playerPose,
+        body: appState.playerBody,
         localDisplacement: frame.localDisplacement,
         yawDeltaRadians: frame.yawDeltaRadians,
         pitchDeltaRadians: frame.pitchDeltaRadians,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { movePlayer } from "../../src/movement/movePlayer";
 import { createDefaultPlayerPose } from "../../src/movement/playerPose";
 
@@ -12,14 +13,14 @@ describe("movePlayer", () => {
       coordinateFrame: "global",
     });
 
-    expect(result).toEqual({
-      kind: "moved",
-      pose: {
-        cellId: "room-a",
-        position: { x: 1, y: 0, z: 0 },
-        yawRadians: 0,
-        pitchRadians: 0,
-      },
+    expect(result.kind).toBe("moved");
+    expect(result.blocked).toBe(false);
+    expect(result.crossedPortal).toBe(false);
+    expect(result.pose).toEqual({
+      cellId: "room-a",
+      position: { x: 1, y: 0, z: 0 },
+      yawRadians: 0,
+      pitchRadians: 0,
     });
   });
 
@@ -74,5 +75,36 @@ describe("movePlayer", () => {
     });
 
     expect(result.pose.pitchRadians).toBeCloseTo(Math.PI / 2 - 0.01);
+  });
+
+  it("uses the shared world-aware collision rules when a compiled world is provided", () => {
+    const world = compileCellComplex({
+      cells: [
+        {
+          id: "room-a",
+          heightMeters: 2,
+          baseVertices: [
+            { x: -1, z: -1 },
+            { x: 1, z: -1 },
+            { x: 1, z: 1 },
+            { x: -1, z: 1 },
+          ],
+          portals: [],
+        },
+      ],
+    });
+
+    const result = movePlayer({
+      world,
+      pose: createDefaultPlayerPose("room-a"),
+      localDisplacement: { x: 2, y: 0, z: 0 },
+      yawDeltaRadians: 0,
+      pitchDeltaRadians: 0,
+      coordinateFrame: "global",
+    });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockingReason).toBe("wall");
+    expect(result.pose.position).toEqual({ x: 0, y: 0, z: 0 });
   });
 });

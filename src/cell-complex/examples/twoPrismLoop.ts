@@ -1,4 +1,4 @@
-import { identityRigidTransform3 } from "../../math/rigidTransform3";
+import { identityMat3, type RigidTransform3 } from "../../math/rigidTransform3";
 import type { CellComplexSpec } from "../specs";
 
 export const twoPrismLoop: CellComplexSpec = {
@@ -30,7 +30,7 @@ export const twoPrismLoop: CellComplexSpec = {
           sideIndex: 1,
           targetCellId: "room-b",
           targetPortalId: "west",
-          transformToTarget: identityRigidTransform3,
+          transformToTarget: translate({ x: -15, y: 0, z: 0 }),
         },
       ],
     },
@@ -61,9 +61,13 @@ export const twoPrismLoop: CellComplexSpec = {
           sideIndex: 3,
           targetCellId: "room-a",
           targetPortalId: "east",
-          transformToTarget: identityRigidTransform3,
+          transformToTarget: translate({ x: 15, y: 0, z: 0 }),
         },
       ],
     },
   ],
 };
+
+function translate(translation: { readonly x: number; readonly y: number; readonly z: number }): RigidTransform3 {
+  return { rotation: identityMat3, translation };
+}

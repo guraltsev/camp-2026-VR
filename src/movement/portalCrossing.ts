@@ -1,11 +1,20 @@
 import type { PortalSpec } from "../cell-complex/specs";
-import { applyRigidTransform3 } from "../math/rigidTransform3";
+import { composeRigidTransform3 } from "../math/rigidTransform3";
 import type { PlayerPose } from "./playerPose";
+import type { DynamicObjectState } from "./dynamicObject";
+import { playerPoseToDynamicObject, playerPoseFromDynamicObject } from "./playerPose";
+
+export function crossDynamicObjectPortal(object: DynamicObjectState, portal: PortalSpec): DynamicObjectState {
+  return {
+    ...object,
+    cellId: portal.targetCellId,
+    localPose: composeRigidTransform3(portal.transformToTarget, object.localPose),
+  };
+}
 
 export function crossPortal(pose: PlayerPose, portal: PortalSpec): PlayerPose {
-  return {
-    ...pose,
-    cellId: portal.targetCellId,
-    position: applyRigidTransform3(portal.transformToTarget, pose.position),
-  };
+  return playerPoseFromDynamicObject(
+    crossDynamicObjectPortal(playerPoseToDynamicObject(pose), portal),
+    pose.pitchRadians,
+  );
 }

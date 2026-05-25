@@ -14,10 +14,26 @@ const triangleBase = [
 
 export const tetrahedron: CellComplexSpec = {
   cells: [
-    tetraFace("face-a", "#d95f5f", "house-low-poly/scene.gltf", 3, ["face-b", "face-c", "face-d"]),
-    tetraFace("face-b", "#4f9d69", "low_poly_campfire/scene.gltf", 2, ["face-a", "face-d", "face-c"]),
-    tetraFace("face-c", "#5f79d9", "low_poly_tree_wind/scene.gltf", 3, ["face-a", "face-b", "face-d"]),
-    tetraFace("face-d", "#d9b44f", "low_poly_rocks/scene.gltf", 2, ["face-a", "face-c", "face-b"]),
+    tetraFace("face-a", "#d95f5f", "house-low-poly/scene.gltf", 3, [
+      ["face-b", 0],
+      ["face-c", 0],
+      ["face-d", 0],
+    ]),
+    tetraFace("face-b", "#4f9d69", "low_poly_campfire/scene.gltf", 2, [
+      ["face-a", 0],
+      ["face-d", 1],
+      ["face-c", 1],
+    ]),
+    tetraFace("face-c", "#5f79d9", "low_poly_tree_wind/scene.gltf", 3, [
+      ["face-a", 1],
+      ["face-b", 2],
+      ["face-d", 2],
+    ]),
+    tetraFace("face-d", "#d9b44f", "low_poly_rocks/scene.gltf", 2, [
+      ["face-a", 2],
+      ["face-b", 1],
+      ["face-c", 2],
+    ]),
   ],
 };
 
@@ -26,7 +42,11 @@ function tetraFace(
   floorColor: string,
   assetPath: string,
   objectScale: number,
-  neighbors: readonly [string, string, string],
+  neighbors: readonly [
+    readonly [targetCellId: string, targetSideIndex: number],
+    readonly [targetCellId: string, targetSideIndex: number],
+    readonly [targetCellId: string, targetSideIndex: number],
+  ],
 ): PrismCellSpec {
   return {
     id,
@@ -44,11 +64,11 @@ function tetraFace(
         },
       ],
     },
-    portals: neighbors.map((neighborId, sideIndex) => ({
+    portals: neighbors.map(([neighborId, targetSideIndex], sideIndex) => ({
       id: `edge-${sideIndex}`,
       sideIndex,
       targetCellId: neighborId,
-      targetPortalId: `edge-${sideIndex}`,
+      targetPortalId: `edge-${targetSideIndex}`,
       transformToTarget: identityRigidTransform3,
     })),
   };
