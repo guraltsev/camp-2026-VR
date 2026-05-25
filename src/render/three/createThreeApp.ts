@@ -3,6 +3,7 @@ import type { AppState } from "../../appState";
 import { movePlayer } from "../../movement/movePlayer";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
 import { createDefaultPlayerPose } from "../../movement/playerPose";
+import { buildCellMesh } from "./buildCellMesh";
 import { createDesktopControls } from "./desktopControls";
 
 export interface ThreeApp {
@@ -11,7 +12,11 @@ export interface ThreeApp {
   dispose(): void;
 }
 
-export function createThreeApp(container: HTMLElement, appState: AppState): ThreeApp {
+export interface ThreeAppOptions {
+  readonly debugLevel: number;
+}
+
+export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x101820);
 
@@ -28,15 +33,25 @@ export function createThreeApp(container: HTMLElement, appState: AppState): Thre
   const light = new THREE.HemisphereLight(0xffffff, 0x304050, 2);
   scene.add(light);
 
-  const grid = new THREE.GridHelper(12, 24, 0x8fb8c0, 0x263840);
-  scene.add(grid);
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  keyLight.position.set(3, 6, 4);
+  scene.add(keyLight);
 
-  const geometry = new THREE.BoxGeometry(4, 3, 4);
-  const material = new THREE.MeshBasicMaterial({ color: 0x5fb3b3, wireframe: true });
-  const roomPreview = new THREE.Mesh(geometry, material);
-  roomPreview.position.y = 1.5;
-  roomPreview.name = `Preview for ${appState.world.cells.length} prism cells`;
-  scene.add(roomPreview);
+  const cellMeshes = new Map<string, THREE.Object3D>();
+  const cellSideCounts = new Map(appState.world.cells.map((cell) => [cell.id, cell.sideCount]));
+
+  for (const cell of appState.world.cells) {
+    const cellMesh = buildCellMesh(cell, {
+      debugLevel: options.debugLevel,
+      eyeHeightMeters: DEFAULT_PLAYER_EYE_HEIGHT_METERS,
+      cellSideCounts,
+    });
+    cellMesh.visible = false;
+    cellMeshes.set(cell.id, cellMesh);
+    scene.add(cellMesh);
+  }
+
+  let visibleCellId: string | undefined;
 
   function applyCameraPose(): void {
     camera.position.set(
@@ -45,6 +60,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState): Thre
       playerPose.position.z,
     );
     camera.rotation.set(playerPose.pitchRadians, playerPose.yawRadians, 0, "YXZ");
+  }
+
+  function updateVisibleCell(): void {
+    if (visibleCellId === playerPose.cellId) {
+      return;
+    }
+
+    for (const [cellId, cellMesh] of cellMeshes) {
+      cellMesh.visible = cellId === playerPose.cellId;
+    }
+
+    visibleCellId = playerPose.cellId;
   }
 
   function onResize(): void {
@@ -68,6 +95,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState): Thre
       }).pose;
     }
 
+    updateVisibleCell();
     applyCameraPose();
     renderer.render(scene, camera);
     animationFrameId = window.requestAnimationFrame(renderFrame);
@@ -84,10 +112,31 @@ export function createThreeApp(container: HTMLElement, appState: AppState): Thre
       window.cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", onResize);
       controls.dispose();
-      geometry.dispose();
-      material.dispose();
+      for (const cellMesh of cellMeshes.values()) {
+        disposeObject3D(cellMesh);
+      }
       renderer.dispose();
       renderer.domElement.remove();
     },
   };
+}
+
+function disposeObject3D(object: THREE.Object3D): void {
+  object.traverse((child) => {
+    if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+      child.geometry.dispose();
+      disposeMaterial(child.material);
+    }
+  });
+}
+
+function disposeMaterial(material: THREE.Material | THREE.Material[]): void {
+  if (Array.isArray(material)) {
+    for (const item of material) {
+      item.dispose();
+    }
+    return;
+  }
+
+  material.dispose();
 }

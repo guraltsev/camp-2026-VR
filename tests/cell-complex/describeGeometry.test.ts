@@ -8,7 +8,7 @@ describe("describeGeometrySpec", () => {
     const summary = describeGeometrySpec(cube);
 
     expect(summary).toContain("Ingested geometry: 6 cells.");
-    expect(summary).toContain("cell=front: prism, sides=4");
+    expect(summary).toContain("cell=front: prism, sides=4, floor=#d95f5f, objects=1");
     expect(summary).toContain("(cell=front, side=(0,1)) -> (cell=bottom, side=(3,2))");
     expect(summary).toContain("(cell=top, side=(1,2)) -> (cell=right, side=(3,2))");
   });

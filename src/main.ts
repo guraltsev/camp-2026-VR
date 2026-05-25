@@ -24,5 +24,5 @@ async function startApp(container: HTMLDivElement): Promise<void> {
     renderGeometryPicker(document.body, geometryOptions.selectedGeometryId);
   }
 
-  createThreeApp(container, appState);
+  createThreeApp(container, appState, { debugLevel: geometryOptions.debugLevel });
 }

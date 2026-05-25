@@ -9,6 +9,7 @@ export interface PrismCellSpec {
   readonly heightMeters: number;
   readonly baseVertices: readonly { readonly x: number; readonly z: number }[];
   readonly portals: readonly PortalSpec[];
+  readonly visuals?: PrismCellVisualSpec;
 }
 
 export interface PortalSpec {
@@ -17,4 +18,18 @@ export interface PortalSpec {
   readonly targetCellId: string;
   readonly targetPortalId: string;
   readonly transformToTarget: RigidTransform3;
+}
+
+export interface PrismCellVisualSpec {
+  readonly floorColor?: string;
+  readonly objects?: readonly CellObjectSpec[];
+}
+
+export interface CellObjectSpec {
+  readonly id: string;
+  readonly kind: "asset";
+  readonly assetPath: string;
+  readonly position: { readonly x: number; readonly y: number; readonly z: number };
+  readonly scale?: number;
+  readonly yawRadians?: number;
 }

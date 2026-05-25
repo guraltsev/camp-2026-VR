@@ -13,6 +13,7 @@ export interface GeometryOption {
 export interface GeometrySelectionOptions {
   readonly selectedGeometryId: string;
   readonly renderPicker: boolean;
+  readonly debugLevel: number;
 }
 
 const geometryModules = import.meta.glob<GeometryModule>("./cell-complex/examples/*.ts");
@@ -39,6 +40,7 @@ export function readGeometrySelectionOptions(location: Location): GeometrySelect
   return {
     selectedGeometryId,
     renderPicker: !isDisabled(params.get("geometryPicker")),
+    debugLevel: readIntegerParam(params.get("debug")),
   };
 }
 
@@ -98,6 +100,15 @@ function normalizeRequestedGeometryId(rawValue: string | null): string | undefin
 
 function isDisabled(rawValue: string | null): boolean {
   return rawValue === "0" || rawValue === "false" || rawValue === "no";
+}
+
+function readIntegerParam(rawValue: string | null): number {
+  if (!rawValue) {
+    return 0;
+  }
+
+  const value = Number.parseInt(rawValue, 10);
+  return Number.isFinite(value) ? value : 0;
 }
 
 function findCellComplexSpec(module: GeometryModule, geometryId: string): CellComplexSpec {

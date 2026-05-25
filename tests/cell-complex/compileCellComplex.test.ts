@@ -17,5 +17,6 @@ describe("compileCellComplex", () => {
     expect(compileCellComplex(tetrahedron).cells).toHaveLength(4);
     expect(compileCellComplex(cube).cells).toHaveLength(6);
     expect(compileCellComplex(cube).cells.every((cell) => cell.sideCount === 4)).toBe(true);
+    expect(compileCellComplex(cube).cells.every((cell) => cell.objects.length === 1)).toBe(true);
   });
 });

@@ -6,7 +6,9 @@ export function describeGeometrySpec(spec: CellComplexSpec): string {
   lines.push("Cells:");
 
   for (const cell of spec.cells) {
-    lines.push(`- cell=${cell.id}: prism, sides=${cell.baseVertices.length}`);
+    const floorColor = cell.visuals?.floorColor ?? "default";
+    const objectCount = cell.visuals?.objects?.length ?? 0;
+    lines.push(`- cell=${cell.id}: prism, sides=${cell.baseVertices.length}, floor=${floorColor}, objects=${objectCount}`);
   }
 
   lines.push("Connections:");
