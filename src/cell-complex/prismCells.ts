@@ -3,6 +3,7 @@ import {
   forbiddenPortalJunctionRadiusMeters,
   type ForbiddenZone,
   type PortalJunction,
+  type SingularityCollisionColumn,
 } from "./forbiddenZones";
 
 export interface CompiledPrismCell {
@@ -15,6 +16,7 @@ export interface CompiledPrismCell {
   readonly portalBySideIndex: ReadonlyMap<number, PortalSpec>;
   readonly sides: readonly CompiledPrismSide[];
   readonly portalJunctions: readonly PortalJunction[];
+  readonly singularityColumns: readonly SingularityCollisionColumn[];
   readonly forbiddenZones: readonly ForbiddenZone[];
   readonly floorColor: string;
   readonly objects: readonly CellObjectSpec[];
@@ -51,10 +53,20 @@ export function compilePrismCell(spec: PrismCellSpec): CompiledPrismCell {
     };
   });
   const portalJunctions = compilePortalJunctions(spec);
-  const forbiddenZones = portalJunctions.map((junction) => ({
-    junctionId: junction.id,
-    position: junction.position,
-    radiusMeters: forbiddenPortalJunctionRadiusMeters,
+  const singularityColumns = portalJunctions.map((junction) => ({
+      kind: "invisible-column" as const,
+      junctionId: junction.id,
+      center: {
+        x: junction.position.x,
+        y: spec.heightMeters / 2,
+        z: junction.position.z,
+      },
+      radiusMeters: forbiddenPortalJunctionRadiusMeters,
+      heightMeters: spec.heightMeters,
+  }));
+  const forbiddenZones = singularityColumns.map((column) => ({
+    junctionId: column.junctionId,
+    collision: column,
   }));
 
   return {
@@ -67,6 +79,7 @@ export function compilePrismCell(spec: PrismCellSpec): CompiledPrismCell {
     portalBySideIndex,
     sides,
     portalJunctions,
+    singularityColumns,
     forbiddenZones,
     floorColor: spec.visuals?.floorColor ?? "#3f6f7a",
     objects: spec.visuals?.objects ?? [],

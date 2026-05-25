@@ -29,6 +29,12 @@ describe("compileCellComplex", () => {
     expect(roomA?.portalBySideIndex.get(1)?.id).toBe("east");
     expect(roomA?.sides).toHaveLength(4);
     expect(roomA?.forbiddenZones.map((zone) => zone.junctionId)).toEqual(["room-a:vertex-1", "room-a:vertex-2"]);
+    expect(roomA?.singularityColumns.map((column) => column.junctionId)).toEqual([
+      "room-a:vertex-1",
+      "room-a:vertex-2",
+    ]);
+    expect(roomA?.singularityColumns[0]?.kind).toBe("invisible-column");
+    expect(roomA?.singularityColumns[0]?.heightMeters).toBe(roomA?.heightMeters);
   });
 
   it("reports readable movement-critical authoring errors", () => {

@@ -50,7 +50,7 @@ describe("moveDynamicObject", () => {
     expect(result.object.localPose.rotation.m02).toBeCloseTo(-1);
   });
 
-  it("rejects movement into forbidden zones at portal junctions", () => {
+  it("rejects movement into invisible collision columns at portal junctions", () => {
     const world = compileCellComplex(twoRoomsWithTranslatedPortal());
     const object = dynamicObject("room-a", { x: 0.65, y: 0.5, z: 0.7 });
 
