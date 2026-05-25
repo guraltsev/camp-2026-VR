@@ -22,11 +22,16 @@ describe("compileCellComplex", () => {
   });
 
   it("compiles the stage geometry examples", () => {
-    expect(compileCellComplex(torus).cells.map((cell) => cell.id)).toEqual(["torus-room"]);
-    expect(compileCellComplex(tetrahedron).cells).toHaveLength(4);
-    expect(compileCellComplex(cube).cells).toHaveLength(6);
-    expect(compileCellComplex(cube).cells.every((cell) => cell.sideCount === 4)).toBe(true);
-    expect(compileCellComplex(cube).cells.every((cell) => cell.objects.length === 1)).toBe(true);
+    const compiledTorus = compileCellComplex(torus);
+    const compiledTetrahedron = compileCellComplex(tetrahedron);
+    const compiledCube = compileCellComplex(cube);
+
+    expect(compiledTorus.cells.map((cell) => cell.id)).toEqual(["torus-room"]);
+    expect(compiledTetrahedron.cells).toHaveLength(4);
+    expect(compiledCube.cells).toHaveLength(6);
+    expect(compiledCube.cells.every((cell) => cell.sideCount === 4)).toBe(true);
+    expect(compiledCube.cellsById.get("front")?.objects).toHaveLength(2);
+    expect(compiledCube.cells.every((cell) => cell.objects.length >= 1)).toBe(true);
   });
 
   it("compiles portal lookups, side geometry, and forbidden zones for movement", () => {
