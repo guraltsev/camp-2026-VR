@@ -1,8 +1,5 @@
 import type { CellComplexSpec } from "../cell-complex/specs";
-import { cube } from "../examples/cube";
-import { tetrahedron } from "../examples/tetrahedron";
-import { torus } from "../examples/torus";
-import { twoPrismLoop } from "../examples/twoPrismLoop";
+import { cube, tetrahedron, torus, twoPrismLoop } from "./exampleWorlds";
 
 export interface WorldCatalogEntry {
   readonly id: string;

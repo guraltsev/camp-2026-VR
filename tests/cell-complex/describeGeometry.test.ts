@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { describeGeometrySpec } from "../../src/cell-complex/describeGeometry";
-import { cube } from "../../src/examples/cube";
-import { torus } from "../../src/examples/torus";
+import { cube, torus } from "../../src/authoring/exampleWorlds";
 
 describe("describeGeometrySpec", () => {
   it("summarizes cell counts, cell shapes, and oriented connections", () => {

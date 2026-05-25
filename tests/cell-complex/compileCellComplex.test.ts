@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
-import { cube } from "../../src/examples/cube";
-import { tetrahedron } from "../../src/examples/tetrahedron";
-import { torus } from "../../src/examples/torus";
-import { twoPrismLoop } from "../../src/examples/twoPrismLoop";
+import { cube, tetrahedron, torus, twoPrismLoop } from "../../src/authoring/exampleWorlds";
 import { validateAuthoringSpec } from "../../src/authoring/validateAuthoringSpec";
 import {
   composeRigidTransform3,
