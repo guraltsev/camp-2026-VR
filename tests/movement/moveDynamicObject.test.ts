@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
+import type { CompiledCellComplex } from "../../src/cell-complex/compileCellComplex";
 import type { CellComplexSpec } from "../../src/cell-complex/specs";
-import { identityMat3, identityRigidTransform3, yawRigidTransform3 } from "../../src/math/rigidTransform3";
+import { identityMat3, yawRigidTransform3 } from "../../src/math/rigidTransform3";
+import { cube } from "../../src/cell-complex/examples/cube";
+import { tetrahedron } from "../../src/cell-complex/examples/tetrahedron";
+import { vec3 } from "../../src/math/vec3";
 import { moveDynamicObject } from "../../src/movement/moveDynamicObject";
 import { simpleCollisionBox, type DynamicObjectState } from "../../src/movement/dynamicObject";
 
@@ -36,7 +40,7 @@ describe("moveDynamicObject", () => {
   });
 
   it("crosses centered portals and transforms orientation through the portal mapping", () => {
-    const world = compileCellComplex(twoRoomsWithTranslatedPortal());
+    const world = compileCellComplex(twoRoomsWithPortal());
     const object = dynamicObject("room-a", { x: 0.8, y: 0.5, z: 0 }, yawRigidTransform3(Math.PI / 2).rotation);
 
     const result = moveDynamicObject({ world, object, displacement: { x: 0.4, y: 0, z: 0 } });
@@ -47,11 +51,11 @@ describe("moveDynamicObject", () => {
     expect(result.object.cellId).toBe("room-b");
     expect(result.object.localPose.translation.x).toBeCloseTo(-0.8);
     expect(result.object.localPose.rotation.m00).toBeCloseTo(0);
-    expect(result.object.localPose.rotation.m02).toBeCloseTo(-1);
+    expect(result.object.localPose.rotation.m02).toBeCloseTo(1);
   });
 
   it("crosses a portal when body clearance exits the source cell before the anchor point fully does", () => {
-    const world = compileCellComplex(twoRoomsWithTranslatedPortal());
+    const world = compileCellComplex(twoRoomsWithPortal());
     const object = dynamicObject("room-a", { x: 0.75, y: 0.5, z: 0 });
 
     const result = moveDynamicObject({ world, object, displacement: { x: 0.2, y: 0, z: 0 } });
@@ -59,7 +63,7 @@ describe("moveDynamicObject", () => {
     expect(result.blocked).toBe(false);
     expect(result.crossedPortal).toBe(true);
     expect(result.object.cellId).toBe("room-b");
-    expect(result.object.localPose.translation.x).toBeCloseTo(-0.55);
+    expect(result.object.localPose.translation.x).toBeCloseTo(-1.05);
   });
 
   it("resolves blocked non-portal exits back to an in-bounds pose near the wall", () => {
@@ -76,7 +80,7 @@ describe("moveDynamicObject", () => {
   });
 
   it("rejects movement into invisible collision columns at portal junctions", () => {
-    const world = compileCellComplex(twoRoomsWithTranslatedPortal());
+    const world = compileCellComplex(twoRoomsWithPortal());
     const object = dynamicObject("room-a", { x: 0.65, y: 0.5, z: 0.7 });
 
     const result = moveDynamicObject({ world, object, displacement: { x: 0.2, y: 0, z: 0.2 } });
@@ -98,6 +102,30 @@ describe("moveDynamicObject", () => {
     expect(moveDynamicObject({ world, object: centered, displacement: { x: 0, y: -0.02, z: 0 } }).blocked).toBe(true);
     expect(moveDynamicObject({ world, object: raised, displacement: { x: 0, y: 0, z: 0 } }).blocked).toBe(false);
   });
+
+  it("crosses a compiled cube portal without authored transforms", () => {
+    const world = compileCellComplex(cube);
+    const object = dynamicObject("front", { x: 7.2, y: 0.5, z: 0 });
+
+    const result = moveDynamicObject({ world, object, displacement: { x: 0.4, y: 0, z: 0 } });
+
+    expect(result.blocked).toBe(false);
+    expect(result.crossedPortal).toBe(true);
+    expect(result.object.cellId).toBe("right");
+    expect(result.object.localPose.translation.x).toBeCloseTo(-7.4);
+  });
+
+  it("crosses a compiled tetrahedron portal without authored transforms", () => {
+    const world = compileCellComplex(tetrahedron);
+    const approach = portalApproach(world, "face-a", "edge-0");
+    const object = dynamicObject("face-a", approach.start, identityMat3, simpleCollisionBox(0.05, 1, 0.05));
+
+    const result = moveDynamicObject({ world, object, displacement: approach.displacement });
+
+    expect(result.blocked).toBe(false);
+    expect(result.crossedPortal).toBe(true);
+    expect(result.object.cellId).toBe("face-b");
+  });
 });
 
 function dynamicObject(
@@ -110,6 +138,37 @@ function dynamicObject(
     cellId,
     localPose: { rotation, translation },
     collision,
+  };
+}
+
+function portalApproach(world: CompiledCellComplex, cellId: string, portalId: string) {
+  const cell = world.cellsById.get(cellId);
+  const portal = cell?.portalsById.get(portalId);
+
+  if (!cell || !portal) {
+    throw new Error(`Missing portal approach data for ${cellId}:${portalId}.`);
+  }
+
+  const side = cell.sides[portal.sideIndex];
+  const midpoint = {
+    x: (side.start.x + side.end.x) / 2,
+    y: 0.5,
+    z: (side.start.z + side.end.z) / 2,
+  };
+  const inward = vec3(side.inwardNormal.x, 0, side.inwardNormal.z);
+  const outward = vec3(-side.inwardNormal.x, 0, -side.inwardNormal.z);
+
+  return {
+    start: {
+      x: midpoint.x + inward.x * 0.12,
+      y: midpoint.y,
+      z: midpoint.z + inward.z * 0.12,
+    },
+    displacement: {
+      x: outward.x * 0.3,
+      y: 0,
+      z: outward.z * 0.3,
+    },
   };
 }
 
@@ -126,7 +185,7 @@ function singleRoom(): CellComplexSpec {
   };
 }
 
-function twoRoomsWithTranslatedPortal(): CellComplexSpec {
+function twoRoomsWithPortal(): CellComplexSpec {
   return {
     cells: [
       {
@@ -139,20 +198,6 @@ function twoRoomsWithTranslatedPortal(): CellComplexSpec {
             sideIndex: 1,
             targetCellId: "room-b",
             targetPortalId: "west",
-            transformToTarget: {
-              rotation: {
-                m00: -1,
-                m01: 0,
-                m02: 0,
-                m10: 0,
-                m11: 1,
-                m12: 0,
-                m20: 0,
-                m21: 0,
-                m22: -1,
-              },
-              translation: { x: 0.4, y: 0, z: 0 },
-            },
           },
         ],
       },
@@ -166,7 +211,6 @@ function twoRoomsWithTranslatedPortal(): CellComplexSpec {
             sideIndex: 3,
             targetCellId: "room-a",
             targetPortalId: "east",
-            transformToTarget: identityRigidTransform3,
           },
         ],
       },

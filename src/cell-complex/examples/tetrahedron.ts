@@ -1,4 +1,3 @@
-import { identityRigidTransform3 } from "../../math/rigidTransform3";
 import type { PrismCellSpec } from "../specs";
 import type { CellComplexSpec } from "../specs";
 
@@ -69,7 +68,6 @@ function tetraFace(
       sideIndex,
       targetCellId: neighborId,
       targetPortalId: `edge-${targetSideIndex}`,
-      transformToTarget: identityRigidTransform3,
     })),
   };
 }

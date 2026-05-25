@@ -1,4 +1,4 @@
-import type { CellComplexSpec, PortalSpec, PrismCellSpec } from "./specs";
+import type { AuthoredPortalSpec, CellComplexSpec, PrismCellSpec } from "./specs";
 
 export function describeGeometrySpec(spec: CellComplexSpec): string {
   const lines = [`Ingested geometry: ${spec.cells.length} cell${spec.cells.length === 1 ? "" : "s"}.`];
@@ -26,7 +26,7 @@ export function describeGeometrySpec(spec: CellComplexSpec): string {
   return lines.join("\n");
 }
 
-function describePortalConnection(sourceCell: PrismCellSpec, portal: PortalSpec, spec: CellComplexSpec): string {
+function describePortalConnection(sourceCell: PrismCellSpec, portal: AuthoredPortalSpec, spec: CellComplexSpec): string {
   const targetCell = spec.cells.find((cell) => cell.id === portal.targetCellId);
   const targetPortal = targetCell?.portals.find((candidate) => candidate.id === portal.targetPortalId);
   const sourceSide = formatForwardSide(portal.sideIndex, sourceCell.baseVertices.length);

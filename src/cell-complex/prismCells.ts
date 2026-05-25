@@ -1,4 +1,4 @@
-import type { CellObjectSpec, PortalSpec, PrismCellSpec } from "./specs";
+import type { AuthoredPortalSpec, CellObjectSpec, CompiledPortal, PrismCellSpec } from "./specs";
 import {
   forbiddenPortalJunctionRadiusMeters,
   type ForbiddenZone,
@@ -6,15 +6,12 @@ import {
   type SingularityCollisionColumn,
 } from "./forbiddenZones";
 
-export interface CompiledPrismCell {
+export interface CompiledPrismCellGeometry {
   readonly id: string;
   readonly heightMeters: number;
   readonly isConvex: true;
   readonly sideCount: number;
   readonly baseVertices: readonly { readonly x: number; readonly z: number }[];
-  readonly portals: readonly PortalSpec[];
-  readonly portalsById: ReadonlyMap<string, PortalSpec>;
-  readonly portalBySideIndex: ReadonlyMap<number, PortalSpec>;
   readonly sides: readonly CompiledPrismSide[];
   readonly portalJunctions: readonly PortalJunction[];
   readonly singularityColumns: readonly SingularityCollisionColumn[];
@@ -23,18 +20,22 @@ export interface CompiledPrismCell {
   readonly objects: readonly CellObjectSpec[];
 }
 
+export interface CompiledPrismCell extends CompiledPrismCellGeometry {
+  readonly portals: readonly CompiledPortal[];
+  readonly portalsById: ReadonlyMap<string, CompiledPortal>;
+  readonly portalBySideIndex: ReadonlyMap<number, CompiledPortal>;
+}
+
 export interface CompiledPrismSide {
   readonly sideIndex: number;
   readonly start: { readonly x: number; readonly z: number };
   readonly end: { readonly x: number; readonly z: number };
   readonly inwardNormal: { readonly x: number; readonly z: number };
   readonly lengthMeters: number;
-  readonly portal?: PortalSpec;
+  readonly portal?: CompiledPortal;
 }
 
-export function compilePrismCell(spec: PrismCellSpec): CompiledPrismCell {
-  const portalsById = new Map(spec.portals.map((portal) => [portal.id, portal]));
-  const portalBySideIndex = new Map(spec.portals.map((portal) => [portal.sideIndex, portal]));
+export function compilePrismCellGeometry(spec: PrismCellSpec): CompiledPrismCellGeometry {
   const sides = spec.baseVertices.map((start, sideIndex): CompiledPrismSide => {
     const end = spec.baseVertices[(sideIndex + 1) % spec.baseVertices.length];
     const dx = end.x - start.x;
@@ -50,7 +51,6 @@ export function compilePrismCell(spec: PrismCellSpec): CompiledPrismCell {
         z: dx / lengthMeters,
       },
       lengthMeters,
-      portal: portalBySideIndex.get(sideIndex),
     };
   });
   const portalJunctions = compilePortalJunctions(spec);
@@ -76,15 +76,31 @@ export function compilePrismCell(spec: PrismCellSpec): CompiledPrismCell {
     isConvex: true,
     sideCount: spec.baseVertices.length,
     baseVertices: spec.baseVertices,
-    portals: spec.portals,
-    portalsById,
-    portalBySideIndex,
     sides,
     portalJunctions,
     singularityColumns,
     forbiddenZones,
     floorColor: spec.visuals?.floorColor ?? "#3f6f7a",
     objects: spec.visuals?.objects ?? [],
+  };
+}
+
+export function linkCompiledPrismCellPortals(
+  geometry: CompiledPrismCellGeometry,
+  portals: readonly CompiledPortal[],
+): CompiledPrismCell {
+  const portalsById = new Map(portals.map((portal) => [portal.id, portal]));
+  const portalBySideIndex = new Map(portals.map((portal) => [portal.sideIndex, portal]));
+
+  return {
+    ...geometry,
+    portals,
+    portalsById,
+    portalBySideIndex,
+    sides: geometry.sides.map((side) => ({
+      ...side,
+      portal: portalBySideIndex.get(side.sideIndex),
+    })),
   };
 }
 
@@ -112,7 +128,7 @@ function compilePortalJunctions(spec: PrismCellSpec): readonly PortalJunction[] 
 function addPortalJunctionSide(
   portalIdsByVertexIndex: Map<number, string[]>,
   vertexIndex: number,
-  portalId: string,
+  portalId: AuthoredPortalSpec["id"],
 ): void {
   const portalIds = portalIdsByVertexIndex.get(vertexIndex);
 

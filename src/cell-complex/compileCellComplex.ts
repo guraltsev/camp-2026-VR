@@ -1,4 +1,5 @@
-import { compilePrismCell, type CompiledPrismCell } from "./prismCells";
+import { compilePortalTransforms } from "./compilePortalTransforms";
+import { compilePrismCellGeometry, linkCompiledPrismCellPortals, type CompiledPrismCell } from "./prismCells";
 import type { CellComplexSpec } from "./specs";
 import { validateAuthoringSpec } from "../authoring/validateAuthoringSpec";
 
@@ -14,7 +15,12 @@ export function compileCellComplex(spec: CellComplexSpec): CompiledCellComplex {
     throw new Error(`Invalid cell complex:\n${errors.map((error) => `- ${error}`).join("\n")}`);
   }
 
-  const cells = spec.cells.map(compilePrismCell);
+  const cellGeometry = spec.cells.map(compilePrismCellGeometry);
+  const cellGeometryById = new Map(cellGeometry.map((cell) => [cell.id, cell]));
+  const compiledPortalsByCellId = compilePortalTransforms(spec, cellGeometryById);
+  const cells = cellGeometry.map((cell) =>
+    linkCompiledPrismCellPortals(cell, compiledPortalsByCellId.get(cell.id) ?? []),
+  );
 
   return {
     cells,

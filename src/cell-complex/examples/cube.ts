@@ -1,7 +1,6 @@
-import { identityRigidTransform3 } from "../../math/rigidTransform3";
 import type { CellObjectSpec } from "../specs";
 import type { CellComplexSpec } from "../specs";
-import type { PortalSpec } from "../specs";
+import type { AuthoredPortalSpec } from "../specs";
 
 const sideMeters = 15;
 const heightMeters = 4;
@@ -74,12 +73,11 @@ function cubeFace(
       floorColor,
       objects: [centerObject(id, assetPath, objectScale)],
     },
-    portals: sideTargets.map(([targetCellId, targetSideIndex], sideIndex): PortalSpec => ({
+    portals: sideTargets.map(([targetCellId, targetSideIndex], sideIndex): AuthoredPortalSpec => ({
       id: sideId(sideIndex),
       sideIndex,
       targetCellId,
       targetPortalId: sideId(targetSideIndex),
-      transformToTarget: identityRigidTransform3,
     })),
   };
 }

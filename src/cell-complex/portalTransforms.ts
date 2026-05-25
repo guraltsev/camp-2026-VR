@@ -1,5 +1,5 @@
-import type { PortalSpec } from "./specs";
+import type { CompiledPortal } from "./specs";
 
-export function describePortalTransform(portal: PortalSpec): string {
+export function describePortalTransform(portal: CompiledPortal): string {
   return `${portal.id} -> ${portal.targetCellId}:${portal.targetPortalId}`;
 }

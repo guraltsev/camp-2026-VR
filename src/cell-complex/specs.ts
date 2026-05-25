@@ -8,15 +8,18 @@ export interface PrismCellSpec {
   readonly id: string;
   readonly heightMeters: number;
   readonly baseVertices: readonly { readonly x: number; readonly z: number }[];
-  readonly portals: readonly PortalSpec[];
+  readonly portals: readonly AuthoredPortalSpec[];
   readonly visuals?: PrismCellVisualSpec;
 }
 
-export interface PortalSpec {
+export interface AuthoredPortalSpec {
   readonly id: string;
   readonly sideIndex: number;
   readonly targetCellId: string;
   readonly targetPortalId: string;
+}
+
+export interface CompiledPortal extends AuthoredPortalSpec {
   readonly transformToTarget: RigidTransform3;
 }
 

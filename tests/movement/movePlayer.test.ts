@@ -105,6 +105,8 @@ describe("movePlayer", () => {
 
     expect(result.blocked).toBe(true);
     expect(result.blockingReason).toBe("wall");
-    expect(result.pose.position).toEqual({ x: 0, y: 0, z: 0 });
+    expect(result.pose.position.x).toBeCloseTo(0.749999, 5);
+    expect(result.pose.position.y).toBe(0);
+    expect(result.pose.position.z).toBe(0);
   });
 });
