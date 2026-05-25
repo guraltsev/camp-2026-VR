@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { CompiledPrismCell } from "../../cell-complex/prismCells";
 import { buildDecorationMesh } from "./buildDecorationMesh";
+import { buildPortalMesh, WALL_HEIGHT_METERS } from "./buildPortalMesh";
 import { isGeodesciMarmotObjectSpec } from "../../world-objects/geodesciMarmot";
 
 export interface BuildCellMeshOptions {
@@ -12,8 +13,19 @@ export interface BuildCellMeshOptions {
 export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOptions): THREE.Object3D {
   const group = new THREE.Group();
   group.name = `cell:${cell.id}`;
+  group.userData = {
+    kind: "cell",
+    cellId: cell.id,
+    portalSides: cell.portals.map((portal) => ({
+      portalId: portal.id,
+      sideIndex: portal.sideIndex,
+      targetCellId: portal.targetCellId,
+      targetPortalId: portal.targetPortalId,
+    })),
+  };
 
   group.add(buildFloorMesh(cell));
+  group.add(buildSideWalls(cell));
   group.add(buildFloorOutline(cell));
 
   if (options.debugLevel > 50) {
@@ -56,6 +68,34 @@ function buildFloorMesh(cell: CompiledPrismCell): THREE.Object3D {
   const floor = new THREE.Mesh(geometry, material);
   floor.name = `floor:${cell.id}`;
   return floor;
+}
+
+function buildSideWalls(cell: CompiledPrismCell): THREE.Object3D {
+  const group = new THREE.Group();
+  group.name = `walls:${cell.id}`;
+
+  for (const side of cell.sides) {
+    const start = side.start;
+    const end = side.end;
+
+    if (side.portal) {
+      group.add(
+        buildPortalMesh({
+          portalId: side.portal.id,
+          sideIndex: side.sideIndex,
+          start,
+          end,
+          heightMeters: WALL_HEIGHT_METERS,
+        }),
+      );
+      continue;
+    }
+
+    const wall = buildSolidWallMesh(cell.id, side.sideIndex, start, end, WALL_HEIGHT_METERS);
+    group.add(wall);
+  }
+
+  return group;
 }
 
 function buildFloorOutline(cell: CompiledPrismCell): THREE.Object3D {
@@ -154,6 +194,36 @@ function buildTextPlane(text: string, widthMeters: number, heightMeters: number)
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(widthMeters, heightMeters), material);
+  return mesh;
+}
+
+function buildSolidWallMesh(
+  cellId: string,
+  sideIndex: number,
+  start: { readonly x: number; readonly z: number },
+  end: { readonly x: number; readonly z: number },
+  heightMeters: number,
+): THREE.Mesh {
+  const edgeLength = Math.hypot(end.x - start.x, end.z - start.z);
+  const inward = new THREE.Vector3(-(end.z - start.z), 0, end.x - start.x).normalize();
+  const position = new THREE.Vector3((start.x + end.x) / 2, heightMeters / 2, (start.z + end.z) / 2);
+  const geometry = new THREE.PlaneGeometry(edgeLength, heightMeters);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x6d7f86,
+    roughness: 1,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+
+  mesh.position.copy(position).addScaledVector(inward, 0.01);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), inward);
+  mesh.name = `wall:${cellId}:${sideIndex}`;
+  mesh.userData = {
+    kind: "solid-wall",
+    cellId,
+    sideIndex,
+  };
   return mesh;
 }
 

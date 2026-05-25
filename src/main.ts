@@ -5,6 +5,7 @@ import { loadWorldSpec } from "./authoring/worldCatalog";
 import { readLaunchOptions } from "./glue/readLaunchOptions";
 import { renderWorldPicker } from "./glue/renderWorldPicker";
 import { createThreeApp } from "./render/three/createThreeApp";
+import { preloadWorldAssets } from "./render/three/preloadWorldAssets";
 import "./style.css";
 
 const appElement = document.querySelector<HTMLDivElement>("#app");
@@ -20,6 +21,7 @@ async function startApp(container: HTMLDivElement): Promise<void> {
   const geometrySpec = await loadWorldSpec(launchOptions.selectedWorldId);
   console.info(describeGeometrySpec(geometrySpec));
   const world = compileCellComplex(geometrySpec);
+  await preloadWorldAssets(world);
   const appState = createInitialAppState(world);
 
   if (launchOptions.renderWorldPicker) {

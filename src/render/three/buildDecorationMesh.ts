@@ -34,6 +34,10 @@ function buildStaticAssetMesh(objectSpec: AssetObjectSpec): THREE.Object3D {
   placeholder.name = `placeholder:${objectSpec.id}`;
   group.add(placeholder);
 
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return group;
+  }
+
   gltfLoader.load(
     publicAssetUrl(objectSpec.assetPath),
     (gltf) => {
