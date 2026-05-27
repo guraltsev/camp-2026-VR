@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import type { AppState } from "../../appState";
-import type { DebugOptionId } from "../../glue/debugOptions";
+import type { DebugSettings } from "../../glue/debugSettings";
+import type { DebugLevelId } from "../../glue/debugLevels";
+import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import { movePlayer } from "../../movement/movePlayer";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
 import { createDefaultPlayerPose } from "../../movement/playerPose";
@@ -18,11 +20,13 @@ import type { PreparedWorldAssets } from "./preloadWorldAssets";
 export interface ThreeApp {
   readonly scene: THREE.Scene;
   readonly renderer: THREE.WebGLRenderer;
+  updateDebugSettings(settings: DebugSettings): void;
   dispose(): void;
 }
 
 export interface ThreeAppOptions {
-  readonly debugOptions: readonly DebugOptionId[];
+  readonly debugLevel: DebugLevelId;
+  readonly portalPanelMode: PortalPanelModeId;
   readonly assets: PreparedWorldAssets;
 }
 
@@ -40,9 +44,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   container.append(renderer.domElement);
   const controls = createDesktopControls(renderer.domElement);
   const clock = new THREE.Clock();
-  const diagnostics = runtimeDiagnostics();
   let animationFrameId = 0;
   let playerPose = appState.playerPose;
+  let debugLevel = options.debugLevel;
+  let portalPanelMode = options.portalPanelMode;
 
   const light = new THREE.HemisphereLight(0xffffff, 0x304050, 2);
   light.castShadow = false;
@@ -58,17 +63,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     appState.world.cells.map((cell) => [cell.id, createCellWarmupViews(cell)] as const),
   );
   const marmotRuntimes: GeodesciMarmotRuntime[] = [];
+  let visibleCellId: string | undefined = playerPose.cellId;
+
+  rebuildCellMeshes();
 
   for (const cell of appState.world.cells) {
-    const cellMesh = buildCellMesh(cell, {
-      debugOptions: options.debugOptions,
-      eyeHeightMeters: DEFAULT_PLAYER_EYE_HEIGHT_METERS,
-      assets: options.assets,
-    });
-    cellMesh.visible = false;
-    cellMeshes.set(cell.id, cellMesh);
-    scene.add(cellMesh);
-
     for (const objectSpec of cell.objects) {
       if (!isGeodesciMarmotObjectSpec(objectSpec)) {
         continue;
@@ -100,9 +99,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     activeCellId: playerPose.cellId,
     warmupViewsByCellId,
   });
-  diagnostics.recordWarmup("startup", performance.now() - warmupStartMs);
-
-  let visibleCellId: string | undefined = playerPose.cellId;
+  runtimeDiagnostics().recordWarmup("startup", performance.now() - warmupStartMs);
 
   function updateVisibleCell(): void {
     if (visibleCellId === playerPose.cellId) {
@@ -156,7 +153,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameAfterMoveMs = performance.now();
 
     if (moveResult?.crossedPortal && playerPose.cellId !== previousCellId) {
-      diagnostics.recordCellEntered(previousCellId, playerPose.cellId, moveResult.crossedPortalId ?? "unknown-portal");
+      runtimeDiagnostics().recordCellEntered(previousCellId, playerPose.cellId, moveResult.crossedPortalId ?? "unknown-portal");
     }
 
     for (const runtime of marmotRuntimes) {
@@ -169,7 +166,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameBeforeRenderMs = performance.now();
     renderer.render(scene, camera);
     const frameAfterRenderMs = performance.now();
-    diagnostics.recordFrame(playerPose.cellId, {
+    runtimeDiagnostics().recordFrame(playerPose.cellId, {
       totalMs: frameAfterRenderMs - frameStartMs,
       moveMs: frameAfterMoveMs - frameBeforeMoveMs,
       renderMs: frameAfterRenderMs - frameBeforeRenderMs,
@@ -184,6 +181,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   return {
     scene,
     renderer,
+    updateDebugSettings(settings) {
+      debugLevel = settings.debugLevel;
+      portalPanelMode = settings.portalPanelMode;
+      rebuildCellMeshes();
+      for (const runtime of marmotRuntimes) {
+        runtime.syncParent(cellMeshes);
+      }
+      applyCameraPose();
+      renderer.render(scene, camera);
+    },
     dispose() {
       window.cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", onResize);
@@ -195,6 +202,30 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       renderer.domElement.remove();
     },
   };
+
+  function rebuildCellMeshes(): void {
+    const currentlyVisibleCellId = visibleCellId ?? playerPose.cellId;
+
+    for (const [cellId, cellMesh] of cellMeshes) {
+      scene.remove(cellMesh);
+      disposeObject3D(cellMesh);
+      cellMeshes.delete(cellId);
+    }
+
+    for (const cell of appState.world.cells) {
+      const cellMesh = buildCellMesh(cell, {
+        debugLevel,
+        portalPanelMode,
+        eyeHeightMeters: DEFAULT_PLAYER_EYE_HEIGHT_METERS,
+        assets: options.assets,
+      });
+      cellMesh.visible = cell.id === currentlyVisibleCellId;
+      cellMeshes.set(cell.id, cellMesh);
+      scene.add(cellMesh);
+    }
+
+    visibleCellId = currentlyVisibleCellId;
+  }
 }
 
 function disableFrustumCulling(root: THREE.Object3D): void {

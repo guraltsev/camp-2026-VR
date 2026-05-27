@@ -68,6 +68,16 @@ body {
   line-height: 1.4;
 }
 
+.debug-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.debug-field-label {
+  font-weight: 600;
+}
+
 .debug-option {
   display: grid;
   grid-template-columns: auto 1fr;

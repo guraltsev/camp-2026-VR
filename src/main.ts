@@ -2,7 +2,8 @@ import { compileCellComplex } from "./cell-complex/compileCellComplex";
 import { describeGeometrySpec } from "./cell-complex/describeGeometry";
 import { createInitialAppState } from "./appState";
 import { loadWorldSpec } from "./authoring/worldCatalog";
-import { hasDebugOption } from "./glue/debugOptions";
+import type { DebugSettings } from "./glue/debugSettings";
+import { hasActiveDebugOption } from "./glue/debugOptions";
 import { readLaunchOptions } from "./glue/readLaunchOptions";
 import { renderLaunchControls } from "./glue/renderLaunchControls";
 import { createThreeApp } from "./render/three/createThreeApp";
@@ -23,13 +24,34 @@ async function startApp(container: HTMLDivElement): Promise<void> {
   const geometrySpec = await loadWorldSpec(launchOptions.selectedWorldId);
   console.info(describeGeometrySpec(geometrySpec));
   const world = compileCellComplex(geometrySpec);
-  installRuntimeDiagnostics(world, hasDebugOption(launchOptions.debugOptions, "runtime-diagnostics"));
+  applyRuntimeDiagnostics(world, {
+    debugLevel: launchOptions.debugLevel,
+    portalPanelMode: launchOptions.portalPanelMode,
+    debugOptions: launchOptions.debugOptions,
+  });
   const assets = await preloadWorldAssets(world);
   const appState = createInitialAppState(world);
+  const threeApp = createThreeApp(container, appState, {
+    debugLevel: launchOptions.debugLevel,
+    portalPanelMode: launchOptions.portalPanelMode,
+    assets,
+  });
 
-  if (launchOptions.renderWorldPicker || launchOptions.debugEnabled) {
-    renderLaunchControls(document.body, launchOptions);
+  if (launchOptions.renderWorldPicker || launchOptions.renderDebugButton) {
+    renderLaunchControls(document.body, {
+      ...launchOptions,
+      applyDebugSettings(settings) {
+        applyRuntimeDiagnostics(world, settings);
+        threeApp.updateDebugSettings(settings);
+      },
+    });
   }
+}
 
-  createThreeApp(container, appState, { debugOptions: launchOptions.debugOptions, assets });
+function applyRuntimeDiagnostics(world: Parameters<typeof installRuntimeDiagnostics>[0], settings: DebugSettings): void {
+  installRuntimeDiagnostics(
+    world,
+    settings.debugLevel,
+    hasActiveDebugOption(settings.debugLevel, settings.debugOptions, "runtime-diagnostics"),
+  );
 }

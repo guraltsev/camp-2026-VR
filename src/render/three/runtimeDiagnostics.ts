@@ -1,4 +1,5 @@
 import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex";
+import { isVerboseDebugLevel, type DebugLevelId } from "../../glue/debugLevels";
 
 type AssetPhase = "preload" | "instance-load";
 
@@ -93,7 +94,7 @@ const noopDiagnostics: RuntimeDiagnosticsApi = {
 
 let activeDiagnostics: RuntimeDiagnosticsApi = noopDiagnostics;
 
-export function installRuntimeDiagnostics(world: CompiledCellComplex, enabled: boolean): void {
+export function installRuntimeDiagnostics(world: CompiledCellComplex, debugLevel: DebugLevelId, enabled: boolean): void {
   activeDiagnostics.dispose();
 
   if (!enabled || typeof performance === "undefined") {
@@ -108,6 +109,7 @@ export function installRuntimeDiagnostics(world: CompiledCellComplex, enabled: b
 
   const startedAtIso = new Date().toISOString();
   const startedAtMs = performance.now();
+  const verbose = isVerboseDebugLevel(debugLevel);
   const recentEvents: string[] = [];
   const assetRecords = new Map<string, AssetDebugRecord>();
   const transitions: PortalTransitionEvent[] = [];
@@ -144,10 +146,12 @@ export function installRuntimeDiagnostics(world: CompiledCellComplex, enabled: b
       recentEvents.shift();
     }
 
-    if (detail === undefined) {
-      console.info(line);
-    } else {
-      console.info(line, detail);
+    if (verbose) {
+      if (detail === undefined) {
+        console.info(line);
+      } else {
+        console.info(line, detail);
+      }
     }
 
     publishSnapshot();

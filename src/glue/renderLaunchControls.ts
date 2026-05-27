@@ -1,17 +1,28 @@
 import { worldCatalog } from "../authoring/worldCatalog";
 import {
+  type DebugSettings,
+  canApplyDebugSettingsAtRuntime,
+} from "./debugSettings";
+import {
   debugOptionDefinitions,
   hasDebugOption,
   parseDebugOptions,
   serializeDebugOptions,
   type DebugOptionId,
 } from "./debugOptions";
+import { debugLevelDefinitions, parseDebugLevel, type DebugLevelId } from "./debugLevels";
+import { parsePortalPanelMode, portalPanelModeDefinitions, type PortalPanelModeId } from "./portalPanelMode";
+import { parseUiOptions, serializeUiOptions, type UiOptionId } from "./uiOptions";
 
 export interface RenderLaunchControlsOptions {
   readonly selectedWorldId: string;
+  readonly uiOptions: readonly UiOptionId[];
   readonly renderWorldPicker: boolean;
-  readonly debugEnabled: boolean;
+  readonly renderDebugButton: boolean;
+  readonly debugLevel: DebugLevelId;
+  readonly portalPanelMode: PortalPanelModeId;
   readonly debugOptions: readonly DebugOptionId[];
+  readonly applyDebugSettings?: ((settings: DebugSettings) => void) | undefined;
 }
 
 export function renderLaunchControls(container: HTMLElement, options: RenderLaunchControlsOptions): void {
@@ -19,10 +30,10 @@ export function renderLaunchControls(container: HTMLElement, options: RenderLaun
   controls.className = "launch-controls";
 
   if (options.renderWorldPicker) {
-    controls.append(createWorldPicker(options.selectedWorldId));
+    controls.append(createWorldPicker(options.selectedWorldId, options));
   }
 
-  if (options.debugEnabled) {
+  if (options.renderDebugButton) {
     controls.append(createDebugButton(options));
   }
 
@@ -33,7 +44,7 @@ export function renderLaunchControls(container: HTMLElement, options: RenderLaun
   container.append(controls);
 }
 
-function createWorldPicker(selectedWorldId: string): HTMLSelectElement {
+function createWorldPicker(selectedWorldId: string, options: RenderLaunchControlsOptions): HTMLSelectElement {
   const picker = document.createElement("select");
   picker.ariaLabel = "World";
   picker.title = "World";
@@ -50,7 +61,8 @@ function createWorldPicker(selectedWorldId: string): HTMLSelectElement {
   picker.addEventListener("change", () => {
     const url = new URL(window.location.href);
     url.searchParams.set("world", picker.value);
-    url.searchParams.set("worldPicker", "1");
+    url.searchParams.set("ui", serializeUiOptions(readUiOptionsFromWindow(options)));
+    url.searchParams.delete("worldPicker");
     window.location.assign(url);
   });
 
@@ -92,8 +104,52 @@ function createDebugModal(options: RenderLaunchControlsOptions): {
 
   const copy = document.createElement("p");
   copy.className = "debug-modal-copy";
-  copy.textContent = "Select which debug systems should be active after reload.";
+  copy.textContent = "Choose a debug level and debug systems. Supported changes apply immediately; others reload the experience.";
   form.append(copy);
+
+  const levelLabel = document.createElement("label");
+  levelLabel.className = "debug-field";
+
+  const levelText = document.createElement("span");
+  levelText.className = "debug-field-label";
+  levelText.textContent = "Debug Level";
+
+  const levelSelect = document.createElement("select");
+  levelSelect.className = "launch-control";
+  levelSelect.ariaLabel = "Debug level";
+
+  for (const level of debugLevelDefinitions) {
+    const option = document.createElement("option");
+    option.value = level.id;
+    option.textContent = `${level.label} - ${level.description}`;
+    option.selected = level.id === options.debugLevel;
+    levelSelect.append(option);
+  }
+
+  levelLabel.append(levelText, levelSelect);
+  form.append(levelLabel);
+
+  const portalPanelLabel = document.createElement("label");
+  portalPanelLabel.className = "debug-field";
+
+  const portalPanelText = document.createElement("span");
+  portalPanelText.className = "debug-field-label";
+  portalPanelText.textContent = "Portal Panels";
+
+  const portalPanelSelect = document.createElement("select");
+  portalPanelSelect.className = "launch-control";
+  portalPanelSelect.ariaLabel = "Portal panels";
+
+  for (const mode of portalPanelModeDefinitions) {
+    const option = document.createElement("option");
+    option.value = mode.id;
+    option.textContent = `${mode.label} - ${mode.description}`;
+    option.selected = mode.id === options.portalPanelMode;
+    portalPanelSelect.append(option);
+  }
+
+  portalPanelLabel.append(portalPanelText, portalPanelSelect);
+  form.append(portalPanelLabel);
 
   const checkboxMap = new Map<DebugOptionId, HTMLInputElement>();
 
@@ -143,8 +199,19 @@ function createDebugModal(options: RenderLaunchControlsOptions): {
       .map((option) => option.id)
       .filter((optionId) => checkboxMap.get(optionId)?.checked);
     const serialized = serializeDebugOptions(selectedOptions);
+    const selectedDebugLevel = levelSelect.value as DebugLevelId;
+    const selectedPortalPanelMode = portalPanelSelect.value as PortalPanelModeId;
+    const nextSettings: DebugSettings = {
+      debugLevel: selectedDebugLevel,
+      portalPanelMode: selectedPortalPanelMode,
+      debugOptions: selectedOptions,
+    };
 
-    url.searchParams.set("debug", "1");
+    url.searchParams.set("ui", serializeUiOptions(readUiOptionsFromWindow(options)));
+    url.searchParams.set("debugLevel", selectedDebugLevel);
+    url.searchParams.set("portalPanels", selectedPortalPanelMode);
+    url.searchParams.delete("debug");
+    url.searchParams.delete("worldPicker");
 
     if (serialized) {
       url.searchParams.set("debugOptions", serialized);
@@ -152,11 +219,14 @@ function createDebugModal(options: RenderLaunchControlsOptions): {
       url.searchParams.delete("debugOptions");
     }
 
-    if (options.renderWorldPicker) {
-      url.searchParams.set("worldPicker", "1");
+    dialog.close();
+
+    if (canApplyDebugSettingsAtRuntime(nextSettings) && options.applyDebugSettings) {
+      window.history.replaceState({}, "", url);
+      options.applyDebugSettings(nextSettings);
+      return;
     }
 
-    dialog.close();
     window.location.assign(url);
   });
 
@@ -172,6 +242,8 @@ function createDebugModal(options: RenderLaunchControlsOptions): {
     dialog,
     syncFromUrl() {
       const params = new URLSearchParams(window.location.search);
+      levelSelect.value = parseDebugLevel(params.get("debugLevel")) ?? options.debugLevel;
+      portalPanelSelect.value = parsePortalPanelMode(params.get("portalPanels")) ?? options.portalPanelMode;
       const selected = new Set(parseDebugOptions(params.get("debugOptions")));
 
       for (const option of debugOptionDefinitions) {
@@ -183,4 +255,18 @@ function createDebugModal(options: RenderLaunchControlsOptions): {
       }
     },
   };
+}
+
+function readUiOptionsFromWindow(fallback: RenderLaunchControlsOptions): readonly UiOptionId[] {
+  const params = new URLSearchParams(window.location.search);
+  const uiOptions = parseUiOptions(params.get("ui"));
+
+  if (uiOptions.length > 0) {
+    return uiOptions;
+  }
+
+  return [
+    ...(fallback.renderWorldPicker ? (["WorldSelector"] as const) : []),
+    ...(fallback.renderDebugButton ? (["DebugButton"] as const) : []),
+  ];
 }

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { CompiledPrismCell } from "../../cell-complex/prismCells";
-import { hasDebugOption, type DebugOptionId } from "../../glue/debugOptions";
+import type { DebugLevelId } from "../../glue/debugLevels";
+import { shouldRenderPortalPlacard, shouldRenderPortalWall, type PortalPanelModeId } from "../../glue/portalPanelMode";
 import { buildDecorationMesh } from "./buildDecorationMesh";
 import { buildPortalMesh } from "./buildPortalMesh";
 import { createCeilingMaterial } from "./ceilingTexture";
@@ -8,7 +9,8 @@ import { isGeodesciMarmotObjectSpec } from "../../world-objects/geodesciMarmot";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 
 export interface BuildCellMeshOptions {
-  readonly debugOptions: readonly DebugOptionId[];
+  readonly debugLevel: DebugLevelId;
+  readonly portalPanelMode: PortalPanelModeId;
   readonly eyeHeightMeters: number;
   readonly assets: PreparedWorldAssets;
 }
@@ -29,10 +31,10 @@ export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOpt
 
   group.add(buildFloorMesh(cell));
   group.add(buildCeilingMesh(cell, options.assets));
-  group.add(buildSideWalls(cell, options.assets));
+  group.add(buildSideWalls(cell, options.assets, options.debugLevel, options.portalPanelMode));
   group.add(buildFloorOutline(cell));
 
-  if (hasDebugOption(options.debugOptions, "portal-panels")) {
+  if (options.debugLevel !== "off" && shouldRenderPortalPlacard(options.portalPanelMode)) {
     group.add(buildPortalDebugPanels(cell, options));
   }
 
@@ -99,9 +101,15 @@ function buildCeilingMesh(cell: CompiledPrismCell, assets: PreparedWorldAssets):
   return ceiling;
 }
 
-function buildSideWalls(cell: CompiledPrismCell, assets: PreparedWorldAssets): THREE.Object3D {
+function buildSideWalls(
+  cell: CompiledPrismCell,
+  assets: PreparedWorldAssets,
+  debugLevel: DebugLevelId,
+  portalPanelMode: PortalPanelModeId,
+): THREE.Object3D {
   const group = new THREE.Group();
   group.name = `walls:${cell.id}`;
+  const showPortalWall = debugLevel !== "off" && shouldRenderPortalWall(portalPanelMode);
 
   for (const side of cell.sides) {
     const start = side.start;
@@ -116,6 +124,7 @@ function buildSideWalls(cell: CompiledPrismCell, assets: PreparedWorldAssets): T
           end,
           heightMeters: cell.heightMeters,
           assets,
+          showWall: showPortalWall,
         }),
       );
       continue;
@@ -188,18 +197,20 @@ function buildPortalDebugPanels(cell: CompiledPrismCell, options: BuildCellMeshO
     panel.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), inward);
     panel.name = `portal-debug-panel:${cell.id}:${portal.id}`;
 
-    const label = buildTextPlane(
-      `${portal.targetCellId}\nside ${formatSideLabel(portal.targetPortalId)}`,
-      panelWidth * 0.9,
-      panelHeight * 0.72,
-    );
-    label.position.copy(position);
-    label.position.addScaledVector(inward, 0.02);
-    label.quaternion.copy(panel.quaternion);
-    label.name = `portal-debug-label:${cell.id}:${portal.id}`;
-
     group.add(panel);
-    group.add(label);
+
+    if (shouldRenderPortalPlacard(options.portalPanelMode)) {
+      const label = buildTextPlane(
+        `${portal.targetCellId}\nside ${formatSideLabel(portal.targetPortalId)}`,
+        panelWidth * 0.9,
+        panelHeight * 0.72,
+      );
+      label.position.copy(position);
+      label.position.addScaledVector(inward, 0.02);
+      label.quaternion.copy(panel.quaternion);
+      label.name = `portal-debug-label:${cell.id}:${portal.id}`;
+      group.add(label);
+    }
   }
 
   return group;

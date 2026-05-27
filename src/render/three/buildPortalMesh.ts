@@ -9,6 +9,7 @@ export interface PortalWallMeshSpec {
   readonly end: { readonly x: number; readonly z: number };
   readonly heightMeters: number;
   readonly assets: PreparedWorldAssets;
+  readonly showWall: boolean;
 }
 
 export function buildPortalMesh(spec: PortalWallMeshSpec): THREE.Object3D {
@@ -27,9 +28,11 @@ export function buildPortalMesh(spec: PortalWallMeshSpec): THREE.Object3D {
     textureUrl: material.userData.textureUrl,
   };
 
-  const mesh = buildWallMesh(spec, material);
-  mesh.name = `portal-wall:${spec.portalId}`;
-  group.add(mesh);
+  if (spec.showWall) {
+    const mesh = buildWallMesh(spec, material);
+    mesh.name = `portal-wall:${spec.portalId}`;
+    group.add(mesh);
+  }
 
   return group;
 }

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { twoPrismLoop } from "../../src/authoring/exampleWorlds";
 import { buildCellMesh } from "../../src/render/three/buildCellMesh";
@@ -8,6 +8,10 @@ import { PORTAL_WALL_TEXTURE_URL } from "../../src/render/three/portalWallTextur
 import type { PreparedWorldAssets } from "../../src/render/three/preloadWorldAssets";
 
 describe("buildCellMesh", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("builds floor, ceiling, walls, and textured portal wall metadata", () => {
     const compiled = compileCellComplex(twoPrismLoop);
     const cell = compiled.cellsById.get("room-a");
@@ -25,7 +29,8 @@ describe("buildCellMesh", () => {
       }),
     };
     const mesh = buildCellMesh(roomA, {
-      debugOptions: [],
+      debugLevel: "basic",
+      portalPanelMode: "panel",
       eyeHeightMeters: 1.6,
       assets: preparedAssets,
     });
@@ -62,5 +67,75 @@ describe("buildCellMesh", () => {
     expect((portalMesh?.material as THREE.MeshStandardMaterial | undefined)?.userData.textureUrl).toBe(
       PORTAL_WALL_TEXTURE_URL,
     );
+  });
+
+  it("renders the textured portal wall for panel modes and the placard only for labeled mode", () => {
+    const compiled = compileCellComplex(twoPrismLoop);
+    const roomA = compiled.cellsById.get("room-a")!;
+    const preparedAssets: PreparedWorldAssets = {
+      getTexture: () => new THREE.Texture(),
+      instantiateGltf: () => ({
+        scene: new THREE.Group(),
+        animations: [],
+      }),
+    };
+
+    const noPanelMesh = buildCellMesh(roomA, {
+      debugLevel: "basic",
+      portalPanelMode: "none",
+      eyeHeightMeters: 1.6,
+      assets: preparedAssets,
+    });
+    const panelOnlyMesh = buildCellMesh(roomA, {
+      debugLevel: "basic",
+      portalPanelMode: "panel",
+      eyeHeightMeters: 1.6,
+      assets: preparedAssets,
+    });
+
+    vi.stubGlobal("document", {
+      createElement(tagName: string) {
+        if (tagName !== "canvas") {
+          throw new Error(`Unexpected element request: ${tagName}`);
+        }
+
+        return {
+          width: 0,
+          height: 0,
+          getContext(kind: string) {
+            if (kind !== "2d") {
+              return null;
+            }
+
+            return {
+              clearRect() {},
+              fillText() {},
+              fillStyle: "#ffffff",
+              font: "bold 96px system-ui, sans-serif",
+              textAlign: "center",
+              textBaseline: "middle",
+            };
+          },
+        };
+      },
+    });
+
+    const labeledMesh = buildCellMesh(roomA, {
+      debugLevel: "basic",
+      portalPanelMode: "panel-with-text",
+      eyeHeightMeters: 1.6,
+      assets: preparedAssets,
+    });
+
+    expect(noPanelMesh.getObjectByName("portal-wall:side-1")).toBeUndefined();
+    expect(noPanelMesh.getObjectByName("portal-debug:room-a")).toBeUndefined();
+
+    expect(panelOnlyMesh.getObjectByName("portal-wall:side-1")).toBeDefined();
+    expect(panelOnlyMesh.getObjectByName("portal-debug:room-a")).toBeUndefined();
+    expect(panelOnlyMesh.getObjectByName("portal-debug-label:room-a:side-1")).toBeUndefined();
+
+    expect(labeledMesh.getObjectByName("portal-wall:side-1")).toBeDefined();
+    expect(labeledMesh.getObjectByName("portal-debug-panel:room-a:side-1")).toBeDefined();
+    expect(labeledMesh.getObjectByName("portal-debug-label:room-a:side-1")).toBeDefined();
   });
 });
