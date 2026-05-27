@@ -4,6 +4,21 @@ export const debugOptionDefinitions = [
     label: "Runtime Diagnostics",
     description: "Log asset loads, portal crossings, and slow frames to the dev console.",
   },
+  {
+    id: "portal-path-debug",
+    label: "Portal Path Debug",
+    description: "Expose portal path table summaries and dev-console inspection helpers.",
+  },
+  {
+    id: "portal-static-cull-debug",
+    label: "Portal Static Cull Debug",
+    description: "Include static portal culling summaries and rejected path details.",
+  },
+  {
+    id: "portal-path-overlays",
+    label: "Portal Path Overlays",
+    description: "Allow temporary visual overlays for inspected portal paths.",
+  },
 ] as const;
 
 export type DebugOptionId = (typeof debugOptionDefinitions)[number]["id"];

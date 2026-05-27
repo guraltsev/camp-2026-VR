@@ -34,6 +34,7 @@ async function startApp(container: HTMLDivElement): Promise<void> {
   const threeApp = createThreeApp(container, appState, {
     debugLevel: launchOptions.debugLevel,
     portalPanelMode: launchOptions.portalPanelMode,
+    debugOptions: launchOptions.debugOptions,
     assets,
   });
 

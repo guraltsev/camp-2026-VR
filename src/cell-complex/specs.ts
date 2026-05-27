@@ -21,6 +21,7 @@ export interface AuthoredPortalSpec {
 
 export interface CompiledPortal extends AuthoredPortalSpec {
   readonly transformToTarget: RigidTransform3;
+  readonly reciprocalPortalId: string;
 }
 
 export interface PrismCellVisualSpec {

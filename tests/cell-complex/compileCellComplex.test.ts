@@ -45,6 +45,7 @@ describe("compileCellComplex", () => {
     expect(roomA?.isConvex).toBe(true);
     expect(eastPortal?.targetCellId).toBe("room-b");
     expect(roomA?.portalBySideIndex.get(1)?.id).toBe("side-1");
+    expect(eastPortal?.reciprocalPortalId).toBe("side-3");
     expect(roomA?.sides).toHaveLength(4);
     expect(eastPortal?.transformToTarget.rotation).toEqual(identityMat3);
     expect(eastPortal?.transformToTarget.translation).toEqual({ x: -15, y: 0, z: 0 });

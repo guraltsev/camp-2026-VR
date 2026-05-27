@@ -1,8 +1,17 @@
 import * as THREE from "three";
 import type { AppState } from "../../appState";
+import { buildPortalPathTables, type PortalPathTablesByRootCell } from "../../cell-complex/portalPaths";
+import { checkPortalPathString, createPortalPathDebugState } from "../../cell-complex/portalPathDebug";
+import {
+  staticallyCullPortalPathTables,
+  type StaticPortalPathCullResult,
+} from "../../cell-complex/staticPortalPathCull";
 import type { DebugSettings } from "../../glue/debugSettings";
+import { hasActiveDebugOption, type DebugOptionId } from "../../glue/debugOptions";
 import type { DebugLevelId } from "../../glue/debugLevels";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
+import { transformPoint3 } from "../../math/rigidTransform3";
+import { vec3 } from "../../math/vec3";
 import { movePlayer } from "../../movement/movePlayer";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
 import { createDefaultPlayerPose } from "../../movement/playerPose";
@@ -27,6 +36,7 @@ export interface ThreeApp {
 export interface ThreeAppOptions {
   readonly debugLevel: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
+  readonly debugOptions: readonly DebugOptionId[];
   readonly assets: PreparedWorldAssets;
 }
 
@@ -48,6 +58,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let playerPose = appState.playerPose;
   let debugLevel = options.debugLevel;
   let portalPanelMode = options.portalPanelMode;
+  let debugOptions = options.debugOptions;
+  let portalDebugRuntime = createPortalDebugRuntime();
 
   const light = new THREE.HemisphereLight(0xffffff, 0x304050, 2);
   light.castShadow = false;
@@ -184,7 +196,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     updateDebugSettings(settings) {
       debugLevel = settings.debugLevel;
       portalPanelMode = settings.portalPanelMode;
+      debugOptions = settings.debugOptions;
       rebuildCellMeshes();
+      portalDebugRuntime.dispose();
+      portalDebugRuntime = createPortalDebugRuntime();
       for (const runtime of marmotRuntimes) {
         runtime.syncParent(cellMeshes);
       }
@@ -198,6 +213,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       for (const cellMesh of cellMeshes.values()) {
         disposeObject3D(cellMesh);
       }
+      portalDebugRuntime.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     },
@@ -226,6 +242,197 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     visibleCellId = currentlyVisibleCellId;
   }
+
+  function createPortalDebugRuntime(): { dispose(): void } {
+    const portalPathDebugActive = hasActiveDebugOption(debugLevel, debugOptions, "portal-path-debug");
+
+    if (!portalPathDebugActive) {
+      uninstallPortalDebugHelpers();
+      return { dispose() {} };
+    }
+
+    const overlayActive = hasActiveDebugOption(debugLevel, debugOptions, "portal-path-overlays");
+    const staticCullDebugActive = hasActiveDebugOption(debugLevel, debugOptions, "portal-static-cull-debug");
+    const candidateTables = buildPortalPathTables(appState.world, {
+      maxDepth: 10,
+      skipImmediateReverse: true,
+    });
+    const staticCull = staticallyCullPortalPathTables(appState.world, candidateTables, {
+      toleranceMeters: 1e-6,
+      keepRejectedPathDetails: staticCullDebugActive,
+    });
+    const overlays: THREE.Object3D[] = [];
+    const checkPath = (pathText: string) =>
+      checkPortalPathString(pathText, {
+        world: appState.world,
+        rootCellId: playerPose.cellId,
+        candidateTables,
+        keptTables: staticCull.tables,
+        cullSummariesByRootCellId: staticCull.summariesByRootCellId,
+      });
+
+    installPortalDebugHelpers({
+      CheckCellPath: checkPath,
+      ShowCellPath(pathText: string) {
+        const check = checkPath(pathText);
+
+        if (!overlayActive) {
+          return {
+            ok: false,
+            reason: "portal-path-overlays is not active",
+            check,
+            pathId: check.matchedPathId,
+            objectCount: 0,
+          };
+        }
+
+        if (!check.valid || !check.survivedStaticCull || check.matchedPathId === undefined) {
+          return {
+            ok: false,
+            reason: check.rejectionReason ?? check.errors[0] ?? "path is not available in the kept table",
+            check,
+            pathId: check.matchedPathId,
+            objectCount: 0,
+          };
+        }
+
+        hideCellPathOverlays(overlays, scene);
+        const table = staticCull.tables.tablesByRootCellId.get(playerPose.cellId);
+        const path = table?.pathsById.get(check.matchedPathId);
+        const destinationCell = check.destinationCellId ? appState.world.cellsById.get(check.destinationCellId) : undefined;
+
+        if (!path || !destinationCell) {
+          return {
+            ok: false,
+            reason: "matched path or destination cell was not found",
+            check,
+            pathId: check.matchedPathId,
+            objectCount: 0,
+          };
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        const vertices = destinationCell.baseVertices.map((vertex) =>
+          transformPoint3(path.rootFromDestination, vec3(vertex.x, 0.03, vertex.z)),
+        );
+        geometry.setFromPoints(vertices.map((vertex) => new THREE.Vector3(vertex.x, vertex.y, vertex.z)));
+        geometry.setIndex(triangleFanIndices(vertices.length));
+        geometry.computeVertexNormals();
+
+        const material = new THREE.MeshBasicMaterial({
+          color: 0xff2222,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.72,
+          depthWrite: false,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = `debug-cell-path-overlay:${path.id}`;
+        scene.add(mesh);
+        overlays.push(mesh);
+
+        return {
+          ok: true,
+          check,
+          pathId: path.id,
+          objectCount: 1,
+        };
+      },
+      HideCellPaths() {
+        hideCellPathOverlays(overlays, scene);
+      },
+      get state() {
+        return createPortalPathDebugState(playerPose.cellId, candidateTables, staticCull);
+      },
+      candidateTables,
+      staticCull,
+    });
+    logPortalDebugInstall(candidateTables, staticCull, staticCullDebugActive, overlayActive);
+
+    return {
+      dispose() {
+        hideCellPathOverlays(overlays, scene);
+        uninstallPortalDebugHelpers();
+      },
+    };
+  }
+}
+
+function logPortalDebugInstall(
+  candidateTables: PortalPathTablesByRootCell,
+  staticCull: StaticPortalPathCullResult,
+  staticCullDebugActive: boolean,
+  overlayActive: boolean,
+): void {
+  console.info(
+    [
+      "Portal path debug is active.",
+      "Use window.noneuclidPortalDebug.CheckCellPath(\"0 2 3\") to inspect a path.",
+      overlayActive
+        ? "Use window.noneuclidPortalDebug.ShowCellPath(\"0 2 3\") to draw a red destination-cell overlay."
+        : "Enable portal-path-overlays to allow ShowCellPath overlays.",
+      staticCullDebugActive
+        ? "Static-cull rejected path details are included."
+        : "Enable portal-static-cull-debug to include rejected path details.",
+    ].join(" "),
+  );
+
+  console.table(
+    [...candidateTables.tablesByRootCellId.entries()].map(([rootCellId, table]) => {
+      const summary = staticCull.summariesByRootCellId.get(rootCellId);
+
+      return {
+        rootCellId,
+        maxDepth: table.maxDepth,
+        candidatePaths: summary?.inputPathCount ?? table.paths.length,
+        keptPaths: summary?.keptPathCount ?? table.paths.length,
+        rejectedPaths: summary?.rejectedPathCount ?? 0,
+        maxAvailableDepth: Math.max(0, ...table.paths.map((path) => path.depth)),
+        budgetRejected: summary?.rejectedByReason.get("static-path-budget") ?? 0,
+      };
+    }),
+  );
+}
+
+interface PortalDebugHelpers {
+  CheckCellPath(pathText: string): ReturnType<typeof checkPortalPathString>;
+  ShowCellPath(pathText: string): {
+    readonly ok: boolean;
+    readonly reason?: string;
+    readonly check: ReturnType<typeof checkPortalPathString>;
+    readonly pathId?: number;
+    readonly objectCount: number;
+  };
+  HideCellPaths(): void;
+  readonly state: ReturnType<typeof createPortalPathDebugState>;
+  readonly candidateTables: PortalPathTablesByRootCell;
+  readonly staticCull: StaticPortalPathCullResult;
+}
+
+function installPortalDebugHelpers(helpers: PortalDebugHelpers): void {
+  (window as typeof window & { noneuclidPortalDebug?: PortalDebugHelpers }).noneuclidPortalDebug = helpers;
+}
+
+function uninstallPortalDebugHelpers(): void {
+  delete (window as typeof window & { noneuclidPortalDebug?: PortalDebugHelpers }).noneuclidPortalDebug;
+}
+
+function hideCellPathOverlays(overlays: THREE.Object3D[], scene: THREE.Scene): void {
+  while (overlays.length > 0) {
+    const overlay = overlays.pop()!;
+    scene.remove(overlay);
+    disposeObject3D(overlay);
+  }
+}
+
+function triangleFanIndices(vertexCount: number): number[] {
+  const indices: number[] = [];
+
+  for (let index = 1; index < vertexCount - 1; index += 1) {
+    indices.push(0, index, index + 1);
+  }
+
+  return indices;
 }
 
 function disableFrustumCulling(root: THREE.Object3D): void {

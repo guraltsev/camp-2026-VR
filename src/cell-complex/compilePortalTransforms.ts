@@ -39,6 +39,7 @@ function compilePortal(
 
   return {
     ...portal,
+    reciprocalPortalId: targetPortal.id,
     transformToTarget: derivePortalTransform(
       sourceGeometry.sides[portal.sideIndex],
       targetGeometry.sides[targetPortal.sideIndex],
