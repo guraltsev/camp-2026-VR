@@ -1,4 +1,4 @@
-# 08 - Testing strategy
+# Testing Strategy
 
 ## Main rule
 
@@ -23,10 +23,10 @@ tests/e2e/
 
 Test stable primitives:
 
-- vector addition/subtraction/dot/cross behavior,
+- vector addition, subtraction, dot, and cross behavior,
 - rigid transform composition and inverse behavior,
 - point-on-plane classification with tolerance,
-- segment/plane intersection behavior,
+- segment-plane intersection behavior,
 - polygon interior tests.
 
 Do not test how a function loops internally.
@@ -41,13 +41,13 @@ Test compiler behavior:
 - incompatible portal faces are rejected,
 - prism with non-positive height is rejected,
 - invalid base polygon is rejected,
-- floor and ceiling are non-portal in first implementation,
+- floor and ceiling are non-portal in the first implementation,
 - forbidden zones are created exactly where portal faces meet.
 
 Test public compiled queries:
 
 - asking for an existing cell returns it,
-- asking for a portal at a wall returns undefined,
+- asking for a portal at a wall returns `undefined`,
 - asking for a portal face returns a compiled portal,
 - portal transforms round-trip with their reverse when the portal is two-way.
 
@@ -57,7 +57,7 @@ Test behavior:
 
 - movement inside an empty prism succeeds,
 - movement into a wall stops before the wall,
-- movement into the ceiling/floor is blocked,
+- movement into the ceiling or floor is blocked,
 - movement through a portal transforms position and orientation,
 - movement near a portal boundary does not accidentally cross,
 - movement into a forbidden zone is rejected or shortened,

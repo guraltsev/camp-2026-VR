@@ -1,10 +1,10 @@
-# 06 - Authoring model
+# 007 - Authoring Model
 
 ## Current authoring format
 
 Use TypeScript world specs first.
 
-Do not start with JSON schema, visual editors, QR scanning, or a custom DSL. Those are authoring inputs for later. The first goal is to stabilize the runtime contract.
+Do not start with JSON schema, visual editors, QR scanning, or a custom DSL. The first goal is to stabilize the runtime contract. Those other formats are later authoring inputs, not the initial source of truth.
 
 World specs should be ordinary TypeScript values:
 
@@ -43,7 +43,7 @@ export const twoPrismLoop: CellComplexSpec = {
 };
 ```
 
-This example is illustrative, not final API. The exact spec shape should be stabilized during stage 2.
+This example is illustrative, not a final API. The exact spec shape should stabilize during the compiler work.
 
 ## Authoring priorities
 
@@ -62,10 +62,7 @@ Avoid hidden defaults for mathematically meaningful choices. Defaults are accept
 
 ## Portal authoring
 
-In the first implementation, portal authoring should avoid arbitrary matrices.
-For a prism base with `n` vertices, side `i` means the side from vertex `i` to
-vertex `(i + 1) mod n`. Authoring should use side indexes `0` through `n - 1`,
-not unordered vertex pairs such as `(i, j)`.
+In the first implementation, portal authoring should avoid arbitrary matrices. For a prism base with `n` vertices, side `i` means the side from vertex `i` to vertex `(i + 1) mod n`. Authoring should use side indexes `0` through `n - 1`, not unordered vertex pairs such as `(i, j)`.
 
 Prefer restricted descriptions:
 

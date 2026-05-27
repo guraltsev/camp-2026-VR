@@ -1,4 +1,4 @@
-# 23 - Acceptance checklists
+# Acceptance Checklists
 
 ## Global acceptance criteria
 
@@ -47,7 +47,7 @@ The project is on track when:
 ## Stage 03 checklist
 
 - Player moves inside a prism.
-- Player collides with walls/floor/ceiling.
+- Player collides with walls, floor, and ceiling.
 - Player crosses centered portals.
 - Player orientation transforms across portals.
 - Player cannot enter forbidden zones.
@@ -63,7 +63,7 @@ The project is on track when:
 
 - Portal views show connected cells.
 - One-hop views work before recursion.
-- Recursion has explicit depth/count limits.
+- Recursion has explicit depth and count limits.
 - VR limitations are documented rather than hidden.
 
 ## Stage 06 checklist

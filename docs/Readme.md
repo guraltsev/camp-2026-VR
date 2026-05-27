@@ -27,7 +27,9 @@ first.
 
 ## Handoff Packet
 
-The staged handoff packet begins at
-[llm-handoff/00_index.md](llm-handoff/00_index.md). Parts `01` through `04`
-were completed as bootstrap work and archived in `docs/issues/_closed` with
-closing notes and evidence.
+The staged handoff packet now begins at
+[implementation-reading-order.md](implementation-reading-order.md). The
+non-stage design and workflow notes were promoted into stable docs, while the
+remaining stage-specific handoff files stay in `docs/llm-handoff`. Parts `01`
+through `04` were completed as bootstrap work and archived in
+`docs/issues/_closed` with closing notes and evidence.

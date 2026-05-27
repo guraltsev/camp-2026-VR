@@ -1,6 +1,6 @@
-# 07 - Runtime contracts
+# 008 - Runtime Contracts
 
-This file names the contracts that should become stable early. Exact TypeScript syntax may change during implementation, but the concepts should remain visible.
+This document names the contracts that should become stable early. Exact TypeScript syntax may change during implementation, but the concepts should remain visible.
 
 ## CellComplexSpec
 

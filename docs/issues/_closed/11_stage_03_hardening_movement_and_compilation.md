@@ -21,7 +21,7 @@ This file is written as implementation guidance for a future LLM-assisted sessio
 
 The current repository already has:
 
-- a staged roadmap in [docs/llm-handoff/00_index.md](../llm-handoff/00_index.md),
+- a staged roadmap in [docs/implementation-reading-order.md](../implementation-reading-order.md),
 - a prism-cell compiler entrypoint in [src/cell-complex/compileCellComplex.ts](../../src/cell-complex/compileCellComplex.ts),
 - starter worlds in [src/authoring/worldCatalog.ts](../../src/authoring/worldCatalog.ts),
 - movement and portal modules in [src/movement](../../src/movement),
@@ -154,11 +154,11 @@ Do not hard-code crossing behavior around `PlayerPose` alone.
 - [docs/design/002-cell-complex-first.md](../design/002-cell-complex-first.md)
 - [docs/design/003-no-curvature-engine.md](../design/003-no-curvature-engine.md)
 - [docs/design/004-domain-model.md](../design/004-domain-model.md)
-- [docs/llm-handoff/07_runtime_contracts.md](../llm-handoff/07_runtime_contracts.md)
-- [docs/llm-handoff/08_testing_strategy.md](../llm-handoff/08_testing_strategy.md)
+- [docs/design/008-runtime-contracts.md](../design/008-runtime-contracts.md)
+- [docs/testing-strategy.md](../testing-strategy.md)
 - [docs/llm-handoff/12_stage_02_prism_cell_compiler.md](../llm-handoff/12_stage_02_prism_cell_compiler.md)
 - [docs/llm-handoff/13_stage_03_movement_collision_portals.md](../llm-handoff/13_stage_03_movement_collision_portals.md)
-- [docs/llm-handoff/23_acceptance_checklists.md](../llm-handoff/23_acceptance_checklists.md)
+- [docs/acceptance-checklists.md](../acceptance-checklists.md)
 
 ## Relevant current code
 
@@ -320,7 +320,7 @@ Add tests that prove:
 
 ## Acceptance criteria
 
-This issue is complete when the repository satisfies the stage-03 items in [docs/llm-handoff/23_acceptance_checklists.md](../llm-handoff/23_acceptance_checklists.md):
+This issue is complete when the repository satisfies the stage-03 items in [docs/acceptance-checklists.md](../acceptance-checklists.md):
 
 - player moves inside a prism,
 - player collides with walls, floor, and ceiling,
