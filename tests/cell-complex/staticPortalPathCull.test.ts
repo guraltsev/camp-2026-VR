@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
-import { buildPortalPathTables } from "../../src/cell-complex/portalPaths";
+import { buildPortalPathTables, createPortalPathTable, type PortalPathTablesByRootCell } from "../../src/cell-complex/portalPaths";
 import { staticallyCullPortalPathTables } from "../../src/cell-complex/staticPortalPathCull";
 import { cube, twoPrismLoop } from "../../src/authoring/exampleWorlds";
+import { identityMat3, invertRigidTransform3, type RigidTransform3 } from "../../src/math/rigidTransform3";
 
 describe("staticallyCullPortalPathTables", () => {
   it("keeps depth-0 paths and preserves kept path ids", () => {
@@ -23,6 +24,53 @@ describe("staticallyCullPortalPathTables", () => {
 
     expect(summary.keptPathCount).toBe(summary.inputPathCount);
     expect(summary.rejectedPathCount).toBe(0);
+  });
+
+  it("rejects impossible bounds against ancestor portal apertures and counts the reason", () => {
+    const world = compileCellComplex(twoPrismLoop);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room-a")!.paths[0];
+    const rootFromDestination = translatedTransform(-20, 0, 0);
+    const impossibleTable = createPortalPathTable("room-a", 1, [
+      rootPath,
+      {
+        id: 4,
+        rootCellId: "room-a",
+        destinationCellId: "room-b",
+        depth: 1,
+        parentPathId: 0,
+        steps: [
+          {
+            sourceCellId: "room-a",
+            sourcePortalId: "side-1",
+            sourcePortalSideIndex: 1,
+            targetCellId: "room-b",
+            targetPortalId: "side-3",
+          },
+        ],
+        destinationFromRoot: invertRigidTransform3(rootFromDestination),
+        rootFromDestination,
+      },
+    ]);
+    const candidates: PortalPathTablesByRootCell = {
+      maxDepth: 1,
+      tablesByRootCellId: new Map([["room-a", impossibleTable]]),
+    };
+    const result = staticallyCullPortalPathTables(world, candidates, {
+      toleranceMeters: 1e-6,
+      keepRejectedPathDetails: true,
+    });
+    const summary = result.summariesByRootCellId.get("room-a")!;
+
+    expect(result.tables.tablesByRootCellId.get("room-a")!.paths.map((path) => path.id)).toEqual([0]);
+    expect(summary.rejectedPathCount).toBe(1);
+    expect(summary.rejectedByReason.get("outside-ancestor-portal-plane")).toBe(1);
+    expect(summary.rejectedPaths).toEqual([
+      expect.objectContaining({
+        pathId: 4,
+        reason: "outside-ancestor-portal-plane",
+        details: expect.stringContaining("room-a:side-1"),
+      }),
+    ]);
   });
 
   it("returns well-formed summaries and tables when no paths are rejected", () => {
@@ -64,3 +112,10 @@ describe("staticallyCullPortalPathTables", () => {
     expect(summary.rejectedPaths[0]?.details).toContain("static path budget");
   });
 });
+
+function translatedTransform(x: number, y: number, z: number): RigidTransform3 {
+  return {
+    rotation: identityMat3,
+    translation: { x, y, z },
+  };
+}
