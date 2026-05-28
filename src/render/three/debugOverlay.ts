@@ -1,8 +1,9 @@
-import type { VisiblePortalPathRenderState } from "./renderState";
+import type { PortalInstanceRenderState, VisiblePortalPathRenderState } from "./renderState";
 
 export interface DebugOverlayState {
   readonly visible: boolean;
   readonly visiblePortalPaths?: VisiblePortalPathRenderState;
+  readonly portalInstances?: PortalInstanceRenderState;
   readonly inspectedPathLine?: string;
 }
 
@@ -19,15 +20,18 @@ export function createDebugOverlay(container: HTMLElement): DebugOverlay {
 
   return {
     update(state) {
-      root.hidden = !state.visible || !state.visiblePortalPaths;
+      const hasContent = Boolean(state.visiblePortalPaths || state.portalInstances || state.inspectedPathLine);
+      root.hidden = !state.visible || !hasContent;
 
-      if (!state.visiblePortalPaths) {
+      if (!hasContent) {
         root.textContent = "";
         return;
       }
 
       root.textContent = [
-        formatVisiblePortalPathLine(state.visiblePortalPaths),
+        state.visiblePortalPaths ? formatVisiblePortalPathLine(state.visiblePortalPaths) : undefined,
+        state.portalInstances ? formatPortalInstanceLine(state.portalInstances) : undefined,
+        state.portalInstances ? formatPortalArchetypeLine(state.portalInstances) : undefined,
         state.inspectedPathLine,
       ]
         .filter((line): line is string => Boolean(line))
@@ -43,4 +47,12 @@ export function formatVisiblePortalPathLine(state: VisiblePortalPathRenderState)
   const budget = state.budgetExhausted ? " / budget" : "";
 
   return `visible paths: ${state.visiblePathCount} / kept ${state.keptPathCount} / depth ${state.maxVisibleDepth}${budget}`;
+}
+
+export function formatPortalInstanceLine(state: PortalInstanceRenderState): string {
+  return `portal instances: ${state.renderedInstanceCount} / ${state.totalCapacity} slots`;
+}
+
+export function formatPortalArchetypeLine(state: PortalInstanceRenderState): string {
+  return `archetypes: ${state.archetypeCount} / overflow ${state.capacityOverflowCount}`;
 }

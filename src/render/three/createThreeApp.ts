@@ -21,10 +21,24 @@ import {
   isGeodesciMarmotObjectSpec,
   type GeodesciMarmotRuntime,
 } from "../../world-objects/geodesciMarmot";
-import { buildCellMesh } from "./buildCellMesh";
+import {
+  buildCellRenderArchetypes,
+  deriveCellRenderArchetypeCapacities,
+  disposeCellRenderArchetypes,
+  type CellRenderArchetype,
+} from "./cellRenderArchetypes";
 import { createDebugOverlay } from "./debugOverlay";
 import { createDesktopControls } from "./desktopControls";
+import { createPortalInstanceDebugRenderer, type PortalInstanceDebugRenderer } from "./portalInstanceDebug";
 import { prerenderCells } from "./prerenderCells";
+import {
+  createPortalInstanceDiagnostics,
+  createPortalInstanceRenderDebugState,
+  createRootVisiblePortalPath,
+  groupVisiblePortalPathsByDestinationCell,
+  updateCellRenderArchetypeInstances,
+  type PortalInstanceRenderDebugState,
+} from "./renderPortalInstances";
 import { runtimeDiagnostics } from "./runtimeDiagnostics";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import type { VisiblePortalPathRenderState } from "./renderState";
@@ -36,7 +50,7 @@ import {
   type VisiblePortalPathDebugSummary,
   type VisiblePortalPathLookupResult,
 } from "./visiblePortalPaths";
-import { worldPointToThree } from "./worldAxes";
+import { rigidTransformToThreeMatrix, worldPointToThree } from "./worldAxes";
 import {
   composeRigidTransform3,
   identityRigidTransform3,
@@ -77,8 +91,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let debugLevel = options.debugLevel;
   let portalPanelMode = options.portalPanelMode;
   let debugOptions = options.debugOptions;
+  let showCellPathRendersInstances = hasActiveDebugOption(
+    debugLevel,
+    debugOptions,
+    "portal-path-overlay-instances",
+  );
   const debugOverlay = createDebugOverlay(container);
-  let portalDebugRuntime = createPortalDebugRuntime();
 
   const light = new THREE.HemisphereLight(0xffffff, 0x304050, 2);
   light.castShadow = false;
@@ -90,13 +108,40 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   scene.add(keyLight);
 
   const cellMeshes = new Map<string, THREE.Object3D>();
+  const rootRenderPathMaxDepth = 10;
+  const maxVisiblePaths = 2_000;
+  const archetypeCapacitiesByCellId = deriveCellRenderArchetypeCapacities(
+    appState.world,
+    buildStaticallyCulledPortalPathTables(appState.world, {
+      maxDepth: rootRenderPathMaxDepth,
+      skipImmediateReverse: true,
+      toleranceMeters: 1e-6,
+      maxKeptPathsPerRoot: 50_000,
+    }),
+    maxVisiblePaths,
+  );
   const warmupViewsByCellId = new Map(
     appState.world.cells.map((cell) => [cell.id, createCellWarmupViews(cell)] as const),
   );
   const marmotRuntimes: GeodesciMarmotRuntime[] = [];
+  const portalInstanceDiagnostics = createPortalInstanceDiagnostics();
+  let portalInstanceRenderState: PortalInstanceRenderDebugState = {
+    enabled: true,
+    ShowCellPathRendersInstances: showCellPathRendersInstances,
+    archetypeCount: 0,
+    totalCapacity: 0,
+    renderedInstanceCount: 0,
+    renderedInstanceCountByCell: [],
+    capacityOverflowCount: 0,
+    capacityOverflowArchetypes: [],
+  };
+  let cellRenderArchetypes: readonly CellRenderArchetype[] = [];
+  let portalInstanceDebugRenderer: PortalInstanceDebugRenderer | undefined;
   let visibleCellId: string | undefined = playerPose.cellId;
 
   rebuildCellMeshes();
+  syncPortalInstanceRender();
+  let portalDebugRuntime = createPortalDebugRuntime();
 
   for (const cell of appState.world.cells) {
     for (const objectSpec of cell.objects) {
@@ -210,6 +255,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     updateVisibleCell();
     applyCameraPose();
+    syncPortalInstanceRender();
     portalDebugRuntime.updateVisiblePortalPaths();
     const frameBeforeRenderMs = performance.now();
     renderer.render(scene, camera);
@@ -233,7 +279,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       debugLevel = settings.debugLevel;
       portalPanelMode = settings.portalPanelMode;
       debugOptions = settings.debugOptions;
+      showCellPathRendersInstances = hasActiveDebugOption(
+        debugLevel,
+        debugOptions,
+        "portal-path-overlay-instances",
+      );
       rebuildCellMeshes();
+      syncPortalInstanceRender();
       portalDebugRuntime.dispose();
       portalDebugRuntime = createPortalDebugRuntime();
       for (const runtime of marmotRuntimes) {
@@ -249,6 +301,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       for (const cellMesh of cellMeshes.values()) {
         disposeObject3D(cellMesh);
       }
+      for (const archetype of cellRenderArchetypes) {
+        scene.remove(archetype.mesh);
+      }
+      disposeCellRenderArchetypes(cellRenderArchetypes);
+      portalInstanceDebugRenderer?.dispose();
       portalDebugRuntime.dispose();
       debugOverlay.dispose();
       renderer.dispose();
@@ -259,6 +316,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function rebuildCellMeshes(): void {
     const currentlyVisibleCellId = visibleCellId ?? playerPose.cellId;
 
+    portalInstanceDebugRenderer?.dispose();
+    portalInstanceDebugRenderer = undefined;
+    for (const archetype of cellRenderArchetypes) {
+      scene.remove(archetype.mesh);
+    }
+    disposeCellRenderArchetypes(cellRenderArchetypes);
+    cellRenderArchetypes = [];
+
     for (const [cellId, cellMesh] of cellMeshes) {
       scene.remove(cellMesh);
       disposeObject3D(cellMesh);
@@ -266,18 +331,41 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     for (const cell of appState.world.cells) {
-      const cellMesh = buildCellMesh(cell, {
-        debugLevel,
-        portalPanelMode,
-        eyeHeightMeters: DEFAULT_PLAYER_EYE_HEIGHT_METERS,
-        assets: options.assets,
-      });
+      const cellMesh = new THREE.Group();
+      cellMesh.name = `cell-root:${cell.id}`;
       cellMesh.visible = cell.id === currentlyVisibleCellId;
       cellMeshes.set(cell.id, cellMesh);
       scene.add(cellMesh);
     }
 
+    cellRenderArchetypes = buildCellRenderArchetypes(appState.world, {
+      debugLevel,
+      portalPanelMode,
+      eyeHeightMeters: DEFAULT_PLAYER_EYE_HEIGHT_METERS,
+      assets: options.assets,
+      capacitiesByCellId: archetypeCapacitiesByCellId,
+    });
+    for (const archetype of cellRenderArchetypes) {
+      scene.add(archetype.mesh);
+    }
+    portalInstanceDebugRenderer = createPortalInstanceDebugRenderer(scene, cellRenderArchetypes);
     visibleCellId = currentlyVisibleCellId;
+  }
+
+  function syncPortalInstanceRender(): void {
+    portalInstanceDiagnostics.reset();
+    const visiblePaths = [createRootVisiblePortalPath(playerPose.cellId)];
+    const visiblePathsByDestinationCell = groupVisiblePortalPathsByDestinationCell(visiblePaths);
+    updateCellRenderArchetypeInstances(cellRenderArchetypes, visiblePathsByDestinationCell, portalInstanceDiagnostics);
+    portalInstanceRenderState = createPortalInstanceRenderDebugState(
+      cellRenderArchetypes,
+      visiblePathsByDestinationCell,
+      portalInstanceDiagnostics,
+      {
+        enabled: true,
+        showCellPathRendersInstances,
+      },
+    );
   }
 
   function createPortalDebugRuntime(): { updateVisiblePortalPaths(): void; syncRootCell(): void; dispose(): void } {
@@ -299,12 +387,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     const staticCullDebugActive = hasActiveDebugOption(debugLevel, debugOptions, "portal-static-cull-debug");
-    const requestedMaxDepth = 10;
-    if (portalPathDebugActive) {
-      console.info(`Portal path debug is building contextually culled path tables to depth ${requestedMaxDepth}.`);
+    if (portalPathDebugActive || visiblePathDebugActive) {
+      console.info(`Portal path debug is building contextually culled path tables to depth ${rootRenderPathMaxDepth}.`);
     }
     const staticCull = buildStaticallyCulledPortalPathTables(appState.world, {
-      maxDepth: requestedMaxDepth,
+      maxDepth: rootRenderPathMaxDepth,
       skipImmediateReverse: true,
       toleranceMeters: 1e-6,
       maxKeptPathsPerRoot: 50_000,
@@ -366,6 +453,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         const check = checkPath(pathText);
 
         if (!check.valid || !check.survivedStaticCull || check.matchedPathId === undefined) {
+          hideCellPathOverlays(overlays, scene);
+          portalInstanceDebugRenderer?.clear();
           activeOverlayPathText = undefined;
           activeOverlayPathCheck = undefined;
           removeActivePathTraceOverlay();
@@ -382,6 +471,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         }
 
         if (!overlayActive) {
+          hideCellPathOverlays(overlays, scene);
+          portalInstanceDebugRenderer?.clear();
           activeOverlayPathText = pathText;
           activeOverlayPathCheck = check;
           removeActivePathTraceOverlay();
@@ -416,25 +507,36 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           };
         }
 
-        const geometry = new THREE.BufferGeometry();
-        const vertices = destinationCell.baseVertices.map((vertex) =>
-          transformPoint3(path.rootFromDestination, vec3(vertex.x, vertex.y, 0.03)),
-        );
-        geometry.setFromPoints(vertices.map((vertex) => worldPointToThree(vertex)));
-        geometry.setIndex(triangleFanIndices(vertices.length));
-        geometry.computeVertexNormals();
+        let objectCount = 0;
 
-        const material = new THREE.MeshBasicMaterial({
-          color: new THREE.Color(destinationCell.floorColor),
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.82,
-          depthWrite: false,
-        });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.name = `debug-cell-path-overlay:${path.id}`;
-        scene.add(mesh);
-        overlays.push(mesh);
+        if (showCellPathRendersInstances) {
+          objectCount = portalInstanceDebugRenderer?.renderCellInstances(
+            path.destinationCellId,
+            pathToThreeMatrix(path),
+          ).objectCount ?? 0;
+        } else {
+          const geometry = new THREE.BufferGeometry();
+          const vertices = destinationCell.baseVertices.map((vertex) =>
+            transformPoint3(path.rootFromDestination, vec3(vertex.x, vertex.y, 0.03)),
+          );
+          geometry.setFromPoints(vertices.map((vertex) => worldPointToThree(vertex)));
+          geometry.setIndex(triangleFanIndices(vertices.length));
+          geometry.computeVertexNormals();
+
+          const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(destinationCell.floorColor),
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.82,
+            depthWrite: false,
+          });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.name = `debug-cell-path-overlay:${path.id}`;
+          scene.add(mesh);
+          overlays.push(mesh);
+          objectCount = 1;
+        }
+
         activePathTraceOverlay = createPathTraceOverlay(appState.world, path);
         scene.add(activePathTraceOverlay);
         activeOverlayPathText = pathText;
@@ -447,11 +549,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           destinationCellId: path.destinationCellId,
           survivedStaticCull: true,
           ...liveVisibilityFields(path.id, latestVisibleResult),
-          objectCount: 1,
+          objectCount,
         };
       },
       HideCellPaths() {
         hideCellPathOverlays(overlays, scene);
+        portalInstanceDebugRenderer?.clear();
         removeActivePathTraceOverlay();
         activeOverlayPathText = undefined;
         activeOverlayPathCheck = undefined;
@@ -463,7 +566,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         return {
           ...createPortalPathDebugState(playerPose.cellId, candidateTables, staticCull),
           visiblePortalPaths: latestVisibleResult?.summary,
+          portalInstances: portalInstanceRenderState,
+          ShowCellPathRendersInstances: showCellPathRendersInstances,
         };
+      },
+      get ShowCellPathRendersInstances() {
+        return showCellPathRendersInstances;
+      },
+      set ShowCellPathRendersInstances(value: boolean) {
+        showCellPathRendersInstances = Boolean(value);
       },
       candidateTables,
       staticCull,
@@ -479,7 +590,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       updateVisiblePortalPaths() {
         if (!visiblePathDebugActive) {
           latestVisibleResult = undefined;
-          debugOverlay.update({ visible: false });
+          debugOverlay.update({
+            visible: portalPathDebugActive,
+            portalInstances: portalInstanceRenderState,
+            inspectedPathLine: formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult),
+          });
           return;
         }
 
@@ -487,7 +602,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
         if (!table) {
           latestVisibleResult = undefined;
-          debugOverlay.update({ visible: true });
+          debugOverlay.update({
+            visible: true,
+            portalInstances: portalInstanceRenderState,
+            inspectedPathLine: formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult),
+          });
           return;
         }
 
@@ -498,8 +617,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           camera,
           viewportPixels: rendererSizeToViewportPixels(renderer.getSize(new THREE.Vector2())),
           options: {
-            maxDepth: requestedMaxDepth,
-            maxVisiblePaths: 2_000,
+            maxDepth: rootRenderPathMaxDepth,
+            maxVisiblePaths,
             minPortalScreenAreaPixels: 4,
             includeRootCell: true,
             sortMode: "depth-then-area",
@@ -514,6 +633,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         debugOverlay.update({
           visible: true,
           visiblePortalPaths: visibleSummaryToRenderState(summary),
+          portalInstances: portalInstanceRenderState,
           inspectedPathLine: formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult),
         });
       },
@@ -527,12 +647,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
         if (!refreshResult?.ok) {
           hideCellPathOverlays(overlays, scene);
+          portalInstanceDebugRenderer?.clear();
+          removeActivePathTraceOverlay();
           activeOverlayPathText = undefined;
           activeOverlayPathCheck = undefined;
         }
       },
       dispose() {
         hideCellPathOverlays(overlays, scene);
+        portalInstanceDebugRenderer?.clear();
         removeActivePathTraceOverlay();
         activeOverlayPathText = undefined;
         activeOverlayPathCheck = undefined;
@@ -612,8 +735,11 @@ interface PortalDebugHelpers {
   };
   HideCellPaths(): void;
   DumpCameraPose(): CameraPoseDebugDump;
+  ShowCellPathRendersInstances: boolean;
   readonly state: ReturnType<typeof createPortalPathDebugState> & {
     readonly visiblePortalPaths?: VisiblePortalPathDebugSummary;
+    readonly portalInstances: PortalInstanceRenderDebugState;
+    readonly ShowCellPathRendersInstances: boolean;
   };
   readonly candidateTables: PortalPathTablesByRootCell;
   readonly staticCull: StaticPortalPathCullResult;
@@ -665,6 +791,10 @@ function liveVisibilityFields(
   readonly clipRectNdc?: VisiblePortalPath["clipRectNdc"];
 } {
   return describeVisiblePortalPath(pathId, latestVisibleResult);
+}
+
+function pathToThreeMatrix(path: PortalRenderPath): THREE.Matrix4 {
+  return rigidTransformToThreeMatrix(path.rootFromDestination);
 }
 
 function dumpCameraPose(

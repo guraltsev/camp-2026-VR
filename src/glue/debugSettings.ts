@@ -18,6 +18,7 @@ const defaultDebugSettingsSupport: DebugSettingsSupport = {
     "portal-path-debug",
     "portal-static-cull-debug",
     "portal-path-overlays",
+    "portal-path-overlay-instances",
   ],
 };
 

@@ -24,6 +24,11 @@ export const debugOptionDefinitions = [
     label: "Portal Path Overlays",
     description: "Allow temporary visual overlays for inspected portal paths.",
   },
+  {
+    id: "portal-path-overlay-instances",
+    label: "ShowCellPathRendersInstances",
+    description: "Render ShowCellPath overlays through the portal instance archetype path.",
+  },
 ] as const;
 
 export type DebugOptionId = (typeof debugOptionDefinitions)[number]["id"];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canApplyDebugSettingsAtRuntime } from "../src/glue/debugSettings";
-import { hasActiveDebugOption, parseDebugOptions } from "../src/glue/debugOptions";
+import { hasActiveDebugOption, parseDebugOptions, serializeDebugOptions } from "../src/glue/debugOptions";
 
 describe("canApplyDebugSettingsAtRuntime", () => {
   it("allows the current runtime-mutable debug settings", () => {
@@ -34,10 +34,30 @@ describe("canApplyDebugSettingsAtRuntime", () => {
   });
 
   it("parses portal path debug options and keeps them inactive at debug level off", () => {
-    const parsed = parseDebugOptions("portal-path-debug,portal-static-cull-debug,portal-path-overlays");
+    const parsed = parseDebugOptions(
+      "portal-path-debug,portal-static-cull-debug,portal-path-overlays,portal-path-overlay-instances",
+    );
 
-    expect(parsed).toEqual(["portal-path-debug", "portal-static-cull-debug", "portal-path-overlays"]);
+    expect(parsed).toEqual([
+      "portal-path-debug",
+      "portal-static-cull-debug",
+      "portal-path-overlays",
+      "portal-path-overlay-instances",
+    ]);
     expect(hasActiveDebugOption("off", parsed, "portal-path-debug")).toBe(false);
     expect(hasActiveDebugOption("basic", parsed, "portal-path-debug")).toBe(true);
+    expect(serializeDebugOptions(parsed)).toBe(
+      "portal-path-debug,portal-static-cull-debug,portal-path-overlays,portal-path-overlay-instances",
+    );
+  });
+
+  it("allows the new instance overlay debug option at runtime", () => {
+    expect(
+      canApplyDebugSettingsAtRuntime({
+        debugLevel: "basic",
+        portalPanelMode: "panel",
+        debugOptions: ["portal-path-overlay-instances"],
+      }),
+    ).toBe(true);
   });
 });

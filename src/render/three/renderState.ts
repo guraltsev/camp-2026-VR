@@ -1,6 +1,7 @@
 export interface RenderState {
   readonly frameCount: number;
   readonly visiblePortalPaths?: VisiblePortalPathRenderState;
+  readonly portalInstances?: PortalInstanceRenderState;
 }
 
 export interface VisiblePortalPathRenderState {
@@ -13,4 +14,18 @@ export interface VisiblePortalPathRenderState {
   readonly clippedByAreaCount: number;
   readonly clippedByBudgetCount: number;
   readonly budgetExhausted: boolean;
+}
+
+export interface PortalInstanceRenderState {
+  readonly enabled: boolean;
+  readonly ShowCellPathRendersInstances: boolean;
+  readonly archetypeCount: number;
+  readonly totalCapacity: number;
+  readonly renderedInstanceCount: number;
+  readonly renderedInstanceCountByCell: readonly {
+    readonly cellId: string;
+    readonly count: number;
+  }[];
+  readonly capacityOverflowCount: number;
+  readonly capacityOverflowArchetypes: readonly string[];
 }
