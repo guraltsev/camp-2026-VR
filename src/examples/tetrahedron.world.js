@@ -9,12 +9,12 @@ PolygonFace("face-b", "#4f9d69", triangle);
 PolygonFace("face-c", "#5f79d9", triangle);
 PolygonFace("face-d", "#d9b44f", triangle);
 
-Portal("face-a", 0, "face-b", 0);
-Portal("face-a", 1, "face-c", 0);
-Portal("face-a", 2, "face-d", 0);
-Portal("face-b", 1, "face-d", 1);
-Portal("face-b", 2, "face-c", 1);
-Portal("face-c", 2, "face-d", 2);
+Portal("face-a", 0, "face-d", 1);
+Portal("face-a", 1, "face-b", 1);
+Portal("face-a", 2, "face-c", 1);
+Portal("face-b", 0, "face-c", 2);
+Portal("face-b", 2, "face-d", 0);
+Portal("face-c", 0, "face-d", 2);
 
 face_a_house = house("face-a-centerpiece", {
   position: [0, 0, 0],

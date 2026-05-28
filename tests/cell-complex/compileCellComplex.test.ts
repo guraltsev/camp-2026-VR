@@ -42,6 +42,13 @@ describe("compileCellComplex", () => {
     expect(compiledCube.cells.every((cell) => cell.objects.length >= 1)).toBe(true);
   });
 
+  it("keeps the tetrahedron example glued as four distinct tetrahedral vertices", () => {
+    const vertexClasses = buildVertexClasses(tetrahedron);
+
+    expect(vertexClasses).toHaveLength(4);
+    expect(vertexClasses.map((vertexClass) => vertexClass.length).sort((a, b) => a - b)).toEqual([3, 3, 3, 3]);
+  });
+
   it("compiles portal lookups, side geometry, and forbidden zones for movement", () => {
     const compiled = compileCellComplex(twoPrismLoop);
     const roomA = compiled.cellsById.get("room-a");
@@ -229,4 +236,84 @@ function midpointOf(side: { readonly start: { readonly x: number; readonly y: nu
 
 function tangentOf(side: { readonly start: { readonly x: number; readonly y: number }; readonly end: { readonly x: number; readonly y: number } }) {
   return normalizeVec3(vec3(side.end.x - side.start.x, side.end.y - side.start.y, 0));
+}
+
+function buildVertexClasses(world: { readonly cells: readonly { readonly id: string; readonly baseVertices: readonly unknown[]; readonly portals: readonly { readonly id: string; readonly sideIndex: number; readonly targetCellId: string; readonly targetPortalId: string }[] }[] }) {
+  const parent = new Map<string, string>();
+  const cellById = new Map(world.cells.map((cell) => [cell.id, cell]));
+  const portalById = new Map<string, { readonly id: string; readonly sideIndex: number; readonly targetCellId: string; readonly targetPortalId: string }>();
+
+  for (const cell of world.cells) {
+    for (let vertexIndex = 0; vertexIndex < cell.baseVertices.length; vertexIndex += 1) {
+      const key = vertexKey(cell.id, vertexIndex);
+      parent.set(key, key);
+    }
+
+    for (const portal of cell.portals) {
+      portalById.set(`${cell.id}:${portal.id}`, portal);
+    }
+  }
+
+  for (const cell of world.cells) {
+    for (const portal of cell.portals) {
+      const targetCell = cellById.get(portal.targetCellId);
+      const targetPortal = portalById.get(`${portal.targetCellId}:${portal.targetPortalId}`);
+
+      expect(targetCell).toBeDefined();
+      expect(targetPortal).toBeDefined();
+
+      const sourceStart = vertexKey(cell.id, portal.sideIndex);
+      const sourceEnd = vertexKey(cell.id, (portal.sideIndex + 1) % cell.baseVertices.length);
+      const targetStart = vertexKey(portal.targetCellId, targetPortal!.sideIndex);
+      const targetEnd = vertexKey(portal.targetCellId, (targetPortal!.sideIndex + 1) % targetCell!.baseVertices.length);
+
+      unionVertex(parent, sourceStart, targetEnd);
+      unionVertex(parent, sourceEnd, targetStart);
+    }
+  }
+
+  const classes = new Map<string, string[]>();
+
+  for (const key of parent.keys()) {
+    const root = findVertexRoot(parent, key);
+    const entries = classes.get(root);
+
+    if (entries) {
+      entries.push(key);
+      continue;
+    }
+
+    classes.set(root, [key]);
+  }
+
+  return [...classes.values()];
+}
+
+function vertexKey(cellId: string, vertexIndex: number) {
+  return `${cellId}:vertex-${vertexIndex}`;
+}
+
+function findVertexRoot(parent: Map<string, string>, key: string): string {
+  const current = parent.get(key);
+
+  if (!current) {
+    throw new Error(`Missing vertex key "${key}".`);
+  }
+
+  if (current === key) {
+    return current;
+  }
+
+  const root = findVertexRoot(parent, current);
+  parent.set(key, root);
+  return root;
+}
+
+function unionVertex(parent: Map<string, string>, left: string, right: string): void {
+  const leftRoot = findVertexRoot(parent, left);
+  const rightRoot = findVertexRoot(parent, right);
+
+  if (leftRoot !== rightRoot) {
+    parent.set(leftRoot, rightRoot);
+  }
 }

@@ -164,13 +164,15 @@ describe("moveDynamicObject", () => {
   it("crosses a compiled tetrahedron portal without authored transforms", () => {
     const world = compileCellComplex(tetrahedron);
     const approach = portalApproach(world, "face-a", "side-0");
+    const expectedTargetCellId = world.cellsById.get("face-a")?.portalsById.get("side-0")?.targetCellId;
     const object = dynamicObject("face-a", approach.start, identityMat3, simpleCollisionBox(0.05, 0.05, 1));
 
     const result = moveDynamicObject({ world, object, displacement: approach.displacement });
 
     expect(result.blocked).toBe(false);
     expect(result.crossedPortal).toBe(true);
-    expect(result.object.cellId).toBe("face-b");
+    expect(expectedTargetCellId).toBeDefined();
+    expect(result.object.cellId).toBe(expectedTargetCellId);
   });
 });
 
