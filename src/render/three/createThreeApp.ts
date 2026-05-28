@@ -30,6 +30,10 @@ import {
 import { createDebugOverlay } from "./debugOverlay";
 import { createDesktopControls } from "./desktopControls";
 import { createPortalInstanceDebugRenderer, type PortalInstanceDebugRenderer } from "./portalInstanceDebug";
+import {
+  createPortalClipPolygonOverlay,
+  type PortalClipPolygonOverlayEntry,
+} from "./portalClipPolygonOverlay";
 import { prerenderCells } from "./prerenderCells";
 import {
   createPortalInstanceDiagnostics,
@@ -97,6 +101,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     "portal-path-overlay-instances",
   );
   const debugOverlay = createDebugOverlay(container);
+  const clipPolygonOverlay = createPortalClipPolygonOverlay(container);
 
   const light = new THREE.HemisphereLight(0xffffff, 0x304050, 2);
   light.castShadow = false;
@@ -142,6 +147,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   rebuildCellMeshes();
   syncPortalInstanceRender();
   let portalDebugRuntime = createPortalDebugRuntime();
+  logDebugStartupGuide(debugLevel, debugOptions);
 
   for (const cell of appState.world.cells) {
     for (const objectSpec of cell.objects) {
@@ -288,6 +294,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       syncPortalInstanceRender();
       portalDebugRuntime.dispose();
       portalDebugRuntime = createPortalDebugRuntime();
+      logDebugStartupGuide(debugLevel, debugOptions);
       for (const runtime of marmotRuntimes) {
         runtime.syncParent(cellMeshes);
       }
@@ -308,6 +315,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalInstanceDebugRenderer?.dispose();
       portalDebugRuntime.dispose();
       debugOverlay.dispose();
+      clipPolygonOverlay.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     },
@@ -422,6 +430,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     let activeOverlayPathCheck: PortalPathCheckResultWithVisibility | undefined;
     let activePathTraceOverlay: THREE.Object3D | undefined;
     let latestVisibleResult: ComputeVisiblePortalPathsResult | undefined;
+    const selectedClipPolygonPaths = new Map<string, { readonly color: string; readonly order: number }>();
+    let nextClipPolygonOrder = 0;
     function removeActivePathTraceOverlay(): void {
       if (!activePathTraceOverlay) {
         return;
@@ -445,6 +455,40 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         ...check,
         ...liveVisibilityFields(check.matchedPathId, latestVisibleResult),
       };
+    };
+
+    const updateSelectedClipPolygonOverlay = (): void => {
+      if (!visiblePathDebugActive || !latestVisibleResult) {
+        clipPolygonOverlay.clear();
+        return;
+      }
+
+      const entries: PortalClipPolygonOverlayEntry[] = [];
+
+      for (const [pathText, selection] of [...selectedClipPolygonPaths.entries()].sort(
+        (left, right) => left[1].order - right[1].order,
+      )) {
+        const check = checkPath(pathText);
+        if (!check.valid || !check.survivedStaticCull || check.matchedPathId === undefined) {
+          continue;
+        }
+
+        const visiblePath = latestVisibleResult.visiblePathById.get(check.matchedPathId);
+        if (!visiblePath) {
+          continue;
+        }
+
+        entries.push({
+          pathText,
+          color: selection.color,
+          clipPolygonNdc: visiblePath.clipPolygonNdc,
+        });
+      }
+
+      clipPolygonOverlay.update(
+        entries,
+        rendererSizeToViewportPixels(renderer.getSize(new THREE.Vector2())),
+      );
     };
 
     installPortalDebugHelpers({
@@ -559,6 +603,68 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         activeOverlayPathText = undefined;
         activeOverlayPathCheck = undefined;
       },
+      ShowCellPathClipPolygon(pathText: string) {
+        if (!visiblePathDebugActive) {
+          clipPolygonOverlay.clear();
+          return {
+            ok: false,
+            reason: "portal-visible-path-debug is not active",
+            trackedPathTexts: [...selectedClipPolygonPaths.keys()],
+            currentlyVisible: false,
+            clipPolygonNdc: undefined,
+          };
+        }
+
+        const check = checkPath(pathText);
+        if (!check.valid || !check.survivedStaticCull || check.matchedPathId === undefined) {
+          return {
+            ok: false,
+            reason: check.rejectionReason ?? check.errors[0] ?? "path is not available in the kept table",
+            trackedPathTexts: [...selectedClipPolygonPaths.keys()],
+            currentlyVisible: false,
+            clipPolygonNdc: undefined,
+          };
+        }
+
+        if (!selectedClipPolygonPaths.has(pathText)) {
+          selectedClipPolygonPaths.set(pathText, {
+            color: clipPolygonColorForIndex(nextClipPolygonOrder),
+            order: nextClipPolygonOrder,
+          });
+          nextClipPolygonOrder += 1;
+        }
+
+        updateSelectedClipPolygonOverlay();
+        const visiblePath = latestVisibleResult?.visiblePathById.get(check.matchedPathId);
+
+        return {
+          ok: true,
+          pathId: check.matchedPathId,
+          destinationCellId: check.destinationCellId,
+          trackedPathTexts: [...selectedClipPolygonPaths.keys()],
+          currentlyVisible: visiblePath !== undefined,
+          clipPolygonNdc: visiblePath?.clipPolygonNdc,
+        };
+      },
+      HideCellPathClipPolygon(pathText?: string) {
+        if (pathText === undefined) {
+          selectedClipPolygonPaths.clear();
+        } else {
+          selectedClipPolygonPaths.delete(pathText);
+        }
+
+        updateSelectedClipPolygonOverlay();
+        return {
+          trackedPathTexts: [...selectedClipPolygonPaths.keys()],
+        };
+      },
+      HideClipPolygons() {
+        selectedClipPolygonPaths.clear();
+        updateSelectedClipPolygonOverlay();
+        return {
+          trackedPathTexts: [...selectedClipPolygonPaths.keys()],
+        };
+      },
       DumpCameraPose() {
         return dumpCameraPose(playerPose, camera, renderer);
       },
@@ -595,6 +701,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             portalInstances: portalInstanceRenderState,
             inspectedPathLine: formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult),
           });
+          updateSelectedClipPolygonOverlay();
           return;
         }
 
@@ -607,6 +714,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             portalInstances: portalInstanceRenderState,
             inspectedPathLine: formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult),
           });
+          updateSelectedClipPolygonOverlay();
           return;
         }
 
@@ -636,6 +744,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           portalInstances: portalInstanceRenderState,
           inspectedPathLine: formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult),
         });
+        updateSelectedClipPolygonOverlay();
       },
       syncRootCell() {
         if (activeOverlayPathText === undefined) {
@@ -660,6 +769,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         activeOverlayPathText = undefined;
         activeOverlayPathCheck = undefined;
         debugOverlay.update({ visible: false });
+        selectedClipPolygonPaths.clear();
+        clipPolygonOverlay.clear();
         uninstallPortalDebugHelpers();
       },
     };
@@ -671,6 +782,9 @@ function logPortalOverlayGuide(portalPathDebugActive: boolean): void {
     "window.noneuclidPortalDebug.state",
     'window.noneuclidPortalDebug.CheckCellPath("0 2 3")',
     'window.noneuclidPortalDebug.ShowCellPath("0 2 3")',
+    'window.noneuclidPortalDebug.ShowCellPathClipPolygon("0 2 3")',
+    'window.noneuclidPortalDebug.HideCellPathClipPolygon("0 2 3")',
+    "window.noneuclidPortalDebug.HideClipPolygons()",
     "window.noneuclidPortalDebug.HideCellPaths()",
   ];
 
@@ -678,6 +792,34 @@ function logPortalOverlayGuide(portalPathDebugActive: boolean): void {
     portalPathDebugActive
       ? `Portal Path Overlays are enabled. Useful commands: ${commands.join("; ")}.`
       : "Portal Path Overlays are enabled, but Portal Path Debug is required before overlay commands are installed.",
+  );
+}
+
+function logDebugStartupGuide(debugLevel: DebugLevelId, debugOptions: readonly DebugOptionId[]): void {
+  const commands = [
+    "window.noneuclidPortalDebug.state",
+    'window.noneuclidPortalDebug.CheckCellPath("0 2 3")',
+    'window.noneuclidPortalDebug.ShowCellPath("0 2 3")',
+    "window.noneuclidPortalDebug.HideCellPaths()",
+    'window.noneuclidPortalDebug.ShowCellPathClipPolygon("0 2 3")',
+    'window.noneuclidPortalDebug.HideCellPathClipPolygon("0 2 3")',
+    "window.noneuclidPortalDebug.HideClipPolygons()",
+    "window.noneuclidPortalDebug.DumpCameraPose()",
+    "window.noneuclidPortalDebug.ShowCellPathRendersInstances = true",
+  ];
+  const activeOptions = debugOptions.length > 0 ? debugOptions.join(", ") : "(none)";
+
+  console.info(
+    [
+      "Debugging quick start:",
+      `debugLevel=${debugLevel}`,
+      `debugOptions=${activeOptions}`,
+      "Portal debug helpers are installed when portal-path-debug or portal-visible-path-debug is active.",
+      "ShowCellPath overlays also need portal-path-overlays.",
+      "Live clip polygons need portal-visible-path-debug.",
+      "Useful commands:",
+      ...commands.map((command) => `  ${command}`),
+    ].join("\n"),
   );
 }
 
@@ -695,6 +837,9 @@ function logPortalDebugInstall(
       overlayActive
         ? "Use window.noneuclidPortalDebug.ShowCellPath(\"0 2 3\") to draw a destination-cell overlay."
         : "Enable portal-path-overlays to allow ShowCellPath overlays.",
+      "Use window.noneuclidPortalDebug.ShowCellPathClipPolygon(\"0 2 3\") to draw a live screen-space clip polygon.",
+      "Use window.noneuclidPortalDebug.HideCellPathClipPolygon(\"0 2 3\") to remove one tracked clip polygon.",
+      "Use window.noneuclidPortalDebug.HideClipPolygons() to clear all tracked clip polygons.",
       "Use window.noneuclidPortalDebug.DumpCameraPose() to inspect the current culling camera pose.",
       staticCullDebugActive
         ? "Static-cull rejected path details are included."
@@ -734,6 +879,21 @@ interface PortalDebugHelpers {
     readonly objectCount: number;
   };
   HideCellPaths(): void;
+  ShowCellPathClipPolygon(pathText: string): {
+    readonly ok: boolean;
+    readonly reason?: string;
+    readonly pathId?: number;
+    readonly destinationCellId?: string;
+    readonly trackedPathTexts: readonly string[];
+    readonly currentlyVisible: boolean;
+    readonly clipPolygonNdc?: readonly { readonly x: number; readonly y: number }[];
+  };
+  HideCellPathClipPolygon(pathText?: string): {
+    readonly trackedPathTexts: readonly string[];
+  };
+  HideClipPolygons(): {
+    readonly trackedPathTexts: readonly string[];
+  };
   DumpCameraPose(): CameraPoseDebugDump;
   ShowCellPathRendersInstances: boolean;
   readonly state: ReturnType<typeof createPortalPathDebugState> & {
@@ -914,6 +1074,11 @@ function formatInspectedPathLine(
   const visibilityLabel = visibility.currentlyVisible ? "Vis" : "Invis";
 
   return `Path ${pathText} -> ${check.destinationCellId} ${visibilityLabel}`;
+}
+
+function clipPolygonColorForIndex(index: number): string {
+  const palette = ["#ff5252", "#3dd9b6", "#ffe066", "#5da9ff", "#ff8fab", "#b892ff"];
+  return palette[index % palette.length];
 }
 
 function rendererSizeToViewportPixels(size: THREE.Vector2): { readonly width: number; readonly height: number } {
