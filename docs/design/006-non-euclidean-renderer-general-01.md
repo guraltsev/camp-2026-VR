@@ -1097,16 +1097,19 @@ Test:
 
 # 16. Implementation milestones
 
-Current status as of 2026-05-27:
+Current status as of 2026-05-28:
 
 ```text
 Milestone 1: complete.
 Milestone 2: complete.
+Milestone 3: partially implemented.
 ```
 
 Milestone 1 is done in the codebase. `src/cell-complex/portalPaths.ts` implements `buildPortalPathTables(...)`, per-root tables, stable path ids, parent links, destination-cell grouping, accumulated transforms, inverse render transforms, and default immediate-reverse filtering. `tests/cell-complex/portalPaths.test.ts` covers the milestone acceptance points, including cube path generation through depth 10 and finite transforms. The adjacent static-culling pass is also already implemented in `src/cell-complex/staticPortalPathCull.ts` and documented in `docs/issues/_closed/17_portal_path_tables_and_static_culling.md`; that is ahead of what Milestone 1 strictly required.
 
 Milestone 2 is now complete in the codebase. `src/render/three/visiblePortalPaths.ts` implements the per-frame camera-visible portal-path discovery pass, accumulated aperture clipping, near-plane handling, and visibility summaries. `tests/render-contract/visiblePortalPaths.test.ts` covers first-hop visibility, behind-camera rejection, parent-driven visibility, nested apertures, depth limits, budget limits, duplicate destinations, and `ShowCellPath(...)` live visibility reporting. The renderer also wires the new `portal-visible-path-debug` flag into the on-screen debug overlay and `window.noneuclidPortalDebug`.
+
+Milestone 3 is partially implemented in the codebase. The active cell already renders through fixed-capacity archetype-backed `THREE.InstancedMesh` pools, capacities are derived from statically kept destination-path counts, and `window.noneuclidPortalDebug.ShowCellPath(...)` can optionally render destination-cell archetype instances through the same path machinery. However, ordinary camera-visible portal-copy rendering for every visible path is not yet enabled, so the full milestone is not complete.
 
 ## Milestone 1: path table only
 
@@ -1179,30 +1182,61 @@ docs/issues/_closed/17_dynamic_visible_portal_path_debug.md
 
 ## Milestone 3: simple instanced floors/walls
 
+Status: partially implemented.
+
 Implement:
 
 ```text
 src/render/three/cellRenderArchetypes.ts
 src/render/three/renderPortalInstances.ts
+src/render/three/portalInstanceDebug.ts
+tests/render-contract/cellRenderArchetypes.test.ts
+tests/render-contract/portalInstanceBuffers.test.ts
 ```
 
-Only render:
+Implemented scope:
 
 ```text
 floor
 ceiling
 solid walls
 portal frames
+static objects
 ```
 
-No imported objects yet.
+Dynamic objects remain out of scope for this milestone.
 
-Acceptance:
+Currently implemented:
 
 ```text
-cube world shows connected cell copies through portals
 no per-frame cell cloning
 mesh.count changes dynamically
+active cell renders through the depth-0 root path
+ShowCellPath can switch between floor overlay mode and instance-backed debug rendering
+```
+
+Implemented evidence:
+
+```text
+src/render/three/cellRenderArchetypes.ts
+src/render/three/renderPortalInstances.ts
+src/render/three/portalInstanceDebug.ts
+src/render/three/createThreeApp.ts
+src/render/three/debugOverlay.ts
+src/render/three/renderState.ts
+src/glue/debugOptions.ts
+tests/render-contract/cellRenderArchetypes.test.ts
+tests/render-contract/portalInstanceBuffers.test.ts
+tests/debugSettings.test.ts
+docs/issues/_closed/20_milestone_03_archetype_instance_pool_and_debug_path_renders.md
+```
+
+Remaining for milestone completion:
+
+```text
+cube world should show connected cell copies through portals during ordinary rendering
+visible paths returned by computeVisiblePortalPaths(...) should populate the shared instance buffers
+the milestone should not be marked complete until ordinary portal-copy rendering is on
 ```
 
 ---
