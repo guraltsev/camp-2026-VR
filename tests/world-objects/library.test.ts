@@ -96,7 +96,7 @@ describe("worldObjectLibrary", () => {
     });
   });
 
-  it("creates geodesic marmots with velocity, collision, and normalized vectors", () => {
+  it("creates geodesic marmots as dynamic specs with movement-facing yaw", () => {
     const object = worldObjectLibrary.geodesic_marmot("front-runner", {
       position: [-4.2, 0, -1.8],
       velocity: [2.3, 0.65],
@@ -107,16 +107,10 @@ describe("worldObjectLibrary", () => {
       id: "front-runner",
       kind: "geodesci-marmot",
       assetPath: "racoon-animation/scene.gltf",
-      position: { x: -4.2, y: 0, z: -1.8 },
+      position: { x: -4.2, y: -1.8, z: 0 },
       velocity: { x: 2.3, y: 0.65 },
       scale: 1.05,
-      collision: {
-        dx: 0.42,
-        dy: 0.72,
-        dz: 0.42,
-        offset: { x: 0, y: 0, z: 0.22 },
-      },
-      animationClipName: "Armature|ArmatureAction",
+      yawRadians: Math.atan2(2.3, 0.65),
     });
   });
 });

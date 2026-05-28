@@ -42,8 +42,8 @@ export const worldObjectLibrary: WorldObjectLibrary = {
         id: name,
         position: {
           x: params.position[0],
-          y: params.position[1],
-          z: params.position[2],
+          y: params.position[2],
+          z: params.position[1],
         },
         velocity: {
           x: params.velocity[0],

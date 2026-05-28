@@ -116,7 +116,9 @@ describe("worldBuilder", () => {
       {
         id: "front-runner",
         kind: "geodesci-marmot",
+        position: { x: -0.8, y: -0.2, z: 0 },
         velocity: { x: 1.2, y: 0.4 },
+        yawRadians: Math.atan2(1.2, 0.4),
       },
     ]);
   });
