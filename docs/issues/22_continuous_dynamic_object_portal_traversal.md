@@ -2,7 +2,7 @@
 
 ## Goal
 
-Fix visible discontinuities when geodesci marmots cross portals.
+Fix visible discontinuities when dynamic objects like geodesic marmots cross portals.
 
 All portal traversal should feel continuous: an object should remain in its source cell until the traversal point at the center of the object crosses the portal plane, then appear in the target cell with the same physical pose transformed through the portal.
 
@@ -117,7 +117,7 @@ The existing player test "lets the player straddle a portal before changing root
 
 This issue is complete when:
 
-- geodesci marmot portal crossing uses center/anchor traversal, not bounds-first traversal,
+- geodesic marmot portal crossing uses center/anchor traversal, not bounds-first traversal,
 - the marmot cell switch occurs only when the traversal center crosses a portal side,
 - the rendered marmot parent and movement state update in the same frame,
 - tests cover before-center and after-center crossing behavior,
