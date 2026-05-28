@@ -53,6 +53,11 @@ import {
   type PortalClipMaterialState,
 } from "./portalClipMaterial";
 import {
+  createStylizedSceneLighting,
+  disposeStylizedSceneLighting,
+  updateStylizedSceneLighting,
+} from "./sceneLighting";
+import {
   computeVisiblePortalPaths,
   describeVisiblePortalPath,
   type ComputeVisiblePortalPathsResult,
@@ -115,15 +120,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   );
   const debugOverlay = createDebugOverlay(container);
   const clipPolygonOverlay = createPortalClipPolygonOverlay(container);
-
-  const light = new THREE.HemisphereLight(0xffffff, 0x304050, 2);
-  light.castShadow = false;
-  scene.add(light);
-
-  const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
-  keyLight.position.set(3, 6, 4);
-  keyLight.castShadow = false;
-  scene.add(keyLight);
+  const sceneLighting = createStylizedSceneLighting(scene);
 
   const cellMeshes = new Map<string, THREE.Object3D>();
   const rootRenderPathMaxDepth = 10;
@@ -215,6 +212,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     camera.position.copy(cameraPosition);
     camera.up.set(0, 1, 0);
     camera.lookAt(worldPointToThree(lookAtWorld));
+    updateStylizedSceneLighting(sceneLighting, camera);
   }
 
   const warmupStartMs = performance.now();
@@ -359,6 +357,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalDebugRuntime.dispose();
       debugOverlay.dispose();
       clipPolygonOverlay.dispose();
+      disposeStylizedSceneLighting(sceneLighting, scene);
       renderer.dispose();
       renderer.domElement.remove();
     },
