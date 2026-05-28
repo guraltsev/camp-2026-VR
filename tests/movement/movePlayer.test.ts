@@ -109,4 +109,78 @@ describe("movePlayer", () => {
     expect(result.pose.position.y).toBe(0);
     expect(result.pose.position.z).toBe(0);
   });
+
+  it("lets the player straddle a portal before changing root cell when the camera anchor crosses", () => {
+    const world = compileCellComplex(twoRoomsWithPortal());
+    const firstStep = movePlayer({
+      world,
+      pose: {
+        ...createDefaultPlayerPose("room-a"),
+        position: { x: 0.75, y: 0, z: 0 },
+      },
+      localDisplacement: { x: 0.2, y: 0, z: 0 },
+      yawDeltaRadians: 0,
+      pitchDeltaRadians: 0,
+      coordinateFrame: "global",
+    });
+
+    expect(firstStep.blocked).toBe(false);
+    expect(firstStep.crossedPortal).toBe(false);
+    expect(firstStep.pose.cellId).toBe("room-a");
+    expect(firstStep.pose.position.x).toBeCloseTo(0.95);
+
+    const secondStep = movePlayer({
+      world,
+      pose: firstStep.pose,
+      localDisplacement: { x: 0.1, y: 0, z: 0 },
+      yawDeltaRadians: 0,
+      pitchDeltaRadians: 0,
+      coordinateFrame: "global",
+    });
+
+    expect(secondStep.blocked).toBe(false);
+    expect(secondStep.crossedPortal).toBe(true);
+    expect(secondStep.pose.cellId).toBe("room-b");
+    expect(secondStep.pose.position.x).toBeCloseTo(-0.95);
+  });
 });
+
+function twoRoomsWithPortal() {
+  const squareRoomBase = [
+    { x: -1, y: -1 },
+    { x: 1, y: -1 },
+    { x: 1, y: 1 },
+    { x: -1, y: 1 },
+  ];
+
+  return {
+    cells: [
+      {
+        id: "room-a",
+        heightMeters: 3,
+        baseVertices: squareRoomBase,
+        portals: [
+          {
+            id: "east",
+            sideIndex: 1,
+            targetCellId: "room-b",
+            targetPortalId: "west",
+          },
+        ],
+      },
+      {
+        id: "room-b",
+        heightMeters: 3,
+        baseVertices: squareRoomBase,
+        portals: [
+          {
+            id: "west",
+            sideIndex: 3,
+            targetCellId: "room-a",
+            targetPortalId: "east",
+          },
+        ],
+      },
+    ],
+  };
+}

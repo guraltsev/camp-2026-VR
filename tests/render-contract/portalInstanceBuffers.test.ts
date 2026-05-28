@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CellRenderArchetype } from "../../src/render/three/cellRenderArchetypes";
 import { createPortalInstanceDebugRenderer } from "../../src/render/three/portalInstanceDebug";
 import {
+  buildVisiblePathsByDestinationCell,
   createPortalInstanceDiagnostics,
   createPortalInstanceRenderDebugState,
   createRootVisiblePortalPath,
@@ -37,6 +38,8 @@ describe("updateCellRenderArchetypeInstances", () => {
     expect(roomBWall.mesh.count).toBe(1);
     expect(readMatrix(roomA.mesh, 0)).toEqual(new THREE.Matrix4().elements);
     expect(readMatrix(roomB.mesh, 0)).toEqual(new THREE.Matrix4().elements);
+    expect(readAttribute(roomA.portalPathIdAttribute, 0)).toBe(0);
+    expect(readAttribute(roomB.portalPathIdAttribute, 0)).toBe(1);
     expect(diagnostics.capacityOverflowCount).toBe(2);
     expect(diagnostics.capacityOverflowArchetypes).toEqual(["room-b:floor:0", "room-b:wall:1"]);
 
@@ -51,6 +54,74 @@ describe("updateCellRenderArchetypeInstances", () => {
       { cellId: "room-a", count: 1 },
       { cellId: "room-b", count: 2 },
     ]);
+  });
+
+  it("builds visible destination buckets by intersecting kept path buckets with visible path ids", () => {
+    const root = createRootVisiblePortalPath("room-a");
+    const first = {
+      ...createRootVisiblePortalPath("room-b"),
+      pathId: 2,
+      destinationCellId: "room-b",
+    };
+    const keptPathsByDestination = new Map([
+      ["room-a", [{ id: 0, destinationCellId: "room-a" }]],
+      [
+        "room-b",
+        [
+          { id: 1, destinationCellId: "room-b" },
+          { id: 2, destinationCellId: "room-b" },
+        ],
+      ],
+    ]);
+    const visiblePathById = new Map([
+      [0, root],
+      [2, first],
+    ]);
+
+    const grouped = buildVisiblePathsByDestinationCell(
+      keptPathsByDestination as unknown as Parameters<typeof buildVisiblePathsByDestinationCell>[0],
+      visiblePathById,
+    );
+
+    expect(grouped.get("room-a")?.map((path) => path.pathId)).toEqual([0]);
+    expect(grouped.get("room-b")?.map((path) => path.pathId)).toEqual([2]);
+  });
+
+  it("writes portal path ids and clip indexes beside instance matrices", () => {
+    const roomB = createArchetype("room-b", "room-b:floor:0", 2);
+    const diagnostics = createPortalInstanceDiagnostics();
+    const firstTransform = new THREE.Matrix4().makeTranslation(1, 0, 0);
+    const secondTransform = new THREE.Matrix4().makeTranslation(2, 0, 0);
+    const visiblePaths = groupVisiblePortalPathsByDestinationCell([
+      {
+        ...createRootVisiblePortalPath("room-b"),
+        pathId: 4,
+        rootFromDestinationMatrix: firstTransform,
+      },
+      {
+        ...createRootVisiblePortalPath("room-b"),
+        pathId: 9,
+        rootFromDestinationMatrix: secondTransform,
+      },
+    ]);
+
+    updateCellRenderArchetypeInstances(
+      [roomB],
+      visiblePaths,
+      diagnostics,
+      new Map([
+        [4, 0],
+        [9, 1],
+      ]),
+    );
+
+    expect(roomB.mesh.count).toBe(2);
+    expect(readMatrix(roomB.mesh, 0)).toEqual(firstTransform.elements);
+    expect(readMatrix(roomB.mesh, 1)).toEqual(secondTransform.elements);
+    expect(readAttribute(roomB.portalPathIdAttribute, 0)).toBe(4);
+    expect(readAttribute(roomB.portalPathIdAttribute, 1)).toBe(9);
+    expect(readAttribute(roomB.portalClipIndexAttribute, 0)).toBe(0);
+    expect(readAttribute(roomB.portalClipIndexAttribute, 1)).toBe(1);
   });
 });
 
@@ -85,12 +156,18 @@ function createArchetype(cellId: string, archetypeId: string, capacity: number):
     capacity,
   );
   mesh.count = 0;
+  const portalPathIdAttribute = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+  const portalClipIndexAttribute = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+  mesh.geometry.setAttribute("portalPathId", portalPathIdAttribute);
+  mesh.geometry.setAttribute("portalClipIndex", portalClipIndexAttribute);
 
   return {
     cellId,
     archetypeId,
     kind: "static-object",
     mesh,
+    portalPathIdAttribute,
+    portalClipIndexAttribute,
     capacity,
   };
 }
@@ -99,4 +176,8 @@ function readMatrix(mesh: THREE.InstancedMesh, index: number): readonly number[]
   const matrix = new THREE.Matrix4();
   mesh.getMatrixAt(index, matrix);
   return matrix.elements;
+}
+
+function readAttribute(attribute: THREE.InstancedBufferAttribute, index: number): number {
+  return attribute.getX(index);
 }

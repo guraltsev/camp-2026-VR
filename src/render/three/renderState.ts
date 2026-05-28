@@ -28,4 +28,16 @@ export interface PortalInstanceRenderState {
   }[];
   readonly capacityOverflowCount: number;
   readonly capacityOverflowArchetypes: readonly string[];
+  readonly normalVisiblePathRenderingActive: boolean;
+  readonly visiblePathIds: readonly number[];
+  readonly visiblePathDestinations: readonly {
+    readonly pathId: number;
+    readonly destinationCellId: string;
+  }[];
+  readonly clipPolygonVertexCountsByPath: readonly {
+    readonly pathId: number;
+    readonly vertexCount: number;
+  }[];
+  readonly clipPolygonOverflowPathIds: readonly number[];
+  readonly visiblePathOverflowCount: number;
 }

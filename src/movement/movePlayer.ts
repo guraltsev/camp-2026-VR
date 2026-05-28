@@ -55,6 +55,7 @@ export function movePlayer(request: MoveRequest): MoveResult {
         }),
       ),
       displacement,
+      portalCrossingMode: "anchor",
     });
 
     return {

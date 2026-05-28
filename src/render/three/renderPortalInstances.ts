@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { PortalRenderPath } from "../../cell-complex/portalPaths";
 import type { CellRenderArchetype } from "./cellRenderArchetypes";
 import type { VisiblePortalPath, VisiblePortalPathDebugSummary } from "./visiblePortalPaths";
 
@@ -14,6 +15,18 @@ export interface PortalInstanceRenderDebugState {
   }[];
   readonly capacityOverflowCount: number;
   readonly capacityOverflowArchetypes: readonly string[];
+  readonly normalVisiblePathRenderingActive: boolean;
+  readonly visiblePathIds: readonly number[];
+  readonly visiblePathDestinations: readonly {
+    readonly pathId: number;
+    readonly destinationCellId: string;
+  }[];
+  readonly clipPolygonVertexCountsByPath: readonly {
+    readonly pathId: number;
+    readonly vertexCount: number;
+  }[];
+  readonly clipPolygonOverflowPathIds: readonly number[];
+  readonly visiblePathOverflowCount: number;
 }
 
 export interface PortalInstanceDiagnostics {
@@ -85,21 +98,52 @@ export function groupVisiblePortalPathsByDestinationCell(
   return grouped;
 }
 
+export function buildVisiblePathsByDestinationCell(
+  staticallyKeptPathsByDestinationCell: ReadonlyMap<string, readonly PortalRenderPath[]>,
+  visiblePathById: ReadonlyMap<number, VisiblePortalPath>,
+): ReadonlyMap<string, readonly VisiblePortalPath[]> {
+  const grouped = new Map<string, VisiblePortalPath[]>();
+
+  for (const [destinationCellId, keptPaths] of staticallyKeptPathsByDestinationCell) {
+    const visiblePaths: VisiblePortalPath[] = [];
+
+    for (const keptPath of keptPaths) {
+      const visiblePath = visiblePathById.get(keptPath.id);
+
+      if (visiblePath) {
+        visiblePaths.push(visiblePath);
+      }
+    }
+
+    if (visiblePaths.length > 0) {
+      grouped.set(destinationCellId, visiblePaths);
+    }
+  }
+
+  return grouped;
+}
+
 export function updateCellRenderArchetypeInstances(
   archetypes: readonly CellRenderArchetype[],
   visiblePathsByDestinationCell: ReadonlyMap<string, readonly VisiblePortalPath[]>,
   diagnostics: PortalInstanceDiagnostics,
+  clipIndexByPathId: ReadonlyMap<number, number> = new Map(),
 ): void {
   for (const archetype of archetypes) {
     const paths = visiblePathsByDestinationCell.get(archetype.cellId) ?? [];
     const count = Math.min(paths.length, archetype.capacity);
 
     for (let index = 0; index < count; index += 1) {
-      archetype.mesh.setMatrixAt(index, paths[index].rootFromDestinationMatrix);
+      const path = paths[index];
+      archetype.mesh.setMatrixAt(index, path.rootFromDestinationMatrix);
+      archetype.portalPathIdAttribute.setX(index, path.pathId);
+      archetype.portalClipIndexAttribute.setX(index, clipIndexByPathId.get(path.pathId) ?? -1);
     }
 
     archetype.mesh.count = count;
     archetype.mesh.instanceMatrix.needsUpdate = true;
+    archetype.portalPathIdAttribute.needsUpdate = true;
+    archetype.portalClipIndexAttribute.needsUpdate = true;
 
     if (paths.length > archetype.capacity) {
       diagnostics.recordCapacityOverflow(archetype, paths.length);
@@ -114,6 +158,11 @@ export function createPortalInstanceRenderDebugState(
   options: {
     readonly enabled: boolean;
     readonly showCellPathRendersInstances: boolean;
+    readonly normalVisiblePathRenderingActive?: boolean;
+    readonly visiblePaths?: readonly VisiblePortalPath[];
+    readonly clipPolygonVertexCountsByPathId?: ReadonlyMap<number, number>;
+    readonly clipPolygonOverflowPathIds?: readonly number[];
+    readonly visiblePathOverflowCount?: number;
   },
 ): PortalInstanceRenderDebugState {
   const totalCapacity = archetypes.reduce((sum, archetype) => sum + archetype.capacity, 0);
@@ -144,6 +193,17 @@ export function createPortalInstanceRenderDebugState(
       .sort((left, right) => left.cellId.localeCompare(right.cellId)),
     capacityOverflowCount: diagnostics.capacityOverflowCount,
     capacityOverflowArchetypes: diagnostics.capacityOverflowArchetypes,
+    normalVisiblePathRenderingActive: options.normalVisiblePathRenderingActive ?? false,
+    visiblePathIds: (options.visiblePaths ?? []).map((path) => path.pathId),
+    visiblePathDestinations: (options.visiblePaths ?? []).map((path) => ({
+      pathId: path.pathId,
+      destinationCellId: path.destinationCellId,
+    })),
+    clipPolygonVertexCountsByPath: [...(options.clipPolygonVertexCountsByPathId ?? new Map()).entries()]
+      .map(([pathId, vertexCount]) => ({ pathId, vertexCount }))
+      .sort((left, right) => left.pathId - right.pathId),
+    clipPolygonOverflowPathIds: options.clipPolygonOverflowPathIds ?? [],
+    visiblePathOverflowCount: options.visiblePathOverflowCount ?? 0,
   };
 }
 

@@ -8,6 +8,7 @@ import {
 import type { DebugLevelId } from "../../glue/debugLevels";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import { buildCellMesh } from "./buildCellMesh";
+import { patchPortalClipMaterial, type PortalClipMaterialState } from "./portalClipMaterial";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 
 export type CellRenderArchetypeKind =
@@ -22,6 +23,8 @@ export interface CellRenderArchetype {
   readonly archetypeId: string;
   readonly kind: CellRenderArchetypeKind;
   readonly mesh: THREE.InstancedMesh;
+  readonly portalPathIdAttribute: THREE.InstancedBufferAttribute;
+  readonly portalClipIndexAttribute: THREE.InstancedBufferAttribute;
   readonly capacity: number;
   readonly sourceObjectName?: string;
 }
@@ -32,6 +35,7 @@ export interface BuildCellRenderArchetypesOptions {
   readonly eyeHeightMeters: number;
   readonly assets: PreparedWorldAssets;
   readonly capacitiesByCellId: ReadonlyMap<string, number>;
+  readonly portalClipMaterialState?: PortalClipMaterialState;
 }
 
 export interface CellRenderArchetypePlanEntry {
@@ -53,10 +57,16 @@ export function buildCellRenderArchetypes(
 
     for (const source of sources) {
       const mesh = new THREE.InstancedMesh(source.geometry, source.material, source.capacity);
+      const portalPathIdAttribute = new THREE.InstancedBufferAttribute(new Float32Array(source.capacity), 1);
+      const portalClipIndexAttribute = new THREE.InstancedBufferAttribute(new Float32Array(source.capacity), 1);
       mesh.name = source.archetypeId;
       mesh.count = 0;
       mesh.frustumCulled = false;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      portalPathIdAttribute.setUsage(THREE.DynamicDrawUsage);
+      portalClipIndexAttribute.setUsage(THREE.DynamicDrawUsage);
+      mesh.geometry.setAttribute("portalPathId", portalPathIdAttribute);
+      mesh.geometry.setAttribute("portalClipIndex", portalClipIndexAttribute);
       mesh.userData = {
         kind: "cell-render-archetype",
         cellId: source.cellId,
@@ -69,6 +79,8 @@ export function buildCellRenderArchetypes(
         archetypeId: source.archetypeId,
         kind: source.kind,
         mesh,
+        portalPathIdAttribute,
+        portalClipIndexAttribute,
         capacity: source.capacity,
         sourceObjectName: source.sourceObjectName,
       });
@@ -176,7 +188,7 @@ function collectCellArchetypeSources(
 
     const geometry = object.geometry.clone();
     geometry.applyMatrix4(object.matrixWorld);
-    const material = cloneMaterial(object.material);
+    const material = cloneMaterial(object.material, options.portalClipMaterialState);
     const archetypeIndex = sources.length;
     sources.push({
       cellId: cell.id,
@@ -239,12 +251,17 @@ function hasAncestorNamed(object: THREE.Object3D, prefix: string): boolean {
   return false;
 }
 
-function cloneMaterial(material: THREE.Material | THREE.Material[]): THREE.Material | THREE.Material[] {
+function cloneMaterial(
+  material: THREE.Material | THREE.Material[],
+  portalClipMaterialState: PortalClipMaterialState | undefined,
+): THREE.Material | THREE.Material[] {
   if (Array.isArray(material)) {
-    return material.map((entry) => entry.clone());
+    const cloned = material.map((entry) => entry.clone());
+    return portalClipMaterialState ? patchPortalClipMaterial(cloned, portalClipMaterialState) : cloned;
   }
 
-  return material.clone();
+  const cloned = material.clone();
+  return portalClipMaterialState ? patchPortalClipMaterial(cloned, portalClipMaterialState) : cloned;
 }
 
 function disposeObject3D(object: THREE.Object3D): void {

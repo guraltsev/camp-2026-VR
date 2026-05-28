@@ -54,5 +54,6 @@ export function formatPortalInstanceLine(state: PortalInstanceRenderState): stri
 }
 
 export function formatPortalArchetypeLine(state: PortalInstanceRenderState): string {
-  return `archetypes: ${state.archetypeCount} / overflow ${state.capacityOverflowCount}`;
+  const clipOverflow = state.clipPolygonOverflowPathIds.length + state.visiblePathOverflowCount;
+  return `archetypes: ${state.archetypeCount} / overflow ${state.capacityOverflowCount} / clip ${clipOverflow}`;
 }
