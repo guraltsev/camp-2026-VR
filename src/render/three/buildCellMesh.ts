@@ -9,9 +9,9 @@ import {
 } from "../../glue/portalPanelMode";
 import { buildDecorationMesh } from "./buildDecorationMesh";
 import { buildPortalMesh } from "./buildPortalMesh";
-import { createCeilingMaterial } from "./ceilingTexture";
 import { isGeodesciMarmotObjectSpec } from "../../world-objects/geodesciMarmot";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
+import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
 
 export interface BuildCellMeshOptions {
   readonly debugLevel: DebugLevelId;
@@ -35,7 +35,7 @@ export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOpt
   };
 
   group.add(buildFloorMesh(cell));
-  group.add(buildCeilingMesh(cell, options.assets));
+  group.add(buildCeilingMesh(cell));
   group.add(buildSideWalls(cell, options.assets, options.debugLevel, options.portalPanelMode));
   group.add(buildFloorOutline(cell));
 
@@ -81,7 +81,7 @@ function buildFloorMesh(cell: CompiledPrismCell): THREE.Object3D {
   return floor;
 }
 
-function buildCeilingMesh(cell: CompiledPrismCell, assets: PreparedWorldAssets): THREE.Object3D {
+function buildCeilingMesh(cell: CompiledPrismCell): THREE.Object3D {
   const shape = new THREE.Shape();
   const first = cell.baseVertices[0];
 
@@ -96,10 +96,14 @@ function buildCeilingMesh(cell: CompiledPrismCell, assets: PreparedWorldAssets):
   const geometry = new THREE.ShapeGeometry(shape);
   geometry.rotateX(-Math.PI / 2);
 
-  const [minX, maxX, minY, maxY] = getBaseBounds(cell);
   const ceiling = new THREE.Mesh(
     geometry,
-    createCeilingMaterial(Math.max(1, (maxX - minX) / 8), Math.max(1, (maxY - minY) / 8), assets),
+    new THREE.MeshStandardMaterial({
+      color: SCENE_BACKGROUND_COLOR,
+      roughness: 0.96,
+      metalness: 0,
+      side: THREE.DoubleSide,
+    }),
   );
   ceiling.name = `ceiling:${cell.id}`;
   ceiling.position.y = cell.heightMeters;
@@ -151,22 +155,6 @@ function buildFloorOutline(cell: CompiledPrismCell): THREE.Object3D {
   const outline = new THREE.Line(geometry, material);
   outline.name = `floor-outline:${cell.id}`;
   return outline;
-}
-
-function getBaseBounds(cell: CompiledPrismCell): readonly [number, number, number, number] {
-  let minX = cell.baseVertices[0]?.x ?? 0;
-  let maxX = minX;
-  let minY = cell.baseVertices[0]?.y ?? 0;
-  let maxY = minY;
-
-  for (const vertex of cell.baseVertices.slice(1)) {
-    minX = Math.min(minX, vertex.x);
-    maxX = Math.max(maxX, vertex.x);
-    minY = Math.min(minY, vertex.y);
-    maxY = Math.max(maxY, vertex.y);
-  }
-
-  return [minX, maxX, minY, maxY];
 }
 
 function buildPortalDebugPanels(cell: CompiledPrismCell, options: BuildCellMeshOptions): THREE.Object3D {

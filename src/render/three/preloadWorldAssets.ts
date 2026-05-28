@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex";
 import { publicAssetUrl } from "../../glue/assetUrls";
-import { CEILING_TEXTURE_FILE } from "./ceilingTexture";
 import { PORTAL_WALL_TEXTURE_FILE } from "./portalWallTexture";
 import { runtimeDiagnostics } from "./runtimeDiagnostics";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
@@ -33,7 +32,7 @@ export async function preloadWorldAssets(world: CompiledCellComplex): Promise<Pr
   const textureLoader = new THREE.TextureLoader();
 
   await Promise.all([
-    ...[PORTAL_WALL_TEXTURE_FILE, CEILING_TEXTURE_FILE].map((assetPath) => {
+    ...[PORTAL_WALL_TEXTURE_FILE].map((assetPath) => {
       diagnostics.recordPreloadStart(assetPath, "texture");
       return textureLoader.loadAsync(publicAssetUrl(assetPath)).then(
         (texture) => {

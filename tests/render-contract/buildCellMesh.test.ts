@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { dodecahedron, twoPrismLoop } from "../../src/authoring/exampleWorlds";
 import { buildCellMesh } from "../../src/render/three/buildCellMesh";
-import { CEILING_TEXTURE_URL } from "../../src/render/three/ceilingTexture";
+import { SCENE_BACKGROUND_COLOR } from "../../src/render/three/sceneColors";
 import { PORTAL_WALL_TEXTURE_URL } from "../../src/render/three/portalWallTexture";
 import type { PreparedWorldAssets } from "../../src/render/three/preloadWorldAssets";
 
@@ -12,7 +12,7 @@ describe("buildCellMesh", () => {
     vi.unstubAllGlobals();
   });
 
-  it("builds floor, ceiling, walls, and textured portal wall metadata", () => {
+  it("builds floor, ceiling, walls, and portal wall metadata", () => {
     const compiled = compileCellComplex(twoPrismLoop);
     const cell = compiled.cellsById.get("room-a");
 
@@ -56,8 +56,9 @@ describe("buildCellMesh", () => {
     expect(ceiling).toBeDefined();
     expect(walls).toBeDefined();
     expect(walls?.children).toHaveLength(roomA.sideCount);
-    expect((ceilingMesh?.material as THREE.MeshStandardMaterial | undefined)?.userData.textureUrl).toBe(
-      CEILING_TEXTURE_URL,
+    expect((ceilingMesh?.material as THREE.MeshStandardMaterial | undefined)?.userData.textureUrl).toBeUndefined();
+    expect((ceilingMesh?.material as THREE.MeshStandardMaterial | undefined)?.color.getHex()).toBe(
+      SCENE_BACKGROUND_COLOR,
     );
     expect(portal).toBeDefined();
     expect(portal?.userData.textureUrl).toBe(PORTAL_WALL_TEXTURE_URL);

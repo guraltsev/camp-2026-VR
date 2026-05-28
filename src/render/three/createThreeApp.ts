@@ -29,6 +29,7 @@ import {
 } from "./cellRenderArchetypes";
 import { createDebugOverlay } from "./debugOverlay";
 import { createDesktopControls } from "./desktopControls";
+import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
 import { createPortalInstanceDebugRenderer, type PortalInstanceDebugRenderer } from "./portalInstanceDebug";
 import {
   createPortalClipPolygonOverlay,
@@ -106,9 +107,9 @@ interface LegacyObjectPortalRenderEntry {
 
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1c1c1c);
+  scene.background = new THREE.Color(SCENE_BACKGROUND_COLOR);
   scene.environment = null;
-  scene.fog = new THREE.Fog(0x2f2f2f, 0, 200);
+  scene.fog = new THREE.Fog(SCENE_BACKGROUND_COLOR, 12, 85);
 
   const initialCanvasSize = getWindowCssCanvasSize(window);
   const camera = new THREE.PerspectiveCamera(
