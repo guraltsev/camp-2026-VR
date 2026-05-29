@@ -179,7 +179,7 @@ Recommended controller mapping:
 - grip or secondary button: reset or open a minimal reset affordance,
 - browser/session exit remains controlled by the platform.
 
-Do not add snap turning in the first pass. Use continuous controller rotation for now.
+All artificial controller turning in this stage should be continuous rotation.
 
 A narrowed-view comfort effect is a later improvement. It is known to reduce nausea for many users during artificial locomotion, but it should not block the first WebXR implementation.
 

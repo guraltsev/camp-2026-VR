@@ -40,7 +40,7 @@ Do not make controller logic responsible for tool algorithms. It only creates to
 Use conservative comfort defaults:
 
 - moderate movement speed,
-- snap turn or slow smooth turn option,
+- continuous controller turning,
 - no jump,
 - no forced camera animation,
 - stable horizon,

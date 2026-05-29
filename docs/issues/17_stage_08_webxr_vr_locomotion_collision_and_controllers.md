@@ -200,7 +200,7 @@ Required behavior:
 - do not change pitch,
 - preserve stable horizon.
 
-Do not add snap turning in this issue.
+All artificial controller turning in this issue should be continuous rotation.
 
 Document narrowed-view locomotion comfort as later work. It is a good candidate for reducing nausea during artificial movement, but it should not be part of this first implementation pass.
 
