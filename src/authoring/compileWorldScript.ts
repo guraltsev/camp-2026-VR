@@ -1,5 +1,6 @@
 import type { CellComplexSpec } from "../cell-complex/specs";
 import { worldObjectLibrary } from "../world-objects/library";
+import { worldFloorTextureLibrary } from "../world-assets/floorTextures";
 import { createWorldBuilder } from "./worldBuilder";
 
 export interface CompileWorldScriptOptions {
@@ -12,6 +13,7 @@ export function compileWorldScript(sourceText: string, options: CompileWorldScri
     PolygonFace: builder.PolygonFace,
     Portal: builder.Portal,
     OnFace: builder.OnFace,
+    ...worldFloorTextureLibrary,
     ...worldObjectLibrary,
   } as const;
   const assignedValues = new Map<string, unknown>();

@@ -4,10 +4,15 @@ triangle = [
   [-11.5, 6.666666666666667],
 ];
 
-PolygonFace("face-a", "#d95f5f", triangle);
-PolygonFace("face-b", "#4f9d69", triangle);
-PolygonFace("face-c", "#5f79d9", triangle);
-PolygonFace("face-d", "#d9b44f", triangle);
+grass_floor = floorTexture("grass1");
+leaves_floor = floorTexture("forest_leaves");
+pebble_floor = floorTexture("river_pebbles");
+sand_floor = floorTexture("gravelly_sand");
+
+PolygonFace("face-a", grass_floor, triangle);
+PolygonFace("face-b", leaves_floor, triangle);
+PolygonFace("face-c", pebble_floor, triangle);
+PolygonFace("face-d", sand_floor, triangle);
 
 Portal("face-a", 0, "face-d", 1);
 Portal("face-a", 1, "face-b", 1);
@@ -16,33 +21,37 @@ Portal("face-b", 0, "face-c", 2);
 Portal("face-b", 2, "face-d", 0);
 Portal("face-c", 0, "face-d", 2);
 
-face_a_house = house("face-a-centerpiece", {
+face_a_house = small_house("face-a-centerpiece", {
   position: [0, 0, 0],
-  scale: 3,
+  scale: 0.9,
 });
 
-face_a_marmot = geodesic_marmot("face-a-geodesci-marmot", {
+face_a_mouse = geo_mouse("face-a-geo-mouse", {
   position: [-2.2, 0, 2.2],
-  scale: 1.05,
-  velocity: [1.6, -0.7],
+  turn: 114,
+  speed: 1.7,
+  oscillationRate: 1.4,
+  oscillationMagnitude: 0.15,
 });
 
-face_b_campfire = campfire("face-b-centerpiece", {
-  position: [0, 0, 0],
-  scale: 2,
+face_b_butterfly = geo_butterfly("face-b-centerpiece", {
+  position: [0, 1.5, 0],
+  turn: 20,
+  speed: 0.7,
+  oscillationRate: 1.3,
+  oscillationMagnitude: 0.25,
 });
 
 face_c_tree = tree("face-c-centerpiece", {
   position: [0, 0, 0],
-  scale: 1,
 });
 
-face_d_rocks = rocks("face-d-centerpiece", {
+face_d_grass = grass("face-d-centerpiece", {
   position: [0, 0, 0],
-  scale: 2,
+  scale: 1.2,
 });
 
-OnFace("face-a", [face_a_house, face_a_marmot]);
-OnFace("face-b", [face_b_campfire]);
+OnFace("face-a", [face_a_house, face_a_mouse]);
+OnFace("face-b", [face_b_butterfly]);
 OnFace("face-c", [face_c_tree]);
-OnFace("face-d", [face_d_rocks]);
+OnFace("face-d", [face_d_grass]);

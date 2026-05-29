@@ -12,11 +12,11 @@ triangle = [
   [2, 3],
 ];
 
-PolygonFace("triangle-room", "#f6c04d", triangle);
+PolygonFace("triangle-room", floorTexture("grass1"), triangle);
 OnFace("triangle-room", [
   tree("triangle-tree", {
     position: [0, 0, 0],
-    scale: 1.2,
+    scale: 0.1,
   }),
 ]);
 `);
@@ -32,8 +32,12 @@ OnFace("triangle-room", [
             { x: 2, y: 3 },
           ],
           visuals: {
-            floorColor: "#f6c04d",
-            objects: [{ id: "triangle-tree", assetPath: "low_poly_tree_wind/scene.gltf" }],
+            floorColor: "#5b8f48",
+            floorMaterial: {
+              kind: "floor-texture",
+              name: "grass1",
+            },
+            objects: [{ id: "triangle-tree", assetPath: "Tree1/Tree.glb" }],
           },
         },
       ],

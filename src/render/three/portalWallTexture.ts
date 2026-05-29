@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { publicAssetUrl } from "../../glue/assetUrls";
+import { legacyPublicAssetUrl } from "../../glue/assetUrls";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 
-export const PORTAL_WALL_TEXTURE_FILE = "abstract-fractal-geometric-figure-background-with-texture.jpg";
-export const PORTAL_WALL_TEXTURE_URL = publicAssetUrl(PORTAL_WALL_TEXTURE_FILE);
+export const PORTAL_WALL_TEXTURE_FILE = "_legacy/abstract-fractal-geometric-figure-background-with-texture.jpg";
+export const PORTAL_WALL_TEXTURE_URL = legacyPublicAssetUrl("abstract-fractal-geometric-figure-background-with-texture.jpg");
 
 export function createPortalWallMaterial(
   repeatX: number,

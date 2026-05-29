@@ -10,6 +10,7 @@ import {
 import { buildDecorationMesh } from "./buildDecorationMesh";
 import { buildPortalMesh } from "./buildPortalMesh";
 import { isGeodesciMarmotObjectSpec } from "../../world-objects/geodesciMarmot";
+import { isSimpleGeoCreatureObjectSpec } from "../../world-objects/simpleGeoCreature";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
 
@@ -34,7 +35,7 @@ export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOpt
     })),
   };
 
-  group.add(buildFloorMesh(cell));
+  group.add(buildFloorMesh(cell, options.assets));
   group.add(buildCeilingMesh(cell));
   group.add(buildSideWalls(cell, options.assets, options.debugLevel, options.portalPanelMode));
   group.add(buildFloorOutline(cell));
@@ -44,7 +45,7 @@ export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOpt
   }
 
   for (const objectSpec of cell.objects) {
-    if (isGeodesciMarmotObjectSpec(objectSpec)) {
+    if (isGeodesciMarmotObjectSpec(objectSpec) || isSimpleGeoCreatureObjectSpec(objectSpec)) {
       continue;
     }
 
@@ -54,7 +55,7 @@ export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOpt
   return group;
 }
 
-function buildFloorMesh(cell: CompiledPrismCell): THREE.Object3D {
+function buildFloorMesh(cell: CompiledPrismCell, assets: PreparedWorldAssets): THREE.Object3D {
   const shape = new THREE.Shape();
   const first = cell.baseVertices[0];
 
@@ -75,10 +76,83 @@ function buildFloorMesh(cell: CompiledPrismCell): THREE.Object3D {
     metalness: 0,
     side: THREE.DoubleSide,
   });
+  material.userData.floorMaterialKind = cell.floorMaterial.kind;
+  material.normalScale = new THREE.Vector2(0.8, 0.8);
+
+  if (cell.floorMaterial.kind === "floor-texture" && cell.floorMaterial.colorTexturePath) {
+    const preparedColorTexture = assets.getTexture(cell.floorMaterial.colorTexturePath);
+
+    if (!preparedColorTexture) {
+      throw new Error(`Floor texture was not preloaded: ${cell.floorMaterial.colorTexturePath}`);
+    }
+
+    const texture = preparedColorTexture.clone();
+    texture.colorSpace = THREE.SRGBColorSpace;
+    configureRepeatedTexture(texture, cell.baseVertices, cell.floorMaterial.tileSizeMeters);
+    material.map = texture;
+    material.userData.textureUrl = cell.floorMaterial.colorTexturePath;
+  }
+
+  if (cell.floorMaterial.kind === "floor-texture" && cell.floorMaterial.bumpTexturePath) {
+    const preparedBumpTexture = assets.getTexture(cell.floorMaterial.bumpTexturePath);
+
+    if (!preparedBumpTexture) {
+      throw new Error(`Floor bump texture was not preloaded: ${cell.floorMaterial.bumpTexturePath}`);
+    }
+
+    const texture = preparedBumpTexture.clone();
+    texture.colorSpace = THREE.NoColorSpace;
+    configureRepeatedTexture(texture, cell.baseVertices, cell.floorMaterial.tileSizeMeters);
+    material.bumpMap = texture;
+    material.bumpScale = 0.12;
+    material.userData.bumpTextureUrl = cell.floorMaterial.bumpTexturePath;
+  }
+
+  if (cell.floorMaterial.kind === "floor-texture" && cell.floorMaterial.roughnessTexturePath) {
+    const preparedRoughnessTexture = assets.getTexture(cell.floorMaterial.roughnessTexturePath);
+
+    if (!preparedRoughnessTexture) {
+      throw new Error(`Floor roughness texture was not preloaded: ${cell.floorMaterial.roughnessTexturePath}`);
+    }
+
+    const texture = preparedRoughnessTexture.clone();
+    texture.colorSpace = THREE.NoColorSpace;
+    configureRepeatedTexture(texture, cell.baseVertices, cell.floorMaterial.tileSizeMeters);
+    material.roughnessMap = texture;
+    material.userData.roughnessTextureUrl = cell.floorMaterial.roughnessTexturePath;
+  }
+
+  material.needsUpdate = true;
 
   const floor = new THREE.Mesh(geometry, material);
   floor.name = `floor:${cell.id}`;
   return floor;
+}
+
+function floorTextureRepeat(
+  vertices: readonly { readonly x: number; readonly y: number }[],
+  tileSizeMeters: number,
+): number {
+  if (tileSizeMeters <= 0) {
+    return 1;
+  }
+
+  const xs = vertices.map((vertex) => vertex.x);
+  const ys = vertices.map((vertex) => vertex.y);
+  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  return Math.max(span / tileSizeMeters, 0.01);
+}
+
+function configureRepeatedTexture(
+  texture: THREE.Texture,
+  vertices: readonly { readonly x: number; readonly y: number }[],
+  tileSizeMeters: number,
+): void {
+  const repeat = floorTextureRepeat(vertices, tileSizeMeters);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeat, repeat);
+  texture.needsUpdate = true;
 }
 
 function buildCeilingMesh(cell: CompiledPrismCell): THREE.Object3D {

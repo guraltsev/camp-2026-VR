@@ -5,26 +5,27 @@ square = [
   [-7.5, 7.5],
 ];
 
-PolygonFace("room-a", "#d95f5f", square);
-PolygonFace("room-b", "#5f79d9", square);
+PolygonFace("room-a", floorTexture("grass1"), square);
+PolygonFace("room-b", floorTexture("snow"), square);
 
 Portal("room-a", 1, "room-b", 3);
 
-room_a_house = house("room-a-house", {
+room_a_house = small_house("room-a-house", {
   position: [0, 0, 0],
-  scale: 3,
+  scale: 0.9,
 });
 
-room_a_marmot = geodesic_marmot("room-a-geodesci-marmot", {
+room_a_mouse = geo_mouse("room-a-geo-mouse", {
   position: [-4.6, 0, 1.4],
-  scale: 1.05,
-  velocity: [2.7, 0.8],
+  turn: 74,
+  speed: 2.8,
+  oscillationRate: 1.5,
+  oscillationMagnitude: 0.2,
 });
 
-room_b_clock = clock("room-b-clock", {
+room_b_tree = tree("room-b-tree", {
   position: [0, 0, 0],
-  scale: 2,
 });
 
-OnFace("room-a", [room_a_house, room_a_marmot]);
-OnFace("room-b", [room_b_clock]);
+OnFace("room-a", [room_a_house, room_a_mouse]);
+OnFace("room-b", [room_b_tree]);

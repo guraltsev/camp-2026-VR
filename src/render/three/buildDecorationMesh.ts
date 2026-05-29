@@ -4,7 +4,7 @@ import { runtimeDiagnostics } from "./runtimeDiagnostics";
 import type { PreparedGltfAsset, PreparedWorldAssets } from "./preloadWorldAssets";
 import { worldPointToThree, worldYawRadiansToThree } from "./worldAxes";
 
-export const staticMarmotAssetPath = "racoon-animation/scene.gltf";
+export const staticMarmotAssetPath = "_legacy/racoon-animation/scene.gltf";
 
 export function buildDecorationMesh(
   cellId: string,
@@ -26,7 +26,13 @@ function buildStaticAssetMesh(
   const group = new THREE.Group();
   group.name = `decoration:${objectSpec.id}`;
   group.position.copy(worldPointToThree(objectSpec.position));
-  group.rotation.y = worldYawRadiansToThree(objectSpec.yawRadians ?? 0);
+  if (objectSpec.modelOffset) {
+    group.position.add(worldPointToThree(objectSpec.modelOffset));
+  }
+  group.rotation.set(0, 0, 0);
+  group.rotateX(objectSpec.forwardTiltRadians ?? 0);
+  group.rotateZ(objectSpec.sideTiltRadians ?? 0);
+  group.rotateY(worldYawRadiansToThree(objectSpec.turnRadians ?? objectSpec.yawRadians ?? 0));
   const diagnostics = runtimeDiagnostics();
 
   if (objectSpec.scaleXYZ) {

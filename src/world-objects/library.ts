@@ -1,5 +1,6 @@
 import type { CellObjectSpec, GeodesciMarmotObjectSpec } from "../cell-complex/specs";
 import { createGeodesciMarmot } from "./geodesciMarmot";
+import { createSimpleGeoCreature, type SimpleGeoCreatureAuthoringParams } from "./simpleGeoCreature";
 import { createStaticAssetObject, type StaticObjectAuthoringParams } from "./staticAssets";
 
 const libraryObjectBrand = Symbol("world-library-object");
@@ -15,27 +16,41 @@ export type WorldLibraryObjectSpec = CellObjectSpec & {
 };
 
 export interface WorldObjectLibrary {
+  readonly small_house: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
+  readonly tree: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
+  readonly grass: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
+  readonly geo_mouse: (name: string, params: SimpleGeoCreatureAuthoringParams) => WorldLibraryObjectSpec;
+  readonly geo_butterfly: (name: string, params: SimpleGeoCreatureAuthoringParams) => WorldLibraryObjectSpec;
   readonly house: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   readonly clock: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   readonly campfire: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
-  readonly tree: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   readonly rocks: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   readonly emergency_button: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   readonly geodesic_marmot: (name: string, params: GeodesicMarmotAuthoringParams) => WorldLibraryObjectSpec;
 }
 
 export const worldObjectLibrary: WorldObjectLibrary = {
-  house: (name, params) => createStaticLibraryObject(name, "house-low-poly/scene.gltf", params),
-  clock: (name, params) => createStaticLibraryObject(name, "clock_low_poly/scene.gltf", params),
-  campfire: (name, params) => createStaticLibraryObject(name, "low_poly_campfire/scene.gltf", params),
-  tree: (name, params) =>
-    createStaticLibraryObject(name, "low_poly_tree_wind/scene.gltf", {
+  small_house: (name, params) =>
+    createStaticLibraryObject(name, "small_house/Small House.glb", {
       ...params,
-      scaleXYZ: treeScaleXYZ(params.scale),
+      scale: (params.scale ?? 1) * 2.5,
+      modelOffset: [0, (params.scale ?? 1) * 2.5 * 0.5, 0],
     }),
-  rocks: (name, params) => createStaticLibraryObject(name, "low_poly_rocks/scene.gltf", params),
-  emergency_button: (name, params) =>
-    createStaticLibraryObject(name, "low_poly_emergency_button/scene.gltf", params),
+  tree: (name, params) =>
+    createStaticLibraryObject(name, "Tree1/Tree.glb", {
+      ...params,
+      scaleXYZ: treeScaleXYZ(params.scale ?? 1),
+    }),
+  grass: (name, params) => createStaticLibraryObject(name, "grass1/Grass.glb", params),
+  geo_mouse: (name, params) =>
+    brandLibraryObject(createSimpleGeoCreature("geo-mouse", name, "mouse/Mouse.glb", params)),
+  geo_butterfly: (name, params) =>
+    brandLibraryObject(createSimpleGeoCreature("geo-butterfly", name, "butterfly/Butterfly.glb", params)),
+  house: (name, params) => worldObjectLibrary.small_house(name, params),
+  clock: (name, params) => worldObjectLibrary.small_house(name, params),
+  campfire: (name, params) => createStaticLibraryObject(name, "grass1/Grass.glb", params),
+  rocks: (name, params) => createStaticLibraryObject(name, "grass1/Grass.glb", params),
+  emergency_button: (name, params) => worldObjectLibrary.small_house(name, params),
   geodesic_marmot: (name, params) =>
     brandLibraryObject(
       createGeodesciMarmot({
@@ -71,7 +86,8 @@ function createStaticLibraryObject(
 }
 
 function treeScaleXYZ(scale = 1): readonly [number, number, number] {
-  return [scale / 1.5, scale * 2.5, scale / 1.5];
+  const assetScale = scale * 0.02;
+  return [assetScale / 1.5, assetScale * 2.5, assetScale / 1.5];
 }
 
 function brandLibraryObject<T extends CellObjectSpec | GeodesciMarmotObjectSpec>(objectSpec: T): T & WorldLibraryObjectSpec {

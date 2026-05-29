@@ -6,18 +6,25 @@ pentagon = [
   [-7.608452130361229, -2.4721359549995787],
 ];
 
-PolygonFace("top", "#d95f5f", pentagon);
-PolygonFace("upper-0", "#4f9d69", pentagon);
-PolygonFace("upper-1", "#5f79d9", pentagon);
-PolygonFace("upper-2", "#d9b44f", pentagon);
-PolygonFace("upper-3", "#8f6ed5", pentagon);
-PolygonFace("upper-4", "#4fb8c7", pentagon);
-PolygonFace("lower-0", "#d76f9f", pentagon);
-PolygonFace("lower-1", "#73a857", pentagon);
-PolygonFace("lower-2", "#d08b49", pentagon);
-PolygonFace("lower-3", "#56a6a6", pentagon);
-PolygonFace("lower-4", "#a06fc0", pentagon);
-PolygonFace("bottom", "#c0a35c", pentagon);
+grass_floor = floorTexture("grass1");
+leaves_floor = floorTexture("forest_leaves");
+pebble_floor = floorTexture("river_pebbles");
+sand_floor = floorTexture("gravelly_sand");
+mud_floor = floorTexture("red_mud_stones");
+snow_floor = floorTexture("snow");
+
+PolygonFace("top", grass_floor, pentagon);
+PolygonFace("upper-0", leaves_floor, pentagon);
+PolygonFace("upper-1", pebble_floor, pentagon);
+PolygonFace("upper-2", sand_floor, pentagon);
+PolygonFace("upper-3", mud_floor, pentagon);
+PolygonFace("upper-4", snow_floor, pentagon);
+PolygonFace("lower-0", grass_floor, pentagon);
+PolygonFace("lower-1", leaves_floor, pentagon);
+PolygonFace("lower-2", pebble_floor, pentagon);
+PolygonFace("lower-3", sand_floor, pentagon);
+PolygonFace("lower-4", mud_floor, pentagon);
+PolygonFace("bottom", snow_floor, pentagon);
 
 Portal("top", 0, "upper-0", 0);
 Portal("top", 1, "upper-1", 0);
@@ -55,55 +62,58 @@ Portal("bottom", 2, "lower-2", 2);
 Portal("bottom", 3, "lower-3", 2);
 Portal("bottom", 4, "lower-4", 2);
 
-top_clock = clock("top-clock", {
+top_house = small_house("top-house", {
   position: [0, 0, 0],
-  scale: 2,
+  scale: 0.9,
 });
 
-top_marmot = geodesic_marmot("top-geodesci-marmot", {
+top_mouse = geo_mouse("top-geo-mouse", {
   position: [-3.2, 0, -1.7],
-  scale: 1.05,
-  velocity: [1.8, 0.75],
+  turn: 67,
+  speed: 1.9,
+  oscillationRate: 1.4,
+  oscillationMagnitude: 0.16,
 });
 
-upper_0_house = house("upper-0-house", {
+upper_0_house = small_house("upper-0-house", {
   position: [-1.6, 0, 0.8],
-  scale: 3,
-  yaw: 0.35,
+  scale: 0.85,
+  turn: 20,
 });
 
 upper_1_tree = tree("upper-1-tree", {
   position: [0.6, 0, 0.4],
-  scale: 1,
-  yaw: -0.4,
+  turn: -23,
 });
 
-upper_2_campfire = campfire("upper-2-campfire", {
-  position: [0.2, 0, -0.7],
-  scale: 2,
+upper_2_butterfly = geo_butterfly("upper-2-butterfly", {
+  position: [0.2, 1.5, -0.7],
+  turn: 40,
+  speed: 0.8,
+  oscillationRate: 1.5,
+  oscillationMagnitude: 0.28,
 });
 
-upper_3_button = emergency_button("upper-3-button", {
+upper_3_grass = grass("upper-3-grass", {
   position: [0.3, 0, 0.1],
-  scale: 2,
-  yaw: 0.5,
+  scale: 1.1,
+  turn: 29,
 });
 
-upper_4_rocks = rocks("upper-4-rocks", {
+upper_4_tree = tree("upper-4-tree", {
   position: [-0.5, 0, -0.5],
-  scale: 2,
-  yaw: -0.25,
+  turn: -14,
 });
 
-bottom_campfire = campfire("bottom-campfire", {
+bottom_house = small_house("bottom-house", {
   position: [0, 0, 0],
-  scale: 2,
+  scale: 0.8,
 });
 
-OnFace("top", [top_clock, top_marmot]);
+OnFace("top", [top_house, top_mouse]);
 OnFace("upper-0", [upper_0_house]);
 OnFace("upper-1", [upper_1_tree]);
-OnFace("upper-2", [upper_2_campfire]);
-OnFace("upper-3", [upper_3_button]);
-OnFace("upper-4", [upper_4_rocks]);
-OnFace("bottom", [bottom_campfire]);
+OnFace("upper-2", [upper_2_butterfly]);
+OnFace("upper-3", [upper_3_grass]);
+OnFace("upper-4", [upper_4_tree]);
+OnFace("bottom", [bottom_house]);

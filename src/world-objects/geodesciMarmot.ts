@@ -35,7 +35,7 @@ export function createGeodesciMarmot(options: CreateGeodesciMarmotOptions): Geod
   return {
     id: options.id,
     kind: "geodesci-marmot",
-    assetPath: "racoon-animation/scene.gltf",
+    assetPath: "_legacy/racoon-animation/scene.gltf",
     position: options.position,
     scale: options.scale ?? defaultScale,
     yawRadians: yawFromVelocity(options.velocity),

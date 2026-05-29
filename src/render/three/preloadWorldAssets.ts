@@ -23,6 +23,18 @@ export async function preloadWorldAssets(world: CompiledCellComplex): Promise<Pr
   const gltfs = new Map<string, GLTF>();
 
   for (const cell of world.cells) {
+    if (cell.floorMaterial.kind === "floor-texture") {
+      for (const assetPath of [
+        cell.floorMaterial.colorTexturePath,
+        cell.floorMaterial.bumpTexturePath,
+        cell.floorMaterial.roughnessTexturePath,
+      ]) {
+        if (assetPath) {
+          assetPaths.add(assetPath);
+        }
+      }
+    }
+
     for (const object of cell.objects) {
       assetPaths.add(object.assetPath);
     }
@@ -47,6 +59,21 @@ export async function preloadWorldAssets(world: CompiledCellComplex): Promise<Pr
       );
     }),
     ...[...assetPaths].map((assetPath) => {
+      if (isTextureAssetPath(assetPath)) {
+        diagnostics.recordPreloadStart(assetPath, "texture");
+        return textureLoader.loadAsync(publicAssetUrl(assetPath)).then(
+          (texture) => {
+            textures.set(assetPath, texture);
+            diagnostics.recordPreloadComplete(assetPath, "texture");
+            return texture;
+          },
+          (error: unknown) => {
+            diagnostics.recordPreloadError(assetPath, "texture", error);
+            throw error;
+          },
+        );
+      }
+
       diagnostics.recordPreloadStart(assetPath, "gltf");
       return gltfLoader.loadAsync(publicAssetUrl(assetPath)).then(
         (gltf) => {
@@ -79,4 +106,8 @@ export async function preloadWorldAssets(world: CompiledCellComplex): Promise<Pr
       };
     },
   };
+}
+
+function isTextureAssetPath(assetPath: string): boolean {
+  return /\.(avif|jpe?g|png|webp)$/i.test(assetPath);
 }

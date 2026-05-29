@@ -5,20 +5,22 @@ square = [
   [-7.5, 7.5],
 ];
 
-PolygonFace("torus-room", "#4fb8c7", square);
+PolygonFace("torus-room", floorTexture("river_pebbles"), square);
 
 Portal("torus-room", 0, "torus-room", 2);
 Portal("torus-room", 1, "torus-room", 3);
 
-torus_clock = clock("torus-center-clock", {
+torus_house = small_house("torus-center-house", {
   position: [0, 0, 0],
-  scale: 2,
+  scale: 0.9,
 });
 
-torus_marmot = geodesic_marmot("torus-geodesci-marmot", {
+torus_mouse = geo_mouse("torus-geo-mouse", {
   position: [-4.4, 0, 1.1],
-  scale: 1.05,
-  velocity: [2.5, 0.9],
+  turn: 70,
+  speed: 2.7,
+  oscillationRate: 1.7,
+  oscillationMagnitude: 0.18,
 });
 
-OnFace("torus-room", [torus_clock, torus_marmot]);
+OnFace("torus-room", [torus_house, torus_mouse]);

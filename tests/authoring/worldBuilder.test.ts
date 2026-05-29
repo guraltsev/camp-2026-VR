@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createWorldBuilder, authorSideToSideIndex } from "../../src/authoring/worldBuilder";
 import { createConvexPrismBaseVertices } from "../../src/cell-complex/prismBase";
 import { worldObjectLibrary } from "../../src/world-objects/library";
+import { worldFloorTextureLibrary } from "../../src/world-assets/floorTextures";
 
 const squareBase = createConvexPrismBaseVertices([
   [-1, -1],
@@ -32,6 +33,25 @@ describe("worldBuilder", () => {
         floorColor: "#d95f5f",
         objects: [],
       },
+    });
+  });
+
+  it("creates polygon faces with named floor materials", () => {
+    const builder = createWorldBuilder();
+
+    builder.PolygonFace("front", worldFloorTextureLibrary.floorTexture("grass1"), squareBase);
+
+    const spec = builder.build();
+
+    expect(spec.cells[0]?.visuals).toMatchObject({
+      floorColor: "#5b8f48",
+      floorMaterial: {
+        kind: "floor-texture",
+        name: "grass1",
+        floorColor: "#5b8f48",
+        tileSizeMeters: 60,
+      },
+      objects: [],
     });
   });
 
@@ -94,14 +114,15 @@ describe("worldBuilder", () => {
     builder.PolygonFace("front", "#f00", squareBase);
 
     builder.OnFace("front", [
-      worldObjectLibrary.house("front-house", {
+      worldObjectLibrary.small_house("front-house", {
         position: [-0.5, 0, 0.25],
         scale: 3,
-        yaw: 0.2,
+        turn: 12,
       }),
-      worldObjectLibrary.geodesic_marmot("front-runner", {
+      worldObjectLibrary.geo_mouse("front-runner", {
         position: [-0.8, 0, -0.2],
-        velocity: [1.2, 0.4],
+        turn: 72,
+        speed: 1.3,
       }),
     ]);
 
@@ -111,14 +132,14 @@ describe("worldBuilder", () => {
       {
         id: "front-house",
         kind: "asset",
-        position: { x: -0.5, y: 0, z: 0.25 },
+        position: { x: -0.5, y: 0.25, z: 0 },
       },
       {
         id: "front-runner",
-        kind: "geodesci-marmot",
+        kind: "geo-mouse",
         position: { x: -0.8, y: -0.2, z: 0 },
-        velocity: { x: 1.2, y: 0.4 },
-        yawRadians: Math.atan2(1.2, 0.4),
+        speedMetersPerSecond: 1.3,
+        yawRadians: (72 * Math.PI) / 180,
       },
     ]);
   });

@@ -26,7 +26,25 @@ export interface CompiledPortal extends AuthoredPortalSpec {
 
 export interface PrismCellVisualSpec {
   readonly floorColor?: string;
+  readonly floorMaterial?: FloorMaterialSpec;
   readonly objects?: readonly CellObjectSpec[];
+}
+
+export type FloorMaterialSpec = FloorColorMaterialSpec | FloorTextureMaterialSpec;
+
+export interface FloorColorMaterialSpec {
+  readonly kind: "floor-color";
+  readonly floorColor: string;
+}
+
+export interface FloorTextureMaterialSpec {
+  readonly kind: "floor-texture";
+  readonly name: string;
+  readonly floorColor: string;
+  readonly tileSizeMeters: number;
+  readonly colorTexturePath?: string;
+  readonly bumpTexturePath?: string;
+  readonly roughnessTexturePath?: string;
 }
 
 export interface PositionedCellObjectSpec {
@@ -34,6 +52,10 @@ export interface PositionedCellObjectSpec {
   readonly position: { readonly x: number; readonly y: number; readonly z: number };
   readonly scale?: number;
   readonly scaleXYZ?: { readonly x: number; readonly y: number; readonly z: number };
+  readonly modelOffset?: { readonly x: number; readonly y: number; readonly z: number };
+  readonly forwardTiltRadians?: number;
+  readonly sideTiltRadians?: number;
+  readonly turnRadians?: number;
   readonly yawRadians?: number;
 }
 
@@ -57,4 +79,13 @@ export interface GeodesciMarmotObjectSpec extends PositionedCellObjectSpec {
   readonly animationClipName?: string;
 }
 
-export type CellObjectSpec = AssetObjectSpec | GeodesciMarmotObjectSpec;
+export interface SimpleGeoCreatureObjectSpec extends PositionedCellObjectSpec {
+  readonly kind: "geo-mouse" | "geo-butterfly";
+  readonly assetPath: string;
+  readonly speedMetersPerSecond: number;
+  readonly oscillationRateHz: number;
+  readonly oscillationMagnitudeMeters: number;
+  readonly collision: SimpleCollisionBoxSpec;
+}
+
+export type CellObjectSpec = AssetObjectSpec | GeodesciMarmotObjectSpec | SimpleGeoCreatureObjectSpec;

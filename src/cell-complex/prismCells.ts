@@ -1,4 +1,4 @@
-import type { AuthoredPortalSpec, CellObjectSpec, CompiledPortal, PrismCellSpec } from "./specs";
+import type { AuthoredPortalSpec, CellObjectSpec, CompiledPortal, FloorMaterialSpec, PrismCellSpec } from "./specs";
 import {
   forbiddenPortalJunctionRadiusMeters,
   type ForbiddenZone,
@@ -17,6 +17,7 @@ export interface CompiledPrismCellGeometry {
   readonly singularityColumns: readonly SingularityCollisionColumn[];
   readonly forbiddenZones: readonly ForbiddenZone[];
   readonly floorColor: string;
+  readonly floorMaterial: FloorMaterialSpec;
   readonly objects: readonly CellObjectSpec[];
 }
 
@@ -81,6 +82,10 @@ export function compilePrismCellGeometry(spec: PrismCellSpec): CompiledPrismCell
     singularityColumns,
     forbiddenZones,
     floorColor: spec.visuals?.floorColor ?? "#3f6f7a",
+    floorMaterial: spec.visuals?.floorMaterial ?? {
+      kind: "floor-color",
+      floorColor: spec.visuals?.floorColor ?? "#3f6f7a",
+    },
     objects: spec.visuals?.objects ?? [],
   };
 }

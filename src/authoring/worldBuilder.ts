@@ -1,6 +1,13 @@
-import type { AuthoredPortalSpec, CellComplexSpec, CellObjectSpec, PrismCellSpec } from "../cell-complex/specs";
+import type {
+  AuthoredPortalSpec,
+  CellComplexSpec,
+  CellObjectSpec,
+  FloorMaterialSpec,
+  PrismCellSpec,
+} from "../cell-complex/specs";
 import { createConvexPrismBaseVertices, type ConvexPrismBaseVertices } from "../cell-complex/prismBase";
 import { isWorldLibraryObjectSpec, type WorldLibraryObjectSpec } from "../world-objects/library";
+import { normalizeFloorMaterial, type WorldFloorMaterialSpec } from "../world-assets/floorTextures";
 
 const defaultHeightMeters = 15;
 
@@ -11,12 +18,13 @@ interface MutableCell {
   readonly portals: AuthoredPortalSpec[];
   readonly visuals: {
     floorColor: string;
+    floorMaterial: FloorMaterialSpec;
     objects: CellObjectSpec[];
   };
 }
 
 export interface WorldBuilder {
-  PolygonFace(name: string, color: string, vertices: ConvexPrismBaseVertices): void;
+  PolygonFace(name: string, floor: string | WorldFloorMaterialSpec, vertices: ConvexPrismBaseVertices): void;
   Portal(face1: string, side1: number, face2: string, side2: number): void;
   OnFace(faceName: string, objects: readonly WorldLibraryObjectSpec[]): void;
   build(): CellComplexSpec;
@@ -28,7 +36,7 @@ export function createWorldBuilder(): WorldBuilder {
   const objectIds = new Set<string>();
 
   return {
-    PolygonFace(name, color, vertices) {
+    PolygonFace(name, floor, vertices) {
       if (cells.has(name)) {
         throw new Error(`Duplicate face "${name}".`);
       }
@@ -39,6 +47,7 @@ export function createWorldBuilder(): WorldBuilder {
 
       const validatedVertices = createConvexPrismBaseVertices(vertices);
       const normalizedVertices = validatedVertices.map((vertex, index) => normalizeVertex(name, vertex, index));
+      const floorMaterial = normalizeFloorMaterial(floor);
 
       cells.set(name, {
         id: name,
@@ -46,7 +55,8 @@ export function createWorldBuilder(): WorldBuilder {
         baseVertices: normalizedVertices,
         portals: [],
         visuals: {
-          floorColor: color,
+          floorColor: floorMaterial.floorColor,
+          floorMaterial,
           objects: [],
         },
       });
@@ -125,6 +135,7 @@ export function createWorldBuilder(): WorldBuilder {
           portals: [...cell.portals],
           visuals: {
             floorColor: cell.visuals.floorColor,
+            floorMaterial: cell.visuals.floorMaterial,
             objects: [...cell.visuals.objects],
           },
         })),

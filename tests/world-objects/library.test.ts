@@ -4,75 +4,45 @@ import { worldObjectLibrary } from "../../src/world-objects/library";
 describe("worldObjectLibrary", () => {
   it("maps static wrappers to the expected asset paths and ids", () => {
     expect(
-      worldObjectLibrary.house("front-house", {
+      worldObjectLibrary.small_house("front-house", {
         position: [-1, 0, 2],
         scale: 3,
-        yaw: 0.25,
+        turn: 15,
       }),
     ).toMatchObject({
       id: "front-house",
       kind: "asset",
-      assetPath: "house-low-poly/scene.gltf",
-      position: { x: -1, y: 0, z: 2 },
-      scale: 3,
-      yawRadians: 0.25,
+      assetPath: "small_house/Small House.glb",
+      position: { x: -1, y: 2, z: 0 },
+      scale: 7.5,
+      modelOffset: { x: 0, y: 0, z: 3.75 },
+      turnRadians: Math.PI / 12,
+      yawRadians: Math.PI / 12,
     });
 
     expect(
-      worldObjectLibrary.clock("right-clock", {
+      worldObjectLibrary.tree("right-tree", {
         position: [0.5, 0, -0.5],
       }),
     ).toMatchObject({
-      id: "right-clock",
+      id: "right-tree",
       kind: "asset",
-      assetPath: "clock_low_poly/scene.gltf",
-      position: { x: 0.5, y: 0, z: -0.5 },
+      assetPath: "Tree1/Tree.glb",
+      position: { x: 0.5, y: -0.5, z: 0 },
     });
 
     expect(
-      worldObjectLibrary.campfire("back-campfire", {
+      worldObjectLibrary.grass("top-grass", {
         position: [0, 0, 0],
       }),
     ).toMatchObject({
-      id: "back-campfire",
-      assetPath: "low_poly_campfire/scene.gltf",
-    });
-
-    expect(
-      worldObjectLibrary.tree("left-tree", {
-        position: [0, 0, 0],
-      }),
-    ).toMatchObject({
-      id: "left-tree",
-      assetPath: "low_poly_tree_wind/scene.gltf",
-      scaleXYZ: {
-        x: 1 / 1.5,
-        y: 2.5,
-        z: 1 / 1.5,
-      },
-    });
-
-    expect(
-      worldObjectLibrary.rocks("bottom-rocks", {
-        position: [0, 0, 0],
-      }),
-    ).toMatchObject({
-      id: "bottom-rocks",
-      assetPath: "low_poly_rocks/scene.gltf",
-    });
-
-    expect(
-      worldObjectLibrary.emergency_button("top-button", {
-        position: [0, 0, 0],
-      }),
-    ).toMatchObject({
-      id: "top-button",
-      assetPath: "low_poly_emergency_button/scene.gltf",
+      id: "top-grass",
+      assetPath: "grass1/Grass.glb",
     });
   });
 
   it("keeps static wrappers non-collidable by default", () => {
-    const object = worldObjectLibrary.house("front-house", {
+    const object = worldObjectLibrary.small_house("front-house", {
       position: [0, 0, 0],
     });
 
@@ -89,28 +59,50 @@ describe("worldObjectLibrary", () => {
     expect(object).toMatchObject({
       scale: 3,
       scaleXYZ: {
-        x: 2,
-        y: 7.5,
-        z: 2,
+        x: 0.04,
+        y: 0.15,
+        z: 0.04,
       },
     });
   });
 
-  it("creates geodesic marmots as dynamic specs with movement-facing yaw", () => {
-    const object = worldObjectLibrary.geodesic_marmot("front-runner", {
+  it("creates geo mice as dynamic specs with authored speed and oscillation", () => {
+    const object = worldObjectLibrary.geo_mouse("front-runner", {
       position: [-4.2, 0, -1.8],
-      velocity: [2.3, 0.65],
       scale: 1.05,
+      turn: 74,
+      speed: 2.4,
+      oscillationRate: 1.6,
+      oscillationMagnitude: 0.18,
     });
 
     expect(object).toMatchObject({
       id: "front-runner",
-      kind: "geodesci-marmot",
-      assetPath: "racoon-animation/scene.gltf",
+      kind: "geo-mouse",
+      assetPath: "mouse/Mouse.glb",
       position: { x: -4.2, y: -1.8, z: 0 },
-      velocity: { x: 2.3, y: 0.65 },
-      scale: 1.05,
-      yawRadians: Math.atan2(2.3, 0.65),
+      scale: 0.035,
+      turnRadians: (74 * Math.PI) / 180,
+      yawRadians: (74 * Math.PI) / 180,
+      speedMetersPerSecond: 2.4,
+      oscillationRateHz: 1.6,
+      oscillationMagnitudeMeters: 0.018,
+    });
+  });
+
+  it("creates geo butterflies as dynamic specs", () => {
+    const object = worldObjectLibrary.geo_butterfly("flutter", {
+      position: [1, 2, 3],
+      speed: 0.8,
+    });
+
+    expect(object).toMatchObject({
+      id: "flutter",
+      kind: "geo-butterfly",
+      assetPath: "butterfly/Butterfly.glb",
+      position: { x: 1, y: 3, z: 2 },
+      scale: 0.8,
+      speedMetersPerSecond: 0.8,
     });
   });
 });

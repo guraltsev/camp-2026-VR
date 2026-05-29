@@ -9,7 +9,7 @@ describe("buildDecorationMesh", () => {
     const objectSpec: AssetObjectSpec = {
       id: "tree",
       kind: "asset",
-      assetPath: "low_poly_tree_wind/scene.gltf",
+      assetPath: "Tree1/Tree.glb",
       position: { x: 1, y: 0, z: 2 },
     };
     const preparedScene = new THREE.Group();

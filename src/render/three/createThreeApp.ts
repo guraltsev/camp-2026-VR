@@ -22,6 +22,11 @@ import {
   type GeodesciMarmotRuntime,
 } from "../../world-objects/geodesciMarmot";
 import {
+  createSimpleGeoCreatureRuntime,
+  isSimpleGeoCreatureObjectSpec,
+  type SimpleGeoCreatureRuntime,
+} from "../../world-objects/simpleGeoCreature";
+import {
   buildCellRenderArchetypes,
   deriveCellRenderArchetypeCapacities,
   disposeCellRenderArchetypes,
@@ -158,7 +163,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const warmupViewsByCellId = new Map(
     appState.world.cells.map((cell) => [cell.id, createCellWarmupViews(cell)] as const),
   );
-  const marmotRuntimes: GeodesciMarmotRuntime[] = [];
+  const dynamicObjectRuntimes: Array<GeodesciMarmotRuntime | SimpleGeoCreatureRuntime> = [];
   const legacyObjectPortalRenderRoot = new THREE.Group();
   legacyObjectPortalRenderRoot.name = "legacy-object-portal-renders";
   scene.add(legacyObjectPortalRenderRoot);
@@ -199,13 +204,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   for (const cell of appState.world.cells) {
     for (const objectSpec of cell.objects) {
-      if (!isGeodesciMarmotObjectSpec(objectSpec)) {
+      if (isGeodesciMarmotObjectSpec(objectSpec)) {
+        const runtime = createGeodesciMarmotRuntime(objectSpec, cell.id, options.assets);
+        runtime.syncParent(cellMeshes);
+        dynamicObjectRuntimes.push(runtime);
         continue;
       }
 
-      const runtime = createGeodesciMarmotRuntime(objectSpec, cell.id, options.assets);
-      runtime.syncParent(cellMeshes);
-      marmotRuntimes.push(runtime);
+      if (isSimpleGeoCreatureObjectSpec(objectSpec)) {
+        const runtime = createSimpleGeoCreatureRuntime(objectSpec, cell.id, options.assets);
+        runtime.syncParent(cellMeshes);
+        dynamicObjectRuntimes.push(runtime);
+      }
     }
   }
   syncLegacyObjectPortalRenders();
@@ -286,7 +296,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     if (frame.resetRequested) {
       playerPose = createDefaultPlayerPose(appState.playerPose.cellId);
-      for (const runtime of marmotRuntimes) {
+      for (const runtime of dynamicObjectRuntimes) {
         runtime.reset(cellMeshes);
       }
     } else {
@@ -310,7 +320,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalDebugRuntime.syncRootCell();
     }
 
-    for (const runtime of marmotRuntimes) {
+    for (const runtime of dynamicObjectRuntimes) {
       runtime.update(appState.world, frame.resetRequested ? 0 : deltaSeconds);
       runtime.syncParent(cellMeshes);
     }
@@ -352,7 +362,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalDebugRuntime.dispose();
       portalDebugRuntime = createPortalDebugRuntime();
       logDebugStartupGuide(debugLevel, debugOptions);
-      for (const runtime of marmotRuntimes) {
+      for (const runtime of dynamicObjectRuntimes) {
         runtime.syncParent(cellMeshes);
       }
       syncLegacyObjectPortalRenders();
@@ -398,7 +408,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     for (const pathId of [...legacyObjectPortalRenderEntries.keys()]) {
       removeLegacyObjectPortalRenderEntry(pathId);
     }
-    for (const runtime of marmotRuntimes) {
+    for (const runtime of dynamicObjectRuntimes) {
       runtime.root.removeFromParent();
     }
 
