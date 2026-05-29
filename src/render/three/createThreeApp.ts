@@ -261,8 +261,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    for (const [, cellMesh] of cellMeshes) {
-      cellMesh.visible = false;
+    for (const [cellId, cellMesh] of cellMeshes) {
+      cellMesh.visible = cellId === playerPose.cellId;
     }
 
     visibleCellId = playerPose.cellId;
@@ -421,7 +421,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     for (const cell of appState.world.cells) {
       const cellMesh = new THREE.Group();
       cellMesh.name = `cell-root:${cell.id}`;
-      cellMesh.visible = false;
+      cellMesh.visible = cell.id === currentlyVisibleCellId;
       cellMeshes.set(cell.id, cellMesh);
       scene.add(cellMesh);
     }
@@ -471,7 +471,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       options: {
         maxDepth: rootRenderPathMaxDepth,
         maxVisiblePaths,
-        minPortalScreenAreaPixels: 4,
+        minPortalScreenAreaPixels: 16,
         includeRootCell: true,
         sortMode: "depth-then-area",
       },
@@ -512,6 +512,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const visiblePathIds = new Set<number>();
 
     for (const path of latestVisibleResult?.paths ?? []) {
+      if (path.depth === 0) {
+        continue;
+      }
+
       visiblePathIds.add(path.pathId);
       const cellRoot = cellMeshes.get(path.destinationCellId);
 
@@ -595,49 +599,38 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const visiblePathDebugActive = hasActiveDebugOption(debugLevel, debugOptions, "portal-visible-path-debug");
     const overlayActive = hasActiveDebugOption(debugLevel, debugOptions, "portal-path-overlays");
 
-    if (!portalPathDebugActive && !visiblePathDebugActive) {
-      if (overlayActive) {
-        logPortalOverlayGuide(false);
-      }
-      uninstallPortalDebugHelpers();
-      debugOverlay.update({ visible: false });
-      return {
-        updateVisiblePortalPaths() {},
-        syncRootCell() {},
-        dispose() {},
-      };
-    }
-
     const staticCullDebugActive = hasActiveDebugOption(debugLevel, debugOptions, "portal-static-cull-debug");
-    if (portalPathDebugActive || visiblePathDebugActive) {
+    if (portalPathDebugActive || visiblePathDebugActive || staticCullDebugActive) {
       console.info(`Portal path debug is building contextually culled path tables to depth ${rootRenderPathMaxDepth}.`);
     }
-    const staticCull = buildStaticallyCulledPortalPathTables(appState.world, {
-      maxDepth: rootRenderPathMaxDepth,
-      skipImmediateReverse: true,
-      toleranceMeters: 1e-6,
-      maxKeptPathsPerRoot: 50_000,
-      keepRejectedPathDetails: staticCullDebugActive,
-      onDepthComplete(status) {
-        if (!portalPathDebugActive) {
-          return;
-        }
+    const staticCull = staticCullDebugActive
+      ? buildStaticallyCulledPortalPathTables(appState.world, {
+          maxDepth: rootRenderPathMaxDepth,
+          skipImmediateReverse: true,
+          toleranceMeters: 1e-6,
+          maxKeptPathsPerRoot: 50_000,
+          keepRejectedPathDetails: true,
+          onDepthComplete(status) {
+            if (!portalPathDebugActive) {
+              return;
+            }
 
-        console.info(
-          [
-            "Portal path debug depth complete:",
-            `root=${status.rootCellId}`,
-            `depth=${status.depth}`,
-            `processed=${status.processedPathCount}`,
-            `accepted=${status.acceptedPathCount}`,
-            `rejected=${status.rejectedPathCount}`,
-            `keptTotal=${status.totalKeptPathCount}`,
-            `rejectedTotal=${status.totalRejectedPathCount}`,
-            `budgetExhausted=${status.budgetExhausted}`,
-          ].join(" "),
-        );
-      },
-    });
+            console.info(
+              [
+                "Portal path debug depth complete:",
+                `root=${status.rootCellId}`,
+                `depth=${status.depth}`,
+                `processed=${status.processedPathCount}`,
+                `accepted=${status.acceptedPathCount}`,
+                `rejected=${status.rejectedPathCount}`,
+                `keptTotal=${status.totalKeptPathCount}`,
+                `rejectedTotal=${status.totalRejectedPathCount}`,
+                `budgetExhausted=${status.budgetExhausted}`,
+              ].join(" "),
+            );
+          },
+        })
+      : portalStaticCull;
     const candidateTables = staticCull.tables;
     const overlays: THREE.Object3D[] = [];
     let activeOverlayPathText: string | undefined;
@@ -671,7 +664,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     };
 
     const updateSelectedClipPolygonOverlay = (): void => {
-      if (!visiblePathDebugActive || !latestVisibleResult) {
+      if (!latestVisibleResult) {
         clipPolygonOverlay.clear();
         return;
       }
@@ -722,24 +715,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             pathId: check.matchedPathId,
             destinationCellId: check.destinationCellId,
             survivedStaticCull: check.survivedStaticCull,
-            ...liveVisibilityFields(check.matchedPathId, latestVisibleResult),
-            objectCount: 0,
-          };
-        }
-
-        if (!overlayActive) {
-          hideCellPathOverlays(overlays, scene);
-          portalInstanceDebugRenderer?.clear();
-          activeOverlayPathText = pathText;
-          activeOverlayPathCheck = check;
-          removeActivePathTraceOverlay();
-          return {
-            ok: true,
-            reason: "portal-path-overlays is not active",
-            check,
-            pathId: check.matchedPathId,
-            destinationCellId: check.destinationCellId,
-            survivedStaticCull: true,
             ...liveVisibilityFields(check.matchedPathId, latestVisibleResult),
             objectCount: 0,
           };
@@ -817,17 +792,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         activeOverlayPathCheck = undefined;
       },
       ShowCellPathClipPolygon(pathText: string) {
-        if (!visiblePathDebugActive) {
-          clipPolygonOverlay.clear();
-          return {
-            ok: false,
-            reason: "portal-visible-path-debug is not active",
-            trackedPathTexts: [...selectedClipPolygonPaths.keys()],
-            currentlyVisible: false,
-            clipPolygonNdc: undefined,
-          };
-        }
-
         const check = checkPath(pathText);
         if (!check.valid || !check.survivedStaticCull || check.matchedPathId === undefined) {
           return {
@@ -913,7 +877,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           : undefined;
 
         debugOverlay.update({
-          visible: true,
+          visible: portalPathDebugActive || visiblePathDebugActive,
           visiblePortalPaths: visibleSummary,
           portalInstances: portalInstanceRenderState,
           inspectedPathLine: formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult),

@@ -191,13 +191,60 @@ export function projectRootSpacePointsToNdc(
     worldPointToThree(point).applyMatrix4(camera.matrixWorldInverse),
   );
   const near = "near" in camera && typeof camera.near === "number" ? camera.near : 0.01;
+  const nearCoplanarPolygon = projectNearCoplanarPortalToNdc(cameraSpacePoints, camera, near);
+
+  if (nearCoplanarPolygon) {
+    return nearCoplanarPolygon;
+  }
+
   const clippedCameraSpacePoints = clipCameraSpacePolygonAgainstNearPlane(cameraSpacePoints, near);
 
-  if (clippedCameraSpacePoints.length < 3) {
+  if (clippedCameraSpacePoints.length >= 3) {
+    return projectCameraSpacePointsToNdc(clippedCameraSpacePoints, camera);
+  }
+
+  if (cameraSpacePoints.every((point) => point.z < -polygonTolerance)) {
+    return projectCameraSpacePointsToNdc(cameraSpacePoints, camera);
+  }
+
+  return undefined;
+}
+
+function projectNearCoplanarPortalToNdc(
+  points: readonly THREE.Vector3[],
+  camera: THREE.Camera,
+  near: number,
+): readonly Vec2[] | undefined {
+  if (points.length < 3 || !points.some((point) => point.z < -polygonTolerance)) {
     return undefined;
   }
 
-  return clippedCameraSpacePoints.map((point) => {
+  const normal = new THREE.Vector3()
+    .subVectors(points[1], points[0])
+    .cross(new THREE.Vector3().subVectors(points[2], points[0]));
+  const normalLength = normal.length();
+
+  if (normalLength <= polygonTolerance) {
+    return undefined;
+  }
+
+  normal.divideScalar(normalLength);
+  const planeDistanceFromCamera = Math.abs(normal.dot(points[0]));
+
+  if (planeDistanceFromCamera >= near) {
+    return undefined;
+  }
+
+  const cameraPlaneClipped = clipCameraSpacePolygonAgainstNearPlane(points, Math.min(near, 1e-4));
+
+  return cameraPlaneClipped.length >= 3 ? projectCameraSpacePointsToNdc(cameraPlaneClipped, camera) : undefined;
+}
+
+function projectCameraSpacePointsToNdc(
+  cameraSpacePoints: readonly THREE.Vector3[],
+  camera: THREE.Camera,
+): readonly Vec2[] {
+  return cameraSpacePoints.map((point) => {
     const projected = new THREE.Vector4(point.x, point.y, point.z, 1).applyMatrix4(camera.projectionMatrix);
     const w = projected.w || 1;
 
