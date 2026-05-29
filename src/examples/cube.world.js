@@ -27,7 +27,7 @@ Portal("left", 2, "top", 3);
 
 front_house = house("front-house", {
   position: [-1.2, 0, 0.6],
-  scale: 3,
+  scale: 1,
   yaw: 0.2,
 });
 
@@ -51,7 +51,7 @@ back_campfire = campfire("back-campfire", {
 
 left_tree = tree("left-tree", {
   position: [-0.9, 0, 0.7],
-  scale: 1,
+  scale: 0.1,
   yaw: 0.8,
 });
 
