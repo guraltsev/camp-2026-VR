@@ -65,6 +65,7 @@ import {
   createPortalClipMaterialState,
   patchPortalClipMaterial,
   updatePortalClipMaterialViewport,
+  updatePortalClipMaterialViewportFromRenderer,
   type PortalClipMaterialState,
 } from "./portalClipMaterial";
 import {
@@ -553,6 +554,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalClipMaterialState,
     });
     for (const archetype of cellRenderArchetypes) {
+      archetype.mesh.onBeforeRender = (renderer) => {
+        updatePortalClipMaterialViewportFromRenderer(portalClipMaterialState, renderer);
+      };
       scene.add(archetype.mesh);
     }
     portalInstanceDebugRenderer = createPortalInstanceDebugRenderer(scene, cellRenderArchetypes);
@@ -561,6 +565,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function syncPortalInstanceRender(): void {
     portalInstanceDiagnostics.reset();
+    updatePortalClipMaterialViewport(
+      portalClipMaterialState,
+      getPortalViewportPixels(renderer),
+    );
     const table = portalStaticCull.tables.tablesByRootCellId.get(playerPose.cellId);
 
     if (!table) {
@@ -1595,6 +1603,9 @@ function cloneObject3DWithFreshMeshResources(
 
     child.geometry = child.geometry.clone();
     child.material = patchPortalClipMaterial(cloneMaterial(child.material), portalClipMaterialState);
+    child.onBeforeRender = (renderer) => {
+      updatePortalClipMaterialViewportFromRenderer(portalClipMaterialState, renderer);
+    };
     setGeometryPortalClipAttributes(child.geometry, portalPathId, portalClipIndex);
   });
 

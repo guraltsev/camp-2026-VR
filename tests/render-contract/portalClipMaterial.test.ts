@@ -51,13 +51,15 @@ describe("portal clip material", () => {
     expect(Object.keys(shader.uniforms)).toEqual(
       expect.arrayContaining([
         "portalClipTexture",
+        "portalViewportOriginPixels",
         "portalViewportPixels",
         "portalMaxVisiblePaths",
         "portalMaxClipVerticesPerPath",
       ]),
     );
 
-    updatePortalClipMaterialViewport(state, { width: 320, height: 240 });
+    updatePortalClipMaterialViewport(state, { width: 320, height: 240 }, { x: 12, y: 34 });
+    expect(state.uniforms.portalViewportOriginPixels.value).toMatchObject({ x: 12, y: 34 });
     expect(state.uniforms.portalViewportPixels.value).toMatchObject({ x: 320, y: 240 });
 
     clipData.dispose();
