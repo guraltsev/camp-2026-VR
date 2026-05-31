@@ -7,9 +7,11 @@ import {
 } from "../../src/render/three/vrLocomotion";
 import {
   globalHorizontalDeltaToPlayerLocal,
+  createXrPlayerRig,
   resolveSharedXrRenderRootCellId,
   xrRigidTransformLocalMatrix,
 } from "../../src/render/three/xrPlayerRig";
+import { movePlayer, type MoveResult } from "../../src/movement/movePlayer";
 
 describe("VR locomotion mapping", () => {
   it("dead-zones small stick noise", () => {
@@ -68,6 +70,37 @@ describe("VR locomotion mapping", () => {
     expect(local.x).toBeCloseTo(0);
     expect(local.y).toBeCloseTo(1);
     expect(local.z).toBe(0);
+  });
+
+  it("applies room-scale headset deltas in the current portal-transformed player basis", async () => {
+    const THREE = await import("three");
+    const rig = createXrPlayerRig(new THREE.PerspectiveCamera());
+    const accepted: MoveResult = {
+      kind: "moved",
+      pose: {
+        cellId: "room-b",
+        position: { x: 0, y: 0, z: 0 },
+        yawRadians: Math.PI,
+        pitchRadians: 0,
+      },
+      attemptedDisplacement: { x: 0, y: 0, z: 0 },
+      blocked: false,
+      crossedPortal: false,
+    };
+
+    rig.acceptPhysicalMove(accepted, { x: 0, y: 0, z: 1.6 });
+    const physicalFrame = rig.consumePhysicalInput({ x: 0, y: 0.2, z: 1.6 }, Math.PI);
+    const moved = movePlayer({
+      pose: accepted.pose,
+      localDisplacement: physicalFrame.localDisplacement,
+      yawDeltaRadians: 0,
+      pitchDeltaRadians: 0,
+      coordinateFrame: "global",
+    });
+
+    expect(physicalFrame.localDisplacement.y).toBeCloseTo(0.2);
+    expect(moved.pose.position.x).toBeCloseTo(0);
+    expect(moved.pose.position.y).toBeCloseTo(-0.2);
   });
 
   it("builds XR view matrices that survive Three camera matrix updates", async () => {

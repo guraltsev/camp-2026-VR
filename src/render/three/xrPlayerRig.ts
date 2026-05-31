@@ -110,13 +110,13 @@ export function createXrPlayerRig(camera: THREE.PerspectiveCamera, options: Part
         return cullingCamera;
       });
     },
-    consumePhysicalInput(headLocalMeters, yawRadians) {
+    consumePhysicalInput(headLocalMeters, _yawRadians) {
       const physical = computePhysicalRoomScaleDisplacement({
         previousHeadLocalMeters: previousAcceptedHeadLocalMeters,
         currentHeadLocalMeters: headLocalMeters,
         maxPhysicalStepMeters: comfort.maxPhysicalStepMeters,
       });
-      const localDisplacement = globalHorizontalDeltaToPlayerLocal(physical.localDisplacement, yawRadians);
+      const localDisplacement = physical.localDisplacement;
 
       return {
         localDisplacement,
