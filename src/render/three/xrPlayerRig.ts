@@ -13,6 +13,7 @@ export interface XrPlayerRig {
   reset(): void;
   syncDesktopCamera(pose: PlayerPose): void;
   syncXrRig(pose: PlayerPose, headLocalMeters?: Vec3): void;
+  syncXrCullingCamera(camera: THREE.PerspectiveCamera, viewerPose: XRViewerPose | undefined): void;
   consumePhysicalInput(headLocalMeters: Vec3 | undefined, yawRadians: number): RuntimeInputFrame;
   acceptPhysicalMove(result: MoveResult, currentHeadLocalMeters?: Vec3): void;
   getSharedRenderRootCellId(pose: PlayerPose): string;
@@ -69,6 +70,22 @@ export function createXrPlayerRig(camera: THREE.PerspectiveCamera, options: Part
       root.updateMatrixWorld(true);
       const rotatedHead = headThree.clone().applyQuaternion(root.quaternion);
       root.position.set(playerEye.x - rotatedHead.x, playerEye.y - rotatedHead.y, playerEye.z - rotatedHead.z);
+      root.updateMatrixWorld(true);
+    },
+    syncXrCullingCamera(cullingCamera, viewerPose) {
+      root.updateMatrixWorld(true);
+      const localMatrix = viewerPose
+        ? viewerPoseLocalMatrix(viewerPose)
+        : new THREE.Matrix4().compose(
+            new THREE.Vector3(0, DEFAULT_PLAYER_EYE_HEIGHT_METERS, 0),
+            new THREE.Quaternion(),
+            new THREE.Vector3(1, 1, 1),
+          );
+      const cullingWorldMatrix = root.matrixWorld.clone().multiply(localMatrix);
+
+      cullingWorldMatrix.decompose(cullingCamera.position, cullingCamera.quaternion, cullingCamera.scale);
+      cullingCamera.up.set(0, 1, 0);
+      cullingCamera.updateMatrixWorld(true);
     },
     consumePhysicalInput(headLocalMeters, yawRadians) {
       const physical = computePhysicalRoomScaleDisplacement({
@@ -124,4 +141,16 @@ export function headLocalMetersFromViewerPose(pose: XRViewerPose | undefined): V
   const position = pose.transform.position;
 
   return vec3(position.x, -position.z, position.y);
+}
+
+export function viewerPoseLocalMatrix(pose: XRViewerPose): THREE.Matrix4 {
+  const transform = pose.transform;
+  const position = transform.position;
+  const orientation = transform.orientation;
+
+  return new THREE.Matrix4().compose(
+    new THREE.Vector3(position.x, position.y, position.z),
+    new THREE.Quaternion(orientation.x, orientation.y, orientation.z, orientation.w),
+    new THREE.Vector3(1, 1, 1),
+  );
 }

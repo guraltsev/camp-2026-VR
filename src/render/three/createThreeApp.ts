@@ -133,6 +133,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     0.01,
     250,
   );
+  const portalCullingCamera = camera.clone();
 
   const pixelRatio = resolveRenderQualityPixelRatio(options.renderQualityEnabled, window.devicePixelRatio);
   const renderer = new THREE.WebGLRenderer({ antialias: renderAntialiasRequested });
@@ -293,8 +294,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const deltaSeconds = clock.getDelta();
     const xrActive = renderer.xr.isPresenting && xrSessionState.status === "active";
     const xrReferenceSpace = xrActive ? renderer.xr.getReferenceSpace() : null;
-    const headLocalMeters = xrActive && xrFrame && xrReferenceSpace
-      ? headLocalMetersFromViewerPose(xrFrame.getViewerPose(xrReferenceSpace))
+    const xrViewerPose = xrActive && xrFrame && xrReferenceSpace
+      ? xrFrame.getViewerPose(xrReferenceSpace)
+      : undefined;
+    const headLocalMeters = xrActive
+      ? headLocalMetersFromViewerPose(xrViewerPose)
       : undefined;
     const frame = xrActive ? getXrInputFrame(deltaSeconds) : getDesktopInputFrame(deltaSeconds);
     const frameBeforeMoveMs = performance.now();
@@ -348,11 +352,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     updateVisibleCell();
     if (xrActive) {
       xrRig.syncXrRig(playerPose, headLocalMeters);
+      portalCullingCamera.copy(camera, false);
+      xrRig.syncXrCullingCamera(portalCullingCamera, xrViewerPose);
       updateStylizedSceneLighting(sceneLighting, camera);
     } else {
       applyDesktopCameraPose();
     }
-    syncPortalInstanceRender();
+    syncPortalInstanceRender(xrActive ? portalCullingCamera : camera);
     syncLegacyObjectPortalRenders();
     syncXrDebugState(frame.source, moveResult);
     portalDebugRuntime.updateVisiblePortalPaths();
@@ -563,7 +569,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     visibleCellId = currentlyVisibleCellId;
   }
 
-  function syncPortalInstanceRender(): void {
+  function syncPortalInstanceRender(cullingCamera: THREE.Camera = camera): void {
     portalInstanceDiagnostics.reset();
     updatePortalClipMaterialViewport(
       portalClipMaterialState,
@@ -592,7 +598,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       world: appState.world,
       rootCellId: playerPose.cellId,
       pathTable: table,
-      camera,
+      camera: cullingCamera,
       viewportPixels: getPortalViewportPixels(renderer),
       options: {
         maxDepth: rootRenderPathMaxDepth,
