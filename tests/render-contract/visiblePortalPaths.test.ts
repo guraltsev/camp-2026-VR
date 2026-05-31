@@ -48,6 +48,40 @@ describe("computeVisiblePortalPaths", () => {
     expect(result.visiblePathById.get(1)?.screenAreaPixels).toBeGreaterThan(0);
   });
 
+  it("uses a conservative clip polygon across multiple culling cameras", () => {
+    const world = compileCellComplex(twoPrismLoop);
+    const table = buildPortalPathTables(world, { maxDepth: 1 }).tablesByRootCellId.get("room-a")!;
+    const leftEye = createCamera({ x: 0, y: 0.06, z: 1.6 }, { x: 1, y: 0.06, z: 1.6 });
+    const rightEye = createCamera({ x: 0, y: -0.06, z: 1.6 }, { x: 1, y: -0.06, z: 1.6 });
+    const mono = computeVisiblePortalPaths({
+      world,
+      rootCellId: "room-a",
+      pathTable: table,
+      camera: leftEye,
+      viewportPixels: { width: 800, height: 600 },
+      options: defaultOptions(),
+    });
+    const stereo = computeVisiblePortalPaths({
+      world,
+      rootCellId: "room-a",
+      pathTable: table,
+      camera: leftEye,
+      cameras: [leftEye, rightEye],
+      viewportPixels: { width: 800, height: 600 },
+      options: defaultOptions(),
+    });
+
+    expect(stereo.visiblePathById.get(1)?.clipRectNdc.minY).toBeLessThanOrEqual(
+      mono.visiblePathById.get(1)!.clipRectNdc.minY,
+    );
+    expect(stereo.visiblePathById.get(1)?.clipRectNdc.maxY).toBeGreaterThanOrEqual(
+      mono.visiblePathById.get(1)!.clipRectNdc.maxY,
+    );
+    expect(stereo.visiblePathById.get(1)!.screenAreaPixels).toBeGreaterThanOrEqual(
+      mono.visiblePathById.get(1)!.screenAreaPixels,
+    );
+  });
+
   it("keeps a first-hop portal stable when the camera is nearly on its boundary plane", () => {
     const world = compileCellComplex(twoRoomsWithPortal());
     const table = buildPortalPathTables(world, { maxDepth: 1 }).tablesByRootCellId.get("room-a")!;

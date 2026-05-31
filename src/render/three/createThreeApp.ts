@@ -134,6 +134,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     250,
   );
   const portalCullingCamera = camera.clone();
+  const portalCullingEyeCameras = [new THREE.Camera(), new THREE.Camera()];
 
   const pixelRatio = resolveRenderQualityPixelRatio(options.renderQualityEnabled, window.devicePixelRatio);
   const renderer = new THREE.WebGLRenderer({ antialias: renderAntialiasRequested });
@@ -350,15 +351,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     updateVisibleCell();
+    let portalCullingCameras: readonly THREE.Camera[] = [camera];
     if (xrActive) {
       xrRig.syncXrRig(playerPose, headLocalMeters);
       portalCullingCamera.copy(camera, false);
       xrRig.syncXrCullingCamera(portalCullingCamera, xrViewerPose);
+      const xrEyeCameras = xrRig.syncXrViewCullingCameras(portalCullingEyeCameras, xrViewerPose);
+      portalCullingCameras = xrEyeCameras.length > 0 ? xrEyeCameras : [portalCullingCamera];
       updateStylizedSceneLighting(sceneLighting, camera);
     } else {
       applyDesktopCameraPose();
     }
-    syncPortalInstanceRender(xrActive ? portalCullingCamera : camera);
+    syncPortalInstanceRender(portalCullingCameras[0] ?? camera, portalCullingCameras);
     syncLegacyObjectPortalRenders();
     syncXrDebugState(frame.source, moveResult);
     portalDebugRuntime.updateVisiblePortalPaths();
@@ -569,7 +573,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     visibleCellId = currentlyVisibleCellId;
   }
 
-  function syncPortalInstanceRender(cullingCamera: THREE.Camera = camera): void {
+  function syncPortalInstanceRender(
+    cullingCamera: THREE.Camera = camera,
+    cullingCameras: readonly THREE.Camera[] = [cullingCamera],
+  ): void {
     portalInstanceDiagnostics.reset();
     updatePortalClipMaterialViewport(
       portalClipMaterialState,
@@ -599,6 +606,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       rootCellId: playerPose.cellId,
       pathTable: table,
       camera: cullingCamera,
+      cameras: cullingCameras,
       viewportPixels: getPortalViewportPixels(renderer),
       options: {
         maxDepth: rootRenderPathMaxDepth,

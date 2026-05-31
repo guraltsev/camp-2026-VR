@@ -22,6 +22,7 @@ export interface ComputeVisiblePortalPathsInput {
   readonly rootCellId: string;
   readonly pathTable: PortalPathTable;
   readonly camera: THREE.Camera;
+  readonly cameras?: readonly THREE.Camera[];
   readonly viewportPixels: { readonly width: number; readonly height: number };
   readonly options: VisiblePortalPathOptions;
 }
@@ -89,9 +90,13 @@ export function computeVisiblePortalPaths(input: ComputeVisiblePortalPathsInput)
     throw new Error(`Visible portal path table for root "${input.rootCellId}" has no root path.`);
   }
 
-  input.camera.updateMatrixWorld(true);
-  if ("updateProjectionMatrix" in input.camera && typeof input.camera.updateProjectionMatrix === "function") {
-    input.camera.updateProjectionMatrix();
+  const cameras = input.cameras && input.cameras.length > 0 ? input.cameras : [input.camera];
+
+  for (const camera of cameras) {
+    camera.updateMatrixWorld(true);
+    if ("updateProjectionMatrix" in camera && typeof camera.updateProjectionMatrix === "function") {
+      camera.updateProjectionMatrix();
+    }
   }
 
   const rootVisiblePath = createVisiblePath(rootPath, fullScreenPolygonNdc, input.viewportPixels);
@@ -112,7 +117,7 @@ export function computeVisiblePortalPaths(input: ComputeVisiblePortalPathsInput)
       continue;
     }
 
-    const portalPolygon = projectNewestPortalApertureToNdc(input.world, path, parentVisible.sourcePath, input.camera);
+    const portalPolygon = projectNewestPortalApertureToNdc(input.world, path, parentVisible.sourcePath, cameras);
 
     if (!portalPolygon) {
       clippedByCameraCount += 1;
@@ -333,7 +338,7 @@ function projectNewestPortalApertureToNdc(
   world: CompiledCellComplex,
   path: PortalRenderPath,
   parentPath: PortalRenderPath,
-  camera: THREE.Camera,
+  cameras: readonly THREE.Camera[],
 ): readonly Vec2[] | undefined {
   const newestStep = path.steps[path.steps.length - 1];
 
@@ -344,7 +349,20 @@ function projectNewestPortalApertureToNdc(
   const apertureCorners = buildPortalApertureCorners(world, newestStep.sourceCellId, newestStep.sourcePortalSideIndex);
   const apertureInRoot = transformApertureCornersToRoot(apertureCorners, parentPath.rootFromDestination);
 
-  return projectRootSpacePointsToNdc(apertureInRoot, camera);
+  return projectRootSpacePointsToConservativeNdc(apertureInRoot, cameras);
+}
+
+function projectRootSpacePointsToConservativeNdc(
+  rootSpacePoints: readonly Vec3[],
+  cameras: readonly THREE.Camera[],
+): readonly Vec2[] | undefined {
+  const projectedPoints = cameras.flatMap((camera) => projectRootSpacePointsToNdc(rootSpacePoints, camera) ?? []);
+
+  if (projectedPoints.length < 3) {
+    return undefined;
+  }
+
+  return convexHull(projectedPoints);
 }
 
 function createVisiblePath(
@@ -499,6 +517,51 @@ function dedupePolygonVertices(vertices: readonly Vec2[]): Vec2[] {
 
   if (first && last && deduped.length > 1 && Math.hypot(first.x - last.x, first.y - last.y) <= polygonTolerance) {
     deduped.pop();
+  }
+
+  return deduped;
+}
+
+function convexHull(points: readonly Vec2[]): Vec2[] {
+  const sorted = dedupeSortedPoints(
+    [...points].sort((left, right) => left.x - right.x || left.y - right.y),
+  );
+
+  if (sorted.length <= 2) {
+    return sorted;
+  }
+
+  const lower: Vec2[] = [];
+  for (const point of sorted) {
+    while (lower.length >= 2 && orient2(lower[lower.length - 2], lower[lower.length - 1], point) <= polygonTolerance) {
+      lower.pop();
+    }
+    lower.push(point);
+  }
+
+  const upper: Vec2[] = [];
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    const point = sorted[index];
+    while (upper.length >= 2 && orient2(upper[upper.length - 2], upper[upper.length - 1], point) <= polygonTolerance) {
+      upper.pop();
+    }
+    upper.push(point);
+  }
+
+  lower.pop();
+  upper.pop();
+  return [...lower, ...upper];
+}
+
+function dedupeSortedPoints(points: readonly Vec2[]): Vec2[] {
+  const deduped: Vec2[] = [];
+
+  for (const point of points) {
+    const previous = deduped[deduped.length - 1];
+
+    if (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) > polygonTolerance) {
+      deduped.push(point);
+    }
   }
 
   return deduped;

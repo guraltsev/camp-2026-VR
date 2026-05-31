@@ -8,6 +8,7 @@ import {
 import {
   globalHorizontalDeltaToPlayerLocal,
   resolveSharedXrRenderRootCellId,
+  xrRigidTransformLocalMatrix,
 } from "../../src/render/three/xrPlayerRig";
 
 describe("VR locomotion mapping", () => {
@@ -67,5 +68,21 @@ describe("VR locomotion mapping", () => {
     expect(local.x).toBeCloseTo(0);
     expect(local.y).toBeCloseTo(1);
     expect(local.z).toBe(0);
+  });
+
+  it("builds XR view matrices that survive Three camera matrix updates", async () => {
+    const THREE = await import("three");
+    const camera = new THREE.Camera();
+    const matrix = xrRigidTransformLocalMatrix({
+      position: { x: 1, y: 2, z: 3, w: 1 } as DOMPointReadOnly,
+      orientation: { x: 0, y: 0, z: 0, w: 1 } as DOMPointReadOnly,
+    });
+
+    camera.matrixAutoUpdate = false;
+    camera.matrix.copy(matrix);
+    camera.matrixWorld.copy(matrix);
+    camera.updateMatrixWorld(true);
+
+    expect(camera.matrixWorld.elements).toEqual(matrix.elements);
   });
 });

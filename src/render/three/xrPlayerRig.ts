@@ -14,6 +14,7 @@ export interface XrPlayerRig {
   syncDesktopCamera(pose: PlayerPose): void;
   syncXrRig(pose: PlayerPose, headLocalMeters?: Vec3): void;
   syncXrCullingCamera(camera: THREE.PerspectiveCamera, viewerPose: XRViewerPose | undefined): void;
+  syncXrViewCullingCameras(cameras: readonly THREE.Camera[], viewerPose: XRViewerPose | undefined): readonly THREE.Camera[];
   consumePhysicalInput(headLocalMeters: Vec3 | undefined, yawRadians: number): RuntimeInputFrame;
   acceptPhysicalMove(result: MoveResult, currentHeadLocalMeters?: Vec3): void;
   getSharedRenderRootCellId(pose: PlayerPose): string;
@@ -87,6 +88,28 @@ export function createXrPlayerRig(camera: THREE.PerspectiveCamera, options: Part
       cullingCamera.up.set(0, 1, 0);
       cullingCamera.updateMatrixWorld(true);
     },
+    syncXrViewCullingCameras(cameras, viewerPose) {
+      root.updateMatrixWorld(true);
+
+      if (!viewerPose) {
+        return [];
+      }
+
+      return viewerPose.views.slice(0, cameras.length).map((view, index) => {
+        const cullingCamera = cameras[index];
+        const cullingWorldMatrix = root.matrixWorld.clone().multiply(xrRigidTransformLocalMatrix(view.transform));
+
+        cullingCamera.matrixAutoUpdate = false;
+        cullingCamera.matrix.copy(cullingWorldMatrix);
+        cullingCamera.matrixWorld.copy(cullingWorldMatrix);
+        cullingCamera.matrixWorldInverse.copy(cullingWorldMatrix).invert();
+        cullingCamera.matrixWorldNeedsUpdate = false;
+        cullingWorldMatrix.decompose(cullingCamera.position, cullingCamera.quaternion, cullingCamera.scale);
+        cullingCamera.projectionMatrix.fromArray(view.projectionMatrix);
+        cullingCamera.projectionMatrixInverse.copy(cullingCamera.projectionMatrix).invert();
+        return cullingCamera;
+      });
+    },
     consumePhysicalInput(headLocalMeters, yawRadians) {
       const physical = computePhysicalRoomScaleDisplacement({
         previousHeadLocalMeters: previousAcceptedHeadLocalMeters,
@@ -144,7 +167,10 @@ export function headLocalMetersFromViewerPose(pose: XRViewerPose | undefined): V
 }
 
 export function viewerPoseLocalMatrix(pose: XRViewerPose): THREE.Matrix4 {
-  const transform = pose.transform;
+  return xrRigidTransformLocalMatrix(pose.transform);
+}
+
+export function xrRigidTransformLocalMatrix(transform: Pick<XRRigidTransform, "position" | "orientation">): THREE.Matrix4 {
   const position = transform.position;
   const orientation = transform.orientation;
 
