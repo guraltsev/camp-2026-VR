@@ -2,6 +2,79 @@ body {
   margin: 0;
   overflow: hidden;
   font-family: system-ui, sans-serif;
+  background: #101820;
+  color: #f4fbfd;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  background: #101820;
+}
+
+.loading-screen-log {
+  width: min(24rem, calc(100vw - 48px));
+  max-height: min(70vh, 24rem);
+  overflow: hidden;
+  color: #f4fbfd;
+  font: 600 2rem/1.35 system-ui, sans-serif;
+  text-align: center;
+}
+
+.loading-screen-line {
+  opacity: 0.62;
+  transform: translateY(0);
+}
+
+.loading-screen-line + .loading-screen-line {
+  margin-top: 0.25em;
+}
+
+.loading-screen-line-active {
+  opacity: 1;
+}
+
+.loading-screen-line-active::after {
+  content: "";
+  display: inline-block;
+  width: 1.5em;
+  text-align: left;
+  animation: loading-dots 1.2s steps(4, end) infinite;
+}
+
+.loading-screen-error .loading-screen-line-active {
+  color: #ffd6d6;
+}
+
+.loading-screen-error .loading-screen-line-active::after {
+  content: "";
+  animation: none;
+}
+
+@keyframes loading-dots {
+  0% {
+    content: "";
+  }
+
+  25% {
+    content: ".";
+  }
+
+  50% {
+    content: "..";
+  }
+
+  75%,
+  100% {
+    content: "...";
+  }
 }
 
 .launch-controls {

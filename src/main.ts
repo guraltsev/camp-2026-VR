@@ -4,6 +4,7 @@ import { createInitialAppState } from "./appState";
 import { loadWorldSpec } from "./authoring/worldCatalog";
 import type { DebugSettings } from "./glue/debugSettings";
 import { hasActiveDebugOption } from "./glue/debugOptions";
+import { createLoadingStatus } from "./glue/loadingStatus";
 import { readLaunchOptions } from "./glue/readLaunchOptions";
 import { renderLaunchControls } from "./glue/renderLaunchControls";
 import { createThreeApp } from "./render/three/createThreeApp";
@@ -17,36 +18,50 @@ if (!appElement) {
   throw new Error("Missing #app element.");
 }
 
+const loadingStatus = createLoadingStatus(appElement);
 void startApp(appElement);
 
 async function startApp(container: HTMLDivElement): Promise<void> {
-  const launchOptions = readLaunchOptions(window.location);
-  const geometrySpec = await loadWorldSpec(launchOptions.selectedWorldId);
-  console.info(describeGeometrySpec(geometrySpec));
-  const world = compileCellComplex(geometrySpec);
-  applyRuntimeDiagnostics(world, {
-    debugLevel: launchOptions.debugLevel,
-    portalPanelMode: launchOptions.portalPanelMode,
-    debugOptions: launchOptions.debugOptions,
-  });
-  const assets = await preloadWorldAssets(world);
-  const appState = createInitialAppState(world);
-  const threeApp = createThreeApp(container, appState, {
-    debugLevel: launchOptions.debugLevel,
-    portalPanelMode: launchOptions.portalPanelMode,
-    debugOptions: launchOptions.debugOptions,
-    renderQualityEnabled: launchOptions.renderQualityEnabled,
-    assets,
-  });
-
-  if (launchOptions.renderWorldPicker || launchOptions.renderDebugButton) {
-    renderLaunchControls(document.body, {
-      ...launchOptions,
-      applyDebugSettings(settings) {
-        applyRuntimeDiagnostics(world, settings);
-        threeApp.updateDebugSettings(settings);
-      },
+  try {
+    loadingStatus.setPhase("Reading launch options");
+    const launchOptions = readLaunchOptions(window.location);
+    const geometrySpec = await loadingStatus.track("Loading world description", () =>
+      loadWorldSpec(launchOptions.selectedWorldId),
+    );
+    console.info(describeGeometrySpec(geometrySpec));
+    const world = await loadingStatus.track("Computing world", () => compileCellComplex(geometrySpec));
+    applyRuntimeDiagnostics(world, {
+      debugLevel: launchOptions.debugLevel,
+      portalPanelMode: launchOptions.portalPanelMode,
+      debugOptions: launchOptions.debugOptions,
     });
+    const assets = await loadingStatus.track("Loading objects", () => preloadWorldAssets(world));
+    loadingStatus.setPhase("Placing player");
+    const appState = createInitialAppState(world);
+    const threeApp = await loadingStatus.track("Preparing renderer", () =>
+      createThreeApp(container, appState, {
+        debugLevel: launchOptions.debugLevel,
+        portalPanelMode: launchOptions.portalPanelMode,
+        debugOptions: launchOptions.debugOptions,
+        renderQualityEnabled: launchOptions.renderQualityEnabled,
+        assets,
+      }),
+    );
+
+    loadingStatus.dispose();
+
+    if (launchOptions.renderWorldPicker || launchOptions.renderDebugButton) {
+      renderLaunchControls(document.body, {
+        ...launchOptions,
+        applyDebugSettings(settings) {
+          applyRuntimeDiagnostics(world, settings);
+          threeApp.updateDebugSettings(settings);
+        },
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    loadingStatus.showError(error instanceof Error ? error.message : "Unable to start the world.");
   }
 }
 
