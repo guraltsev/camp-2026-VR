@@ -211,6 +211,28 @@ describe("computeVisiblePortalPaths", () => {
     expect(result.paths.some((path) => path.depth === 1 && path.screenAreaPixels > 10_000)).toBe(true);
   });
 
+  it("keeps cube portals stable at a captured right-face near-boundary camera pose", () => {
+    const world = compileCellComplex(cube);
+    const table = buildPortalPathTables(world, { maxDepth: 2 }).tablesByRootCellId.get("right")!;
+    const result = computeVisiblePortalPaths({
+      world,
+      rootCellId: "right",
+      pathTable: table,
+      camera: createCamera(
+        { x: 7.086317, y: 7.489888, z: 1.45 },
+        { x: 7.256504, y: 8.447983, z: 1.219589 },
+        70,
+        803 / 985,
+      ),
+      viewportPixels: { width: 803, height: 985 },
+      options: defaultOptions({ maxDepth: 2, minPortalScreenAreaPixels: 4 }),
+    });
+
+    expect(result.summary.visiblePathCount).toBeGreaterThan(1);
+    expect(result.paths.some((path) => path.depth === 1 && path.screenAreaPixels > 10_000)).toBe(true);
+    expect(result.paths.every((path) => path.clipPolygonNdc.length <= 8)).toBe(true);
+  });
+
   it("drops near-corner duplicate sliver paths while keeping the main portal views", () => {
     const world = compileCellComplex(cube);
     const table = buildPortalPathTables(world, { maxDepth: 2 }).tablesByRootCellId.get("front")!;

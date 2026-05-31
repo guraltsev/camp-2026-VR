@@ -120,6 +120,9 @@ interface LegacyObjectPortalRenderEntry {
   readonly cloneChildren: readonly THREE.Object3D[];
 }
 
+const renderCameraNearMeters = 0.001;
+const renderCameraFarMeters = 250;
+
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SCENE_BACKGROUND_COLOR);
@@ -130,8 +133,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const camera = new THREE.PerspectiveCamera(
     70,
     initialCanvasSize.width / initialCanvasSize.height,
-    0.01,
-    250,
+    renderCameraNearMeters,
+    renderCameraFarMeters,
   );
   const portalCullingCamera = camera.clone();
   const portalCullingEyeCameras = [new THREE.Camera(), new THREE.Camera()];
