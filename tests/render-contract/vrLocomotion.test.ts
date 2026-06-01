@@ -12,7 +12,10 @@ import {
   resolveSharedXrRenderRootCellId,
   xrRigidTransformLocalMatrix,
 } from "../../src/render/three/xrPlayerRig";
+import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { movePlayer, type MoveResult } from "../../src/movement/movePlayer";
+import { resolveXrPortalEyeRenderRoot } from "../../src/render/three/xrPortalEye";
+import { worldPointToThree } from "../../src/render/three/worldAxes";
 
 describe("VR locomotion mapping", () => {
   it("dead-zones small stick noise", () => {
@@ -63,6 +66,28 @@ describe("VR locomotion mapping", () => {
         pitchRadians: 0,
       }),
     ).toBe("room-a");
+  });
+
+  it("resolves XR portal render roots independently per eye", async () => {
+    const THREE = await import("three");
+    const world = compileCellComplex(twoRoomsWithPortal());
+    const sourceEye = createCamera(THREE, { x: 0.99, y: 0, z: 1.6 });
+    const targetEye = createCamera(THREE, { x: 1.01, y: 0, z: 1.6 });
+
+    expect(
+      resolveXrPortalEyeRenderRoot({
+        world,
+        sourceCellId: "room-a",
+        camera: sourceEye,
+      }).rootCellId,
+    ).toBe("room-a");
+    expect(
+      resolveXrPortalEyeRenderRoot({
+        world,
+        sourceCellId: "room-a",
+        camera: targetEye,
+      }).rootCellId,
+    ).toBe("room-b");
   });
 
   it("converts room-scale world deltas back to player-local movement after artificial yaw", () => {
@@ -185,4 +210,56 @@ function viewerPose(options: {
     },
     views: [],
   } as unknown as XRViewerPose;
+}
+
+function createCamera(
+  THREE: typeof import("three"),
+  position: { readonly x: number; readonly y: number; readonly z: number },
+): import("three").PerspectiveCamera {
+  const camera = new THREE.PerspectiveCamera(70, 1, 0.001, 250);
+  camera.position.copy(worldPointToThree(position));
+  camera.lookAt(worldPointToThree({ x: position.x + 1, y: position.y, z: position.z }));
+  camera.updateMatrixWorld(true);
+  camera.updateProjectionMatrix();
+  return camera;
+}
+
+function twoRoomsWithPortal() {
+  const squareRoomBase = [
+    { x: -1, y: -1 },
+    { x: 1, y: -1 },
+    { x: 1, y: 1 },
+    { x: -1, y: 1 },
+  ];
+
+  return {
+    cells: [
+      {
+        id: "room-a",
+        heightMeters: 3,
+        baseVertices: squareRoomBase,
+        portals: [
+          {
+            id: "east",
+            sideIndex: 1,
+            targetCellId: "room-b",
+            targetPortalId: "west",
+          },
+        ],
+      },
+      {
+        id: "room-b",
+        heightMeters: 3,
+        baseVertices: squareRoomBase,
+        portals: [
+          {
+            id: "west",
+            sideIndex: 3,
+            targetCellId: "room-a",
+            targetPortalId: "east",
+          },
+        ],
+      },
+    ],
+  };
 }

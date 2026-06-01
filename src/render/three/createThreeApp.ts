@@ -45,6 +45,7 @@ import {
   createPortalInstanceDiagnostics,
   createPortalInstanceRenderDebugState,
   buildVisiblePathsByDestinationCell,
+  groupVisiblePortalPathsByDestinationCell,
   updateCellRenderArchetypeInstances,
   type PortalInstanceRenderDebugState,
 } from "./renderPortalInstances";
@@ -85,6 +86,7 @@ import {
 import { rigidTransformToThreeMatrix, worldPointToThree } from "./worldAxes";
 import { createXrControls } from "./xrControls";
 import { createXrEntryUi } from "./xrEntryUi";
+import { resolveXrPortalEyeRenderRoot, type XrPortalEyeRenderRoot } from "./xrPortalEye";
 import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose } from "./xrPlayerRig";
 import {
   createXrSessionState,
@@ -125,6 +127,7 @@ interface PortalEyeRenderState {
   readonly camera: THREE.Camera;
   readonly result: ComputeVisiblePortalPathsResult;
   readonly eyeIndex: number;
+  readonly rootCellId: string;
 }
 
 const renderCameraNearMeters = 0.001;
@@ -381,9 +384,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       applyDesktopCameraPose();
     }
     if (xrActive && portalCullingCameras.length > 1) {
-      syncStereoPortalInstanceRender(portalCullingCameras);
+      syncStereoPortalInstanceRender(portalCullingCameras.map(resolvePortalEyeRenderRoot));
     } else {
-      syncPortalInstanceRender(portalCullingCameras[0] ?? camera);
+      const cullingCamera = portalCullingCameras[0] ?? camera;
+      syncPortalInstanceRender(xrActive ? resolvePortalEyeRenderRoot(cullingCamera) : {
+        rootCellId: playerPose.cellId,
+        camera: cullingCamera,
+        renderFromRootMatrix: new THREE.Matrix4(),
+      });
     }
     syncLegacyObjectPortalRenders();
     syncXrDebugState(frame.source, moveResult);
@@ -596,8 +604,20 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     visibleCellId = currentlyVisibleCellId;
   }
 
+  function resolvePortalEyeRenderRoot(cullingCamera: THREE.Camera): XrPortalEyeRenderRoot {
+    return resolveXrPortalEyeRenderRoot({
+      world: appState.world,
+      sourceCellId: playerPose.cellId,
+      camera: cullingCamera,
+    });
+  }
+
   function syncPortalInstanceRender(
-    cullingCamera: THREE.Camera = camera,
+    renderRoot: XrPortalEyeRenderRoot = {
+      rootCellId: playerPose.cellId,
+      camera,
+      renderFromRootMatrix: new THREE.Matrix4(),
+    },
   ): void {
     portalInstanceDiagnostics.reset();
     portalEyeRenderStates = [];
@@ -607,7 +627,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalClipMaterialState,
       getPortalViewportPixels(renderer),
     );
-    const table = portalStaticCull.tables.tablesByRootCellId.get(playerPose.cellId);
+    const table = portalStaticCull.tables.tablesByRootCellId.get(renderRoot.rootCellId);
 
     if (!table) {
       latestVisibleResult = undefined;
@@ -628,9 +648,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const computed = computeVisiblePortalPaths({
       world: appState.world,
-      rootCellId: playerPose.cellId,
+      rootCellId: renderRoot.rootCellId,
       pathTable: table,
-      camera: cullingCamera,
+      camera: renderRoot.camera,
       viewportPixels: getPortalViewportPixels(renderer),
       options: {
         maxDepth: rootRenderPathMaxDepth,
@@ -640,27 +660,31 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         sortMode: "depth-then-area",
       },
     });
-    const summary = mergeStaticPathCounts(computed.summary, portalStaticCull, playerPose.cellId);
+    const renderedComputed = transformVisiblePortalResultToRenderFrame(computed, renderRoot.renderFromRootMatrix);
+    const summary = mergeStaticPathCounts(renderedComputed.summary, portalStaticCull, renderRoot.rootCellId);
     latestVisibleResult = {
-      ...computed,
+      ...renderedComputed,
       summary,
     };
-    applyPortalVisibleResult(latestVisibleResult.paths, latestVisibleResult.visiblePathById);
+    applyPortalVisibleResult(renderRoot.rootCellId, latestVisibleResult.paths, latestVisibleResult.visiblePathById);
     portalInstanceRenderState = createPortalInstanceRenderStateFromVisibleResult(
+      renderRoot.rootCellId,
       latestVisibleResult,
       true,
     );
   }
 
-  function syncStereoPortalInstanceRender(cullingCameras: readonly THREE.Camera[]): void {
+  function syncStereoPortalInstanceRender(renderRoots: readonly XrPortalEyeRenderRoot[]): void {
     portalInstanceDiagnostics.reset();
     updatePortalClipMaterialViewport(
       portalClipMaterialState,
       getPortalViewportPixels(renderer),
     );
-    const table = portalStaticCull.tables.tablesByRootCellId.get(playerPose.cellId);
+    const hasTables = renderRoots.every((renderRoot) =>
+      portalStaticCull.tables.tablesByRootCellId.has(renderRoot.rootCellId)
+    );
 
-    if (!table) {
+    if (!hasTables) {
       latestVisibleResult = undefined;
       portalEyeRenderStates = [];
       activePortalEyeIndex = 0;
@@ -680,12 +704,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    portalEyeRenderStates = cullingCameras.map((eyeCamera, eyeIndex) => {
+    const computedEyeStates = renderRoots.map((renderRoot, eyeIndex) => {
+      const table = portalStaticCull.tables.tablesByRootCellId.get(renderRoot.rootCellId)!;
       const computed = computeVisiblePortalPaths({
         world: appState.world,
-        rootCellId: playerPose.cellId,
+        rootCellId: renderRoot.rootCellId,
         pathTable: table,
-        camera: eyeCamera,
+        camera: renderRoot.camera,
         viewportPixels: getPortalViewportPixels(renderer),
         options: {
           maxDepth: rootRenderPathMaxDepth,
@@ -695,16 +720,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           sortMode: "depth-then-area",
         },
       });
+      const renderedComputed = transformVisiblePortalResultToRenderFrame(computed, renderRoot.renderFromRootMatrix);
 
       return {
-        camera: eyeCamera,
+        camera: renderRoot.camera,
         eyeIndex,
+        rootCellId: renderRoot.rootCellId,
         result: {
-          ...computed,
-          summary: mergeStaticPathCounts(computed.summary, portalStaticCull, playerPose.cellId),
+          ...renderedComputed,
+          summary: mergeStaticPathCounts(renderedComputed.summary, portalStaticCull, renderRoot.rootCellId),
         },
       };
     });
+    portalEyeRenderStates = remapStereoPortalPathIds(computedEyeStates);
 
     latestVisibleResult = portalEyeRenderStates[0]?.result;
     activePortalEyeIndex = 0;
@@ -713,8 +741,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       const unionVisiblePathById = buildUnionVisiblePathById(portalEyeRenderStates.map((state) => state.result));
       const unionVisiblePaths = [...unionVisiblePathById.values()].sort((left, right) => left.pathId - right.pathId);
       portalClipData.updateStereo(portalEyeRenderStates.map((state) => state.result.paths));
-      applyPortalVisibleResult(unionVisiblePaths, unionVisiblePathById, false);
+      applyPortalVisiblePaths(unionVisiblePaths, false);
       portalInstanceRenderState = createPortalInstanceRenderStateFromVisibleResult(
+        portalEyeRenderStates[0]?.rootCellId ?? playerPose.cellId,
         latestVisibleResult,
         true,
       );
@@ -751,6 +780,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function applyPortalVisibleResult(
+    rootCellId: string,
     visiblePaths: readonly VisiblePortalPath[],
     visiblePathById: ReadonlyMap<number, VisiblePortalPath>,
     updateClipData = true,
@@ -759,24 +789,42 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalClipData.update(visiblePaths);
     }
     const visiblePathsByDestinationCell = buildVisiblePathsByDestinationCell(
-      portalStaticCull.tables.tablesByRootCellId.get(playerPose.cellId)?.pathsByDestinationCellId ?? new Map(),
+      portalStaticCull.tables.tablesByRootCellId.get(rootCellId)?.pathsByDestinationCellId ?? new Map(),
       visiblePathById,
     );
+    updatePortalVisiblePathInstances(visiblePathsByDestinationCell);
+    syncLegacyObjectPortalClipIndexes(visiblePaths, portalClipData.clipIndexByPathId);
+  }
+
+  function applyPortalVisiblePaths(
+    visiblePaths: readonly VisiblePortalPath[],
+    updateClipData = true,
+  ): void {
+    if (updateClipData) {
+      portalClipData.update(visiblePaths);
+    }
+    updatePortalVisiblePathInstances(groupVisiblePortalPathsByDestinationCell(visiblePaths));
+    syncLegacyObjectPortalClipIndexes(visiblePaths, portalClipData.clipIndexByPathId);
+  }
+
+  function updatePortalVisiblePathInstances(
+    visiblePathsByDestinationCell: ReadonlyMap<string, readonly VisiblePortalPath[]>,
+  ): void {
     updateCellRenderArchetypeInstances(
       cellRenderArchetypes,
       visiblePathsByDestinationCell,
       portalInstanceDiagnostics,
       portalClipData.clipIndexByPathId,
     );
-    syncLegacyObjectPortalClipIndexes(visiblePaths, portalClipData.clipIndexByPathId);
   }
 
   function createPortalInstanceRenderStateFromVisibleResult(
+    rootCellId: string,
     result: ComputeVisiblePortalPathsResult,
     normalVisiblePathRenderingActive: boolean,
   ): PortalInstanceRenderDebugState {
     const visiblePathsByDestinationCell = buildVisiblePathsByDestinationCell(
-      portalStaticCull.tables.tablesByRootCellId.get(playerPose.cellId)?.pathsByDestinationCellId ?? new Map(),
+      portalStaticCull.tables.tablesByRootCellId.get(rootCellId)?.pathsByDestinationCellId ?? new Map(),
       result.visiblePathById,
     );
 
@@ -854,6 +902,55 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     return visiblePathById;
+  }
+
+  function transformVisiblePortalResultToRenderFrame(
+    result: ComputeVisiblePortalPathsResult,
+    renderFromRootMatrix: THREE.Matrix4,
+  ): ComputeVisiblePortalPathsResult {
+    const paths = result.paths.map((path) => ({
+      ...path,
+      rootFromDestinationMatrix: renderFromRootMatrix.clone().multiply(path.rootFromDestinationMatrix),
+    }));
+
+    return {
+      ...result,
+      paths,
+      visiblePathById: new Map(paths.map((path) => [path.pathId, path])),
+    };
+  }
+
+  function remapStereoPortalPathIds(states: readonly PortalEyeRenderState[]): readonly PortalEyeRenderState[] {
+    const pathIdByRootPathKey = new Map<string, number>();
+    let nextPathId = 0;
+
+    return states.map((state) => {
+      const remappedPaths = state.result.paths.map((path) => {
+        const key = `${state.rootCellId}:${path.pathId}`;
+        let pathId = pathIdByRootPathKey.get(key);
+
+        if (pathId === undefined) {
+          pathId = nextPathId;
+          nextPathId += 1;
+          pathIdByRootPathKey.set(key, pathId);
+        }
+
+        return {
+          ...path,
+          pathId,
+        };
+      });
+      const visiblePathById = new Map(remappedPaths.map((path) => [path.pathId, path]));
+
+      return {
+        ...state,
+        result: {
+          ...state.result,
+          paths: remappedPaths,
+          visiblePathById,
+        },
+      };
+    });
   }
 
   function syncLegacyObjectPortalRenders(): void {
