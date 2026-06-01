@@ -54,6 +54,30 @@ describe("portal clip data", () => {
 
     clipData.dispose();
   });
+
+  it("stores stereo clip polygons in stable per-eye rows for the same path id", () => {
+    const clipData = createPortalClipData({ maxVisiblePaths: 4, maxClipVerticesPerPath: 8 });
+    const leftPath = createVisiblePath(7, [
+      { x: -0.75, y: -0.5 },
+      { x: -0.25, y: -0.5 },
+      { x: -0.25, y: 0.5 },
+      { x: -0.75, y: 0.5 },
+    ]);
+    const rightPath = createVisiblePath(7, [
+      { x: 0.25, y: -0.5 },
+      { x: 0.75, y: -0.5 },
+      { x: 0.75, y: 0.5 },
+      { x: 0.25, y: 0.5 },
+    ]);
+
+    clipData.updateStereo([[leftPath], [rightPath]]);
+
+    expect(clipData.clipIndexByPathId.get(7)).toBe(0);
+    expect(readTexturePixel(clipData.texture, 0, 0)).toEqual([-0.75, -0.5, 4, 7]);
+    expect(readTexturePixel(clipData.texture, 4, 0)).toEqual([0.25, -0.5, 4, 7]);
+
+    clipData.dispose();
+  });
 });
 
 function createVisiblePath(

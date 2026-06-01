@@ -10,6 +10,8 @@ export interface PortalClipMaterialState {
     readonly portalViewportPixels: { value: THREE.Vector2 };
     readonly portalMaxVisiblePaths: { value: number };
     readonly portalMaxClipVerticesPerPath: { value: number };
+    readonly portalClipTextureRows: { value: number };
+    readonly portalClipTextureRowOffset: { value: number };
   };
 }
 
@@ -27,6 +29,8 @@ export function createPortalClipMaterialState(
       portalViewportPixels: { value: new THREE.Vector2(viewportPixels.width, viewportPixels.height) },
       portalMaxVisiblePaths: { value: clipData.maxVisiblePaths },
       portalMaxClipVerticesPerPath: { value: clipData.maxClipVerticesPerPath },
+      portalClipTextureRows: { value: clipData.clipTextureRows },
+      portalClipTextureRowOffset: { value: 0 },
     },
   };
 }
@@ -38,6 +42,18 @@ export function updatePortalClipMaterialViewport(
 ): void {
   state.uniforms.portalViewportOriginPixels.value.set(viewportOriginPixels.x, viewportOriginPixels.y);
   state.uniforms.portalViewportPixels.value.set(viewportPixels.width, viewportPixels.height);
+}
+
+export function updatePortalClipMaterialTextureEye(
+  state: PortalClipMaterialState,
+  eyeIndex: number,
+): void {
+  const clampedEyeIndex = Math.min(
+    state.clipData.maxClipTextureEyes - 1,
+    Math.max(0, Math.floor(eyeIndex)),
+  );
+
+  state.uniforms.portalClipTextureRowOffset.value = clampedEyeIndex * Math.max(1, state.clipData.maxVisiblePaths);
 }
 
 export function updatePortalClipMaterialViewportFromRenderer(
@@ -86,6 +102,8 @@ function patchSinglePortalClipMaterial(
     shader.uniforms.portalViewportPixels = state.uniforms.portalViewportPixels;
     shader.uniforms.portalMaxVisiblePaths = state.uniforms.portalMaxVisiblePaths;
     shader.uniforms.portalMaxClipVerticesPerPath = state.uniforms.portalMaxClipVerticesPerPath;
+    shader.uniforms.portalClipTextureRows = state.uniforms.portalClipTextureRows;
+    shader.uniforms.portalClipTextureRowOffset = state.uniforms.portalClipTextureRowOffset;
     shader.vertexShader = patchVertexShader(shader.vertexShader);
     shader.fragmentShader = patchFragmentShader(
       shader.fragmentShader,
@@ -138,6 +156,8 @@ function patchFragmentShader(
         "uniform vec2 portalViewportPixels;",
         "uniform float portalMaxVisiblePaths;",
         "uniform float portalMaxClipVerticesPerPath;",
+        "uniform float portalClipTextureRows;",
+        "uniform float portalClipTextureRowOffset;",
         "varying float vPortalPathId;",
         "varying float vPortalClipIndex;",
         portalClipShaderFunctions(maxVisiblePaths, maxClipVerticesPerPath),
@@ -168,15 +188,17 @@ function patchFragmentShader(
 function portalClipShaderFunctions(maxVisiblePaths: number, maxClipVerticesPerPath: number): string {
   return `
 vec2 portalClipVertex(float clipIndex, int vertexIndex) {
+  float textureRow = portalClipTextureRowOffset + clipIndex;
   vec2 uv = vec2(
     (float(vertexIndex) + 0.5) / portalMaxClipVerticesPerPath,
-    (clipIndex + 0.5) / portalMaxVisiblePaths
+    (textureRow + 0.5) / portalClipTextureRows
   );
   return texture2D(portalClipTexture, uv).xy;
 }
 
 float portalClipVertexCount(float clipIndex) {
-  vec2 uv = vec2(0.5 / portalMaxClipVerticesPerPath, (clipIndex + 0.5) / portalMaxVisiblePaths);
+  float textureRow = portalClipTextureRowOffset + clipIndex;
+  vec2 uv = vec2(0.5 / portalMaxClipVerticesPerPath, (textureRow + 0.5) / portalClipTextureRows);
   return texture2D(portalClipTexture, uv).z;
 }
 
