@@ -25,60 +25,42 @@ export type WorldFloorMaterialSpec = FloorMaterialSpec & {
   readonly [floorMaterialBrand]: true;
 };
 
-const floorTextureDefinitions = {
+export const floorTextureDefinitions = {
   grass1: {
     name: "grass1",
     floorColor: "#5b8f48",
     defaultTileSizeMeters: 60,
-    colorTexturePath: "textures/forest_leaves_02_4k/textures/forest_leaves_02_diffuse_4k.jpg",
-    normalTexturePath: "textures/forest_leaves_02_4k/textures/forest_leaves_02_nor_gl_4k.exr",
-    bumpTexturePath: "textures/forest_leaves_02_4k/textures/forest_leaves_02_disp_4k.png",
-    roughnessTexturePath: "textures/forest_leaves_02_4k/textures/forest_leaves_02_rough_4k.jpg",
+    colorTexturePath: "textures/forest_leaves_02_4k/runtime/forest_leaves_02_color.ktx2",
   },
   forest_leaves: {
     name: "forest_leaves",
     floorColor: "#59633d",
     defaultTileSizeMeters: 48,
-    colorTexturePath: "textures/forest_leaves_02_4k/textures/forest_leaves_02_diffuse_4k.jpg",
-    normalTexturePath: "textures/forest_leaves_02_4k/textures/forest_leaves_02_nor_gl_4k.exr",
-    bumpTexturePath: "textures/forest_leaves_02_4k/textures/forest_leaves_02_disp_4k.png",
-    roughnessTexturePath: "textures/forest_leaves_02_4k/textures/forest_leaves_02_rough_4k.jpg",
+    colorTexturePath: "textures/forest_leaves_02_4k/runtime/forest_leaves_02_color.ktx2",
   },
   river_pebbles: {
     name: "river_pebbles",
     floorColor: "#7b7f77",
     defaultTileSizeMeters: 40,
-    colorTexturePath: "textures/ganges_river_pebbles_4k/textures/ganges_river_pebbles_diff_4k.jpg",
-    normalTexturePath: "textures/ganges_river_pebbles_4k/textures/ganges_river_pebbles_nor_gl_4k.exr",
-    bumpTexturePath: "textures/ganges_river_pebbles_4k/textures/ganges_river_pebbles_disp_4k.png",
-    roughnessTexturePath: "textures/ganges_river_pebbles_4k/textures/ganges_river_pebbles_disp_4k.png",
+    colorTexturePath: "textures/ganges_river_pebbles_4k/runtime/ganges_river_pebbles_color.ktx2",
   },
   gravelly_sand: {
     name: "gravelly_sand",
     floorColor: "#9b8d6e",
     defaultTileSizeMeters: 48,
-    colorTexturePath: "textures/gravelly_sand_4k/textures/gravelly_sand_diff_4k.jpg",
-    normalTexturePath: "textures/gravelly_sand_4k/textures/gravelly_sand_nor_gl_4k.exr",
-    bumpTexturePath: "textures/gravelly_sand_4k/textures/gravelly_sand_disp_4k.png",
-    roughnessTexturePath: "textures/gravelly_sand_4k/textures/gravelly_sand_disp_4k.png",
+    colorTexturePath: "textures/gravelly_sand_4k/runtime/gravelly_sand_color.ktx2",
   },
   red_mud_stones: {
     name: "red_mud_stones",
     floorColor: "#8b4e3f",
     defaultTileSizeMeters: 48,
-    colorTexturePath: "textures/red_mud_stones_4k/textures/red_mud_stones_diff_4k.jpg",
-    normalTexturePath: "textures/red_mud_stones_4k/textures/red_mud_stones_nor_gl_4k.exr",
-    bumpTexturePath: "textures/red_mud_stones_4k/textures/red_mud_stones_disp_4k.png",
-    roughnessTexturePath: "textures/red_mud_stones_4k/textures/red_mud_stones_rough_4k.jpg",
+    colorTexturePath: "textures/red_mud_stones_4k/runtime/red_mud_stones_color.ktx2",
   },
   snow: {
     name: "snow",
     floorColor: "#d8dedf",
     defaultTileSizeMeters: 60,
-    colorTexturePath: "textures/snow_02_4k/textures/snow_02_diff_4k.jpg",
-    normalTexturePath: "textures/snow_02_4k/textures/snow_02_nor_gl_4k.exr",
-    bumpTexturePath: "textures/snow_02_4k/textures/snow_02_disp_4k.png",
-    roughnessTexturePath: "textures/snow_02_4k/textures/snow_02_rough_4k.jpg",
+    colorTexturePath: "textures/snow_02_4k/runtime/snow_02_color.ktx2",
   },
 } satisfies Record<string, FloorTextureDefinition>;
 

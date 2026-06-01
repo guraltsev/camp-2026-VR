@@ -80,61 +80,27 @@ function buildFloorMesh(cell: CompiledPrismCell, assets: PreparedWorldAssets): T
   material.normalScale = new THREE.Vector2(0.8, 0.8);
 
   if (cell.floorMaterial.kind === "floor-texture" && cell.floorMaterial.colorTexturePath) {
-    const preparedColorTexture = assets.getTexture(cell.floorMaterial.colorTexturePath);
+    const repeat = floorTextureRepeat(cell.baseVertices, cell.floorMaterial.tileSizeMeters);
+    const texture = assets.getConfiguredTexture({
+      assetPath: cell.floorMaterial.colorTexturePath,
+      colorSpace: THREE.SRGBColorSpace,
+      repeatX: repeat,
+      repeatY: repeat,
+      wrapS: THREE.RepeatWrapping,
+      wrapT: THREE.RepeatWrapping,
+      userData: {
+        textureUrl: cell.floorMaterial.colorTexturePath,
+        repeatX: repeat,
+        repeatY: repeat,
+      },
+    });
 
-    if (!preparedColorTexture) {
-      throw new Error(`Floor texture was not preloaded: ${cell.floorMaterial.colorTexturePath}`);
+    if (texture) {
+      material.map = texture;
+      material.userData.textureUrl = cell.floorMaterial.colorTexturePath;
+    } else {
+      material.userData.missingTextureUrl = cell.floorMaterial.colorTexturePath;
     }
-
-    const texture = preparedColorTexture.clone();
-    texture.colorSpace = THREE.SRGBColorSpace;
-    configureRepeatedTexture(texture, cell.baseVertices, cell.floorMaterial.tileSizeMeters);
-    material.map = texture;
-    material.userData.textureUrl = cell.floorMaterial.colorTexturePath;
-  }
-
-  if (cell.floorMaterial.kind === "floor-texture" && cell.floorMaterial.normalTexturePath) {
-    const preparedNormalTexture = assets.getTexture(cell.floorMaterial.normalTexturePath);
-
-    if (!preparedNormalTexture) {
-      throw new Error(`Floor normal texture was not preloaded: ${cell.floorMaterial.normalTexturePath}`);
-    }
-
-    const texture = preparedNormalTexture.clone();
-    texture.colorSpace = THREE.NoColorSpace;
-    configureRepeatedTexture(texture, cell.baseVertices, cell.floorMaterial.tileSizeMeters);
-    material.normalMap = texture;
-    material.normalScale = new THREE.Vector2(1.1, 1.1);
-    material.userData.normalTextureUrl = cell.floorMaterial.normalTexturePath;
-  }
-
-  if (cell.floorMaterial.kind === "floor-texture" && cell.floorMaterial.bumpTexturePath) {
-    const preparedBumpTexture = assets.getTexture(cell.floorMaterial.bumpTexturePath);
-
-    if (!preparedBumpTexture) {
-      throw new Error(`Floor bump texture was not preloaded: ${cell.floorMaterial.bumpTexturePath}`);
-    }
-
-    const texture = preparedBumpTexture.clone();
-    texture.colorSpace = THREE.NoColorSpace;
-    configureRepeatedTexture(texture, cell.baseVertices, cell.floorMaterial.tileSizeMeters);
-    material.bumpMap = texture;
-    material.bumpScale = 0.35;
-    material.userData.bumpTextureUrl = cell.floorMaterial.bumpTexturePath;
-  }
-
-  if (cell.floorMaterial.kind === "floor-texture" && cell.floorMaterial.roughnessTexturePath) {
-    const preparedRoughnessTexture = assets.getTexture(cell.floorMaterial.roughnessTexturePath);
-
-    if (!preparedRoughnessTexture) {
-      throw new Error(`Floor roughness texture was not preloaded: ${cell.floorMaterial.roughnessTexturePath}`);
-    }
-
-    const texture = preparedRoughnessTexture.clone();
-    texture.colorSpace = THREE.NoColorSpace;
-    configureRepeatedTexture(texture, cell.baseVertices, cell.floorMaterial.tileSizeMeters);
-    material.roughnessMap = texture;
-    material.userData.roughnessTextureUrl = cell.floorMaterial.roughnessTexturePath;
   }
 
   material.needsUpdate = true;
@@ -156,18 +122,6 @@ function floorTextureRepeat(
   const ys = vertices.map((vertex) => vertex.y);
   const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
   return Math.max(span / tileSizeMeters, 0.01);
-}
-
-function configureRepeatedTexture(
-  texture: THREE.Texture,
-  vertices: readonly { readonly x: number; readonly y: number }[],
-  tileSizeMeters: number,
-): void {
-  const repeat = floorTextureRepeat(vertices, tileSizeMeters);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(repeat, repeat);
-  texture.needsUpdate = true;
 }
 
 function buildCeilingMesh(cell: CompiledPrismCell): THREE.Object3D {

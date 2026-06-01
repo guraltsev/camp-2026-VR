@@ -60,6 +60,7 @@ describe("deriveCellRenderArchetypeCapacities", () => {
 function createPreparedAssets(): PreparedWorldAssets {
   return {
     getTexture: () => new THREE.Texture(),
+    getConfiguredTexture: () => new THREE.Texture(),
     instantiateGltf: () => ({
       scene: new THREE.Mesh(
         new THREE.BoxGeometry(0.5, 0.5, 0.5),

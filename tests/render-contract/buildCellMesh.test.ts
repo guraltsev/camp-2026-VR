@@ -23,6 +23,7 @@ describe("buildCellMesh", () => {
 
     const preparedAssets: PreparedWorldAssets = {
       getTexture: () => new THREE.Texture(),
+      getConfiguredTexture: () => new THREE.Texture(),
       instantiateGltf: () => ({
         scene: new THREE.Group(),
         animations: [],
@@ -75,6 +76,7 @@ describe("buildCellMesh", () => {
     const roomA = compiled.cellsById.get("room-a")!;
     const preparedAssets: PreparedWorldAssets = {
       getTexture: () => new THREE.Texture(),
+      getConfiguredTexture: () => new THREE.Texture(),
       instantiateGltf: () => ({
         scene: new THREE.Group(),
         animations: [],
@@ -173,6 +175,7 @@ describe("buildCellMesh", () => {
     const roomA = compiled.cellsById.get("room-a")!;
     const preparedAssets: PreparedWorldAssets = {
       getTexture: () => new THREE.Texture(),
+      getConfiguredTexture: () => new THREE.Texture(),
       instantiateGltf: () => ({
         scene: new THREE.Group(),
         animations: [],
@@ -218,11 +221,83 @@ describe("buildCellMesh", () => {
 
     expect(drawnText).toEqual(["1 -> room-b, 3"]);
   });
+
+  it("reuses configured floor textures across matching meshes and keeps sRGB color space", () => {
+    const compiled = compileCellComplex(twoPrismLoop);
+    const roomA = compiled.cellsById.get("room-a")!;
+    const sharedTexture = new THREE.Texture();
+    const configuredTexture = new THREE.Texture();
+    const getConfiguredTexture = vi.fn((request: Parameters<PreparedWorldAssets["getConfiguredTexture"]>[0]) => {
+      configuredTexture.colorSpace = request.colorSpace;
+      configuredTexture.repeat.set(request.repeatX, request.repeatY);
+      return configuredTexture;
+    });
+    const assets: PreparedWorldAssets = {
+      getTexture: () => sharedTexture,
+      getConfiguredTexture,
+      instantiateGltf: () => ({
+        scene: new THREE.Group(),
+        animations: [],
+      }),
+    };
+
+    const firstMesh = buildCellMesh(roomA, {
+      debugLevel: "off",
+      portalPanelMode: "none",
+      eyeHeightMeters: 1.6,
+      assets,
+    });
+    const secondMesh = buildCellMesh(roomA, {
+      debugLevel: "off",
+      portalPanelMode: "none",
+      eyeHeightMeters: 1.6,
+      assets,
+    });
+    const firstMaterial = firstMesh.getObjectByName("floor:room-a") as THREE.Mesh | undefined;
+    const secondMaterial = secondMesh.getObjectByName("floor:room-a") as THREE.Mesh | undefined;
+    const firstMap = (firstMaterial?.material as THREE.MeshStandardMaterial | undefined)?.map;
+    const secondMap = (secondMaterial?.material as THREE.MeshStandardMaterial | undefined)?.map;
+
+    expect(getConfiguredTexture).toHaveBeenCalled();
+    expect(firstMap).toBe(configuredTexture);
+    expect(secondMap).toBe(configuredTexture);
+    expect(firstMap?.colorSpace).toBe(THREE.SRGBColorSpace);
+  });
+
+  it("keeps the fallback floor color when a runtime texture is unavailable", () => {
+    const compiled = compileCellComplex(twoPrismLoop);
+    const roomA = compiled.cellsById.get("room-a")!;
+    const portalWallTexture = new THREE.Texture();
+    const assets: PreparedWorldAssets = {
+      getTexture: (assetPath) => assetPath.includes("abstract-fractal") ? portalWallTexture : undefined,
+      getConfiguredTexture: (request) => request.assetPath.includes("abstract-fractal") ? portalWallTexture : undefined,
+      instantiateGltf: () => ({
+        scene: new THREE.Group(),
+        animations: [],
+      }),
+    };
+
+    const mesh = buildCellMesh(roomA, {
+      debugLevel: "off",
+      portalPanelMode: "none",
+      eyeHeightMeters: 1.6,
+      assets,
+    });
+    const floor = mesh.getObjectByName("floor:room-a") as THREE.Mesh | undefined;
+    const material = floor?.material as THREE.MeshStandardMaterial | undefined;
+
+    expect(material?.color.getHexString()).toBe("5b8f48");
+    expect(material?.map).toBeNull();
+    expect(material?.userData.missingTextureUrl).toBe(roomA.floorMaterial.kind === "floor-texture"
+      ? roomA.floorMaterial.colorTexturePath
+      : undefined);
+  });
 });
 
 function createPreparedAssets(): PreparedWorldAssets {
   return {
     getTexture: () => new THREE.Texture(),
+    getConfiguredTexture: () => new THREE.Texture(),
     instantiateGltf: () => ({
       scene: new THREE.Group(),
       animations: [],

@@ -23,19 +23,34 @@ export function createPortalWallMaterial(
     throw new Error(`Portal wall texture was not preloaded: ${PORTAL_WALL_TEXTURE_FILE}`);
   }
 
-  material.map = configurePortalWallTexture(preparedTexture.clone(), repeatX, repeatY);
+  material.map = configurePortalWallTexture(assets, repeatX, repeatY);
   material.needsUpdate = true;
   return material;
 }
 
-function configurePortalWallTexture(texture: THREE.Texture, repeatX: number, repeatY: number): THREE.Texture {
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(repeatX, repeatY);
-  texture.name = "portal-wall-texture";
-  texture.userData.textureUrl = PORTAL_WALL_TEXTURE_URL;
-  texture.userData.repeatX = repeatX;
-  texture.userData.repeatY = repeatY;
+function configurePortalWallTexture(
+  assets: PreparedWorldAssets,
+  repeatX: number,
+  repeatY: number,
+): THREE.Texture {
+  const texture = assets.getConfiguredTexture({
+    assetPath: PORTAL_WALL_TEXTURE_FILE,
+    colorSpace: THREE.SRGBColorSpace,
+    repeatX,
+    repeatY,
+    wrapS: THREE.RepeatWrapping,
+    wrapT: THREE.RepeatWrapping,
+    name: "portal-wall-texture",
+    userData: {
+      textureUrl: PORTAL_WALL_TEXTURE_URL,
+      repeatX,
+      repeatY,
+    },
+  });
+
+  if (!texture) {
+    throw new Error(`Portal wall texture was not preloaded: ${PORTAL_WALL_TEXTURE_FILE}`);
+  }
+
   return texture;
 }

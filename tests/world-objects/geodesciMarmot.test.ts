@@ -45,6 +45,9 @@ function stubAssets(): PreparedWorldAssets {
     getTexture() {
       return undefined;
     },
+    getConfiguredTexture() {
+      return undefined;
+    },
     instantiateGltf() {
       return undefined;
     },

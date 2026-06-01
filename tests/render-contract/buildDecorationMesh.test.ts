@@ -15,6 +15,7 @@ describe("buildDecorationMesh", () => {
     const preparedScene = new THREE.Group();
     const assets: PreparedWorldAssets = {
       getTexture: () => undefined,
+      getConfiguredTexture: () => undefined,
       instantiateGltf(assetPath) {
         expect(assetPath).toBe(objectSpec.assetPath);
         return {

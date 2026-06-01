@@ -38,7 +38,7 @@ source files:
 
 runtime files:
   .glb or .gltf
-  image textures for floors and materials
+  KTX2 color textures for tiled floors
   small manifest metadata
 ```
 
@@ -60,11 +60,12 @@ public/assets/
     butterfly/
       butterfly.glb
       license.txt
-  floors/
-    grass1/
-      color.jpg
-      normal.jpg
-      roughness.jpg
+  textures/
+    forest_leaves_02_4k/
+      source/
+        ...
+      runtime/
+        forest_leaves_02_color.ktx2
       license.txt
   manifest.json
 ```
@@ -127,6 +128,11 @@ interface FloorTextureDefinition {
   readonly roughnessTexturePath?: string;
 }
 ```
+
+For the current runtime contract, default floor materials should point only to
+`colorTexturePath`. Optional normal, bump, and roughness fields may remain in
+the types for future experiments, but the stock texture library should not
+preload them.
 
 Example normalized spec:
 
@@ -351,11 +357,32 @@ Preloading should collect all referenced assets from the normalized world spec.
 The preload pass should include:
 
 - floor texture color maps,
-- floor normal maps,
-- floor roughness maps,
 - object GLB/GLTF models,
 - behavior object visual models,
 - shared renderer textures such as portal-wall textures.
+
+The default runtime preload pass should not include EXR normals,
+displacement/bump maps, or roughness maps for stock floor textures.
+
+## Texture Re-encoding Guidance
+
+When a new repeated floor texture is added, the default path should be:
+
+- keep the source image in the source/textures area,
+- generate a runtime `.ktx2` color map,
+- keep the authored fallback `floorColor`,
+- verify the result in motion, not only in still inspection.
+
+Recommended first-pass encoding policy:
+
+- use KTX2 Basis ETC1S first,
+- keep sRGB metadata for color textures,
+- include mipmaps,
+- keep the runtime material color-only by default.
+
+Promote an individual texture to UASTC when ETC1S causes visible artifacts on
+large tiled floors, especially during motion or in VR. Do not switch the whole
+library to UASTC without a specific visible reason.
 
 The preload pass should not need to execute world-script constructors again. It should read normalized specs.
 
@@ -403,4 +430,3 @@ The registry can be used to create specs from world scripts. Compiled worlds sho
 - Should behavior object specs store current phase for deterministic replay?
 - Should `geo_butterfly` eventually have vertical bobbing separate from side-to-side oscillation?
 - Should object constructors use singular names only, or should aliases be allowed for classroom readability?
-
