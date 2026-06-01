@@ -85,7 +85,7 @@ import {
 import { rigidTransformToThreeMatrix, worldPointToThree } from "./worldAxes";
 import { createXrControls } from "./xrControls";
 import { createXrEntryUi } from "./xrEntryUi";
-import { createXrPlayerRig, headLocalMetersFromViewerPose } from "./xrPlayerRig";
+import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose } from "./xrPlayerRig";
 import {
   createXrSessionState,
   detectXrSessionState,
@@ -313,6 +313,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const headLocalMeters = xrActive
       ? headLocalMetersFromViewerPose(xrViewerPose)
       : undefined;
+    const headLocalYawRadians = xrActive
+      ? headYawRadiansFromViewerPose(xrViewerPose)
+      : undefined;
     const frame = xrActive ? getXrInputFrame(deltaSeconds) : getDesktopInputFrame(deltaSeconds);
     const frameBeforeMoveMs = performance.now();
     const previousCellId = playerPose.cellId;
@@ -325,12 +328,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         runtime.reset(cellMeshes);
       }
     } else {
+      const yawDeltaRadians = xrActive
+        ? xrRig.resolveCameraYawRadians(headLocalYawRadians) - playerPose.yawRadians + frame.yawDeltaRadians
+        : frame.yawDeltaRadians;
       moveResult = movePlayer({
         world: appState.world,
         pose: playerPose,
         body: appState.playerBody,
         localDisplacement: frame.localDisplacement,
-        yawDeltaRadians: frame.yawDeltaRadians,
+        yawDeltaRadians,
         pitchDeltaRadians: frame.pitchDeltaRadians,
         coordinateFrame: "global",
       });
@@ -365,7 +371,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     updateVisibleCell();
     let portalCullingCameras: readonly THREE.Camera[] = [camera];
     if (xrActive) {
-      xrRig.syncXrRig(playerPose, headLocalMeters);
+      xrRig.syncXrRig(playerPose, headLocalMeters, headLocalYawRadians);
       portalCullingCamera.copy(camera, false);
       xrRig.syncXrCullingCamera(portalCullingCamera, xrViewerPose);
       const xrEyeCameras = xrRig.syncXrViewCullingCameras(portalCullingEyeCameras, xrViewerPose);

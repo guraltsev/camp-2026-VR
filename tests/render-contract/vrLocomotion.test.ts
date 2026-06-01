@@ -8,6 +8,7 @@ import {
 import {
   globalHorizontalDeltaToPlayerLocal,
   createXrPlayerRig,
+  headYawRadiansFromViewerPose,
   resolveSharedXrRenderRootCellId,
   xrRigidTransformLocalMatrix,
 } from "../../src/render/three/xrPlayerRig";
@@ -118,4 +119,70 @@ describe("VR locomotion mapping", () => {
 
     expect(camera.matrixWorld.elements).toEqual(matrix.elements);
   });
+
+  it("extracts headset yaw so player movement can follow the viewed direction", async () => {
+    const THREE = await import("three");
+    const orientation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+    const yawRadians = headYawRadiansFromViewerPose(
+      viewerPose({
+        orientation: { x: orientation.x, y: orientation.y, z: orientation.z, w: orientation.w },
+      }),
+    );
+
+    expect(yawRadians).toBeCloseTo(-Math.PI / 2);
+  });
+
+  it("keeps the XR rig camera yaw aligned with the player without double-applying headset yaw", async () => {
+    const THREE = await import("three");
+    const rig = createXrPlayerRig(new THREE.PerspectiveCamera());
+
+    rig.syncXrRig(
+      {
+        cellId: "room-a",
+        position: { x: 0, y: 0, z: 0 },
+        yawRadians: -Math.PI / 2,
+        pitchRadians: 0,
+      },
+      { x: 0, y: 0, z: 1.6 },
+      -Math.PI / 2,
+    );
+
+    expect(rig.root.rotation.y).toBeCloseTo(0);
+  });
+
+  it("lets vertical headset motion raise the XR culling camera", async () => {
+    const THREE = await import("three");
+    const rig = createXrPlayerRig(new THREE.PerspectiveCamera());
+    const cullingCamera = new THREE.PerspectiveCamera();
+
+    rig.syncXrRig(
+      {
+        cellId: "room-a",
+        position: { x: 0, y: 0, z: 0 },
+        yawRadians: 0,
+        pitchRadians: 0,
+      },
+      { x: 0, y: 0, z: 1.9 },
+      0,
+    );
+    rig.syncXrCullingCamera(cullingCamera, viewerPose({ position: { x: 0, y: 1.9, z: 0 } }));
+
+    expect(cullingCamera.position.y).toBeCloseTo(1.9);
+  });
 });
+
+function viewerPose(options: {
+  readonly position?: { readonly x: number; readonly y: number; readonly z: number };
+  readonly orientation?: { readonly x: number; readonly y: number; readonly z: number; readonly w: number };
+} = {}): XRViewerPose {
+  const position = options.position ?? { x: 0, y: 1.6, z: 0 };
+  const orientation = options.orientation ?? { x: 0, y: 0, z: 0, w: 1 };
+
+  return {
+    transform: {
+      position: { ...position, w: 1 } as DOMPointReadOnly,
+      orientation: { ...orientation } as DOMPointReadOnly,
+    },
+    views: [],
+  } as unknown as XRViewerPose;
+}

@@ -12,9 +12,10 @@ export interface XrPlayerRig {
   readonly root: THREE.Group;
   reset(): void;
   syncDesktopCamera(pose: PlayerPose): void;
-  syncXrRig(pose: PlayerPose, headLocalMeters?: Vec3): void;
+  syncXrRig(pose: PlayerPose, headLocalMeters?: Vec3, headLocalYawRadians?: number): void;
   syncXrCullingCamera(camera: THREE.PerspectiveCamera, viewerPose: XRViewerPose | undefined): void;
   syncXrViewCullingCameras(cameras: readonly THREE.Camera[], viewerPose: XRViewerPose | undefined): readonly THREE.Camera[];
+  resolveCameraYawRadians(headLocalYawRadians?: number): number;
   consumePhysicalInput(headLocalMeters: Vec3 | undefined, yawRadians: number): RuntimeInputFrame;
   acceptPhysicalMove(result: MoveResult, currentHeadLocalMeters?: Vec3): void;
   getSharedRenderRootCellId(pose: PlayerPose): string;
@@ -57,15 +58,15 @@ export function createXrPlayerRig(camera: THREE.PerspectiveCamera, options: Part
         z: eyePosition.z + forward.z,
       }));
     },
-    syncXrRig(pose, headLocalMeters) {
+    syncXrRig(pose, headLocalMeters, headLocalYawRadians = 0) {
       const head = headLocalMeters ?? vec3(0, 0, DEFAULT_PLAYER_EYE_HEIGHT_METERS);
       const headThree = worldPointToThree(head);
       const playerEye = worldPointToThree({
         x: pose.position.x,
         y: pose.position.y,
-        z: pose.position.z + DEFAULT_PLAYER_EYE_HEIGHT_METERS,
+        z: pose.position.z + head.z,
       });
-      root.rotation.set(0, pose.yawRadians, 0);
+      root.rotation.set(0, pose.yawRadians - headLocalYawRadians, 0);
       camera.position.copy(headThree);
       camera.rotation.set(0, 0, 0);
       root.updateMatrixWorld(true);
@@ -109,6 +110,9 @@ export function createXrPlayerRig(camera: THREE.PerspectiveCamera, options: Part
         cullingCamera.projectionMatrixInverse.copy(cullingCamera.projectionMatrix).invert();
         return cullingCamera;
       });
+    },
+    resolveCameraYawRadians(headLocalYawRadians = 0) {
+      return root.rotation.y + headLocalYawRadians;
     },
     consumePhysicalInput(headLocalMeters, _yawRadians) {
       const physical = computePhysicalRoomScaleDisplacement({
@@ -164,6 +168,19 @@ export function headLocalMetersFromViewerPose(pose: XRViewerPose | undefined): V
   const position = pose.transform.position;
 
   return vec3(position.x, -position.z, position.y);
+}
+
+export function headYawRadiansFromViewerPose(pose: XRViewerPose | undefined): number | undefined {
+  if (!pose) {
+    return undefined;
+  }
+
+  const orientation = pose.transform.orientation;
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+    new THREE.Quaternion(orientation.x, orientation.y, orientation.z, orientation.w),
+  );
+
+  return Math.atan2(-forward.x, -forward.z);
 }
 
 export function viewerPoseLocalMatrix(pose: XRViewerPose): THREE.Matrix4 {
