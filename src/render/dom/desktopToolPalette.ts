@@ -84,10 +84,18 @@ export function createDesktopToolPalette(
   resumePrompt.className = "desktop-palette-resume";
   resumePrompt.hidden = true;
   resumePrompt.textContent = "Click to resume look";
-  resumePrompt.addEventListener("click", () => options.onResumeRequested());
 
   root.addEventListener("contextmenu", (event) => {
     event.preventDefault();
+  });
+
+  root.addEventListener("click", (event) => {
+    if (resumePrompt.hidden || !panel.hidden) {
+      return;
+    }
+
+    event.preventDefault();
+    options.onResumeRequested();
   });
 
   panel.append(header, content);
