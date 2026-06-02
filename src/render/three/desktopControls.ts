@@ -11,8 +11,8 @@ export interface DesktopControls {
   readonly enabled: boolean;
   consumeFrame(deltaSeconds: number): DesktopInputFrame;
   pause(): void;
-  resume(options?: { readonly requestPointerLock?: boolean }): void;
-  requestPointerLock(): void;
+  resume(options?: { readonly requestPointerLock?: boolean }): Promise<boolean>;
+  requestPointerLock(): Promise<boolean>;
   isPointerLocked(): boolean;
   dispose(): void;
 }
@@ -70,7 +70,7 @@ export function createDesktopControls(
   }
 
   function onClick(): void {
-    requestPointerLock();
+    void requestPointerLock();
   }
 
   function onMouseMove(event: MouseEvent): void {
@@ -92,14 +92,18 @@ export function createDesktopControls(
     resetRequested = false;
   }
 
-  function requestPointerLock(): void {
+  async function requestPointerLock(): Promise<boolean> {
     if (paused) {
-      return;
+      return false;
     }
 
-    void canvas.requestPointerLock().catch((error: unknown) => {
+    try {
+      await canvas.requestPointerLock();
+      return document.pointerLockElement === canvas;
+    } catch (error: unknown) {
       console.warn("Unable to capture FPS pointer lock.", error);
-    });
+      return false;
+    }
   }
 
   return {
@@ -150,12 +154,13 @@ export function createDesktopControls(
         document.exitPointerLock();
       }
     },
-    resume(resumeOptions = {}): void {
+    async resume(resumeOptions = {}): Promise<boolean> {
       paused = false;
       clearPendingInput();
       if (resumeOptions.requestPointerLock) {
-        requestPointerLock();
+        return requestPointerLock();
       }
+      return document.pointerLockElement === canvas;
     },
     requestPointerLock,
     isPointerLocked(): boolean {

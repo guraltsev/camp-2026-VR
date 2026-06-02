@@ -209,7 +209,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       menuState = setRuntimeMenuDebugOverlayEnabled(menuState, enabled);
     },
   });
-  const desktopToolPalette = createDesktopToolPalette(container, {
+  const desktopToolPalette = createDesktopToolPalette(document.body, {
     onLeftAction(actionId) {
       if (actionId === "settings") {
         menuState = showRuntimeMenuSettings(menuState);
@@ -241,8 +241,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       dispatchRuntimeCommand({ kind: "set-debug-overlay", enabled });
     },
     onResumeRequested() {
-      controls.resume({ requestPointerLock: true });
-      desktopToolPalette.setResumePromptVisible(false);
+      void controls.resume({ requestPointerLock: true }).then((captured) => {
+        desktopToolPalette.setResumePromptVisible(!captured);
+      });
     },
   });
   const desktopPaletteInput = createDesktopPaletteInput({

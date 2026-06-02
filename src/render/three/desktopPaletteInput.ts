@@ -11,7 +11,7 @@ export type DesktopPaletteInputAction = "open" | "close" | "none";
 export interface DesktopPaletteInputOptions {
   readonly canvas: HTMLCanvasElement;
   readonly paletteRoot: HTMLElement;
-  readonly controls: Pick<DesktopControls, "pause" | "resume" | "requestPointerLock" | "isPointerLocked">;
+  readonly controls: Pick<DesktopControls, "pause" | "resume" | "isPointerLocked">;
   readonly onOpen: () => void;
   readonly onClose: () => void;
   readonly setResumePromptVisible: (visible: boolean) => void;
@@ -29,7 +29,10 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
 
   function applyAction(
     action: DesktopPaletteInputAction,
-    actionOptions: { readonly requestPointerLockOnClose?: boolean } = {},
+    actionOptions: {
+      readonly requestPointerLockOnClose?: boolean;
+      readonly showResumePromptWithoutRecapture?: boolean;
+    } = {},
   ): void {
     if (action === "open" && !menuOpen) {
       menuOpen = true;
@@ -40,11 +43,23 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
     }
 
     if (action === "close" && menuOpen) {
+      if (actionOptions.showResumePromptWithoutRecapture) {
+        menuOpen = false;
+        options.onClose();
+        options.controls.pause();
+        options.setResumePromptVisible(true);
+        return;
+      }
+
       const requestPointerLockOnClose = actionOptions.requestPointerLockOnClose ?? true;
       menuOpen = false;
       options.onClose();
-      options.controls.resume({ requestPointerLock: requestPointerLockOnClose });
-      options.setResumePromptVisible(!requestPointerLockOnClose);
+      void options.controls.resume({ requestPointerLock: requestPointerLockOnClose }).then((captured) => {
+        if (!captured) {
+          options.controls.pause();
+        }
+        options.setResumePromptVisible(requestPointerLockOnClose ? !captured : true);
+      });
     }
   }
 
@@ -62,7 +77,7 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
 
     if (action !== "none") {
       event.preventDefault();
-      applyAction(action, { requestPointerLockOnClose: false });
+      applyAction(action, { showResumePromptWithoutRecapture: true });
     }
   }
 
