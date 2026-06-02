@@ -17,6 +17,7 @@ const defaultDebugSettingsSupport: DebugSettingsSupport = {
     "runtime-diagnostics",
     "portal-path-debug",
     "portal-static-cull-debug",
+    "portal-visible-path-debug",
     "portal-path-overlays",
     "portal-path-overlay-instances",
   ],

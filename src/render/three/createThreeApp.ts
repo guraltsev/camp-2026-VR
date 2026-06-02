@@ -17,13 +17,20 @@ import { movePlayer } from "../../movement/movePlayer";
 import { createAppCommandDispatcher } from "../../runtime/appCommandDispatcher";
 import type { RuntimeCommand } from "../../runtime/runtimeCommands";
 import {
+  createDebugSettingsFromRuntimeMenuState,
   closeRuntimeMenu,
   createRuntimeMenuState,
   openRuntimeMenu,
+  type RuntimeDebugOverlayItemId,
+  serializeRuntimeDebugOverlayItems,
+  setRuntimeMenuConsoleLogLevel,
+  setRuntimeMenuDebugEnabled,
   setRuntimeMenuDebugOverlayEnabled,
-  setRuntimeMenuSelectedWorldId,
+  setRuntimeMenuPortalInspectionEnabled,
+  setRuntimeMenuPortalPanelMode,
   showRuntimeMenuMainPage,
   showRuntimeMenuSettings,
+  toggleRuntimeMenuDebugOverlayItem,
 } from "../../runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../ui/paletteDefinition";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
@@ -72,7 +79,7 @@ import {
   resolveRenderQualityPixelRatio,
   type RenderQualityState,
 } from "./renderQuality";
-import { runtimeDiagnostics } from "./runtimeDiagnostics";
+import { installRuntimeDiagnostics, runtimeDiagnostics } from "./runtimeDiagnostics";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import type { RuntimeInputFrame, VisiblePortalPathRenderState, XrDebugRenderState } from "./renderState";
 import { createPortalClipData } from "./portalClipData";
@@ -127,6 +134,8 @@ export interface ThreeAppOptions {
   readonly debugLevel: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
   readonly debugOptions: readonly DebugOptionId[];
+  readonly debugOverlayEnabled: boolean;
+  readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly renderQualityEnabled: boolean;
   readonly assets: PreparedWorldAssets;
 }
@@ -185,6 +194,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let debugLevel = options.debugLevel;
   let portalPanelMode = options.portalPanelMode;
   let debugOptions = options.debugOptions;
+  let smoothedFrameRateFps: number | undefined;
   let showCellPathRendersInstances = hasActiveDebugOption(
     debugLevel,
     debugOptions,
@@ -192,7 +202,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   );
   let menuState = createRuntimeMenuState({
     selectedWorldId: options.selectedWorldId,
-    debugOverlayEnabled: true,
+    debugSettings: {
+      debugLevel: options.debugLevel,
+      portalPanelMode: options.portalPanelMode,
+      debugOptions: options.debugOptions,
+    },
+    debugOverlayEnabled: options.debugOverlayEnabled,
+    debugOverlayItems: options.debugOverlayItems,
   });
   const debugOverlay = createDebugOverlay(container);
   const commandDispatcher = createAppCommandDispatcher({
@@ -206,7 +222,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       window.location.assign(url);
     },
     setDebugOverlayEnabled(enabled) {
-      menuState = setRuntimeMenuDebugOverlayEnabled(menuState, enabled);
+      applyMenuDebugState(setRuntimeMenuDebugOverlayEnabled(menuState, enabled));
     },
   });
   const desktopToolPalette = createDesktopToolPalette(document.body, {
@@ -227,18 +243,26 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         desktopPaletteInput.close();
       }
     },
-    onWorldSelected(worldId) {
-      menuState = setRuntimeMenuSelectedWorldId(menuState, worldId);
-      syncDesktopPalette();
-      dispatchRuntimeCommand({ kind: "change-world", worldId });
-    },
     onReloadRequested() {
       dispatchRuntimeCommand({ kind: "reload-world" });
     },
+    onDebugEnabledChanged(enabled) {
+      applyMenuDebugState(setRuntimeMenuDebugEnabled(menuState, enabled));
+    },
+    onConsoleLogLevelSelected(level) {
+      applyMenuDebugState(setRuntimeMenuConsoleLogLevel(menuState, level));
+    },
     onDebugOverlayToggled(enabled) {
-      menuState = setRuntimeMenuDebugOverlayEnabled(menuState, enabled);
-      syncDesktopPalette();
-      dispatchRuntimeCommand({ kind: "set-debug-overlay", enabled });
+      applyMenuDebugState(setRuntimeMenuDebugOverlayEnabled(menuState, enabled));
+    },
+    onDebugOverlayItemToggled(itemId, enabled) {
+      applyMenuDebugState(toggleRuntimeMenuDebugOverlayItem(menuState, itemId, enabled));
+    },
+    onPortalPanelModeSelected(mode) {
+      applyMenuDebugState(setRuntimeMenuPortalPanelMode(menuState, mode));
+    },
+    onPortalInspectionToggled(enabled) {
+      applyMenuDebugState(setRuntimeMenuPortalInspectionEnabled(menuState, enabled));
     },
     onResumeRequested() {
       void controls.resume({ requestPointerLock: true }).then((captured) => {
@@ -395,6 +419,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function renderFrame(_time?: DOMHighResTimeStamp, xrFrame?: XRFrame): void {
     const frameStartMs = performance.now();
     const deltaSeconds = clock.getDelta();
+    const frameRateFps = deltaSeconds > 0 ? 1 / deltaSeconds : undefined;
+    smoothedFrameRateFps = frameRateFps === undefined
+      ? smoothedFrameRateFps
+      : smoothedFrameRateFps === undefined
+        ? frameRateFps
+        : THREE.MathUtils.lerp(smoothedFrameRateFps, frameRateFps, 0.15);
     const xrActive = renderer.xr.isPresenting && xrSessionState.status === "active";
     const xrReferenceSpace = xrActive ? renderer.xr.getReferenceSpace() : null;
     const xrViewerPose = xrActive && xrFrame && xrReferenceSpace
@@ -493,6 +523,82 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
+  function applyMenuDebugState(nextMenuState: typeof menuState): void {
+    menuState = nextMenuState;
+    syncDebugSettingsUrl();
+    applyDebugSettings(createDebugSettingsFromRuntimeMenuState(menuState));
+    syncDesktopPalette();
+  }
+
+  function applyDebugSettings(settings: DebugSettings): void {
+    debugLevel = settings.debugLevel;
+    portalPanelMode = settings.portalPanelMode;
+    debugOptions = settings.debugOptions;
+    showCellPathRendersInstances = hasActiveDebugOption(
+      debugLevel,
+      debugOptions,
+      "portal-path-overlay-instances",
+    );
+    installRuntimeDiagnostics(
+      appState.world,
+      settings.debugLevel,
+      hasActiveDebugOption(settings.debugLevel, settings.debugOptions, "runtime-diagnostics"),
+    );
+    rebuildCellMeshes();
+    syncPortalInstanceRender();
+    portalDebugRuntime.dispose();
+    portalDebugRuntime = createPortalDebugRuntime();
+    logDebugStartupGuide(debugLevel, debugOptions);
+    for (const runtime of dynamicObjectRuntimes) {
+      runtime.syncParent(cellMeshes);
+    }
+    syncLegacyObjectPortalRenders();
+    applyDesktopCameraPose();
+    renderer.render(scene, camera);
+  }
+
+  function syncDebugSettingsUrl(): void {
+    const settings = createDebugSettingsFromRuntimeMenuState(menuState);
+    const url = new URL(window.location.href);
+    const serializedDebugOptions = settings.debugOptions.join(",");
+    const serializedOverlayItems = serializeRuntimeDebugOverlayItems(menuState.debugOverlayItems);
+
+    if (settings.debugLevel === "off") {
+      url.searchParams.delete("debugLevel");
+    } else {
+      url.searchParams.set("debugLevel", settings.debugLevel);
+    }
+
+    if (settings.portalPanelMode === "none") {
+      url.searchParams.delete("portalPanels");
+    } else {
+      url.searchParams.set("portalPanels", settings.portalPanelMode);
+    }
+
+    if (serializedDebugOptions) {
+      url.searchParams.set("debugOptions", serializedDebugOptions);
+    } else {
+      url.searchParams.delete("debugOptions");
+    }
+
+    if (menuState.debugOverlayEnabled) {
+      url.searchParams.delete("debugOverlay");
+    } else {
+      url.searchParams.set("debugOverlay", "false");
+    }
+
+    if (serializedOverlayItems === "fps,location,portal-quantities") {
+      url.searchParams.delete("debugOverlayItems");
+    } else {
+      url.searchParams.set("debugOverlayItems", serializedOverlayItems);
+    }
+
+    url.searchParams.delete("debug");
+    url.searchParams.delete("ui");
+    url.searchParams.delete("worldPicker");
+    window.history.replaceState({}, "", url);
+  }
+
   window.addEventListener("resize", onResize);
   applyDesktopCameraPose();
   renderer.setAnimationLoop(renderFrame);
@@ -501,25 +607,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     scene,
     renderer,
     updateDebugSettings(settings) {
-      debugLevel = settings.debugLevel;
-      portalPanelMode = settings.portalPanelMode;
-      debugOptions = settings.debugOptions;
-      showCellPathRendersInstances = hasActiveDebugOption(
-        debugLevel,
-        debugOptions,
-        "portal-path-overlay-instances",
-      );
-      rebuildCellMeshes();
-      syncPortalInstanceRender();
-      portalDebugRuntime.dispose();
-      portalDebugRuntime = createPortalDebugRuntime();
-      logDebugStartupGuide(debugLevel, debugOptions);
-      for (const runtime of dynamicObjectRuntimes) {
-        runtime.syncParent(cellMeshes);
-      }
-      syncLegacyObjectPortalRenders();
-      applyDesktopCameraPose();
-      renderer.render(scene, camera);
+      applyDebugSettings(settings);
     },
     dispose() {
       renderer.setAnimationLoop(null);
@@ -1429,13 +1517,20 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         const visibleSummary = visiblePathDebugActive && latestVisibleResult
           ? visibleSummaryToRenderState(mergeStaticPathCounts(latestVisibleResult.summary, staticCull, playerPose.cellId))
           : undefined;
+        const showDebugOverlay = menuState.debugEnabled && menuState.debugOverlayEnabled;
+        const showFps = menuState.debugOverlayItems.includes("fps");
+        const showLocation = menuState.debugOverlayItems.includes("location");
+        const showPortalQuantities = menuState.debugOverlayItems.includes("portal-quantities");
 
         debugOverlay.update({
-          visible: menuState.debugOverlayEnabled && (portalPathDebugActive || visiblePathDebugActive),
-          visiblePortalPaths: visibleSummary,
-          portalInstances: portalInstanceRenderState,
-          xr: xrDebugState,
-          inspectedPathLine: formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult),
+          visible: showDebugOverlay,
+          frameRateFps: showFps ? smoothedFrameRateFps : undefined,
+          visiblePortalPaths: showPortalQuantities ? visibleSummary : undefined,
+          portalInstances: showPortalQuantities ? portalInstanceRenderState : undefined,
+          location: showLocation ? xrDebugState : undefined,
+          inspectedPathLine: showPortalQuantities
+            ? formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult)
+            : undefined,
         });
         updateSelectedClipPolygonOverlay();
       },

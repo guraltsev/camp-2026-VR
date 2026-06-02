@@ -2,9 +2,10 @@ import type { PortalInstanceRenderState, VisiblePortalPathRenderState, XrDebugRe
 
 export interface DebugOverlayState {
   readonly visible: boolean;
+  readonly frameRateFps?: number;
   readonly visiblePortalPaths?: VisiblePortalPathRenderState;
   readonly portalInstances?: PortalInstanceRenderState;
-  readonly xr?: XrDebugRenderState;
+  readonly location?: XrDebugRenderState;
   readonly inspectedPathLine?: string;
 }
 
@@ -21,7 +22,13 @@ export function createDebugOverlay(container: HTMLElement): DebugOverlay {
 
   return {
     update(state) {
-      const hasContent = Boolean(state.visiblePortalPaths || state.portalInstances || state.xr || state.inspectedPathLine);
+      const hasContent = Boolean(
+        state.frameRateFps !== undefined
+        || state.visiblePortalPaths
+        || state.portalInstances
+        || state.location
+        || state.inspectedPathLine,
+      );
       root.hidden = !state.visible || !hasContent;
 
       if (!hasContent) {
@@ -30,10 +37,11 @@ export function createDebugOverlay(container: HTMLElement): DebugOverlay {
       }
 
       root.textContent = [
+        state.frameRateFps !== undefined ? formatFrameRateLine(state.frameRateFps) : undefined,
         state.visiblePortalPaths ? formatVisiblePortalPathLine(state.visiblePortalPaths) : undefined,
         state.portalInstances ? formatPortalInstanceLine(state.portalInstances) : undefined,
         state.portalInstances ? formatPortalArchetypeLine(state.portalInstances) : undefined,
-        state.xr ? formatXrDebugLine(state.xr) : undefined,
+        state.location ? formatLocationLine(state.location) : undefined,
         state.inspectedPathLine,
       ]
         .filter((line): line is string => Boolean(line))
@@ -43,6 +51,10 @@ export function createDebugOverlay(container: HTMLElement): DebugOverlay {
       root.remove();
     },
   };
+}
+
+export function formatFrameRateLine(frameRateFps: number): string {
+  return `fps: ${roundNumber(frameRateFps)} (${roundNumber(1000 / frameRateFps)} ms)`;
 }
 
 export function formatVisiblePortalPathLine(state: VisiblePortalPathRenderState): string {
@@ -60,20 +72,18 @@ export function formatPortalArchetypeLine(state: PortalInstanceRenderState): str
   return `archetypes: ${state.archetypeCount} / overflow ${state.capacityOverflowCount} / clip ${clipOverflow}`;
 }
 
-export function formatXrDebugLine(state: XrDebugRenderState): string {
+export function formatLocationLine(state: XrDebugRenderState): string {
   const blocked = state.lastMovementBlocked
     ? `blocked ${state.lastBlockingReason ?? "unknown"}`
     : "not blocked";
-  const portal = state.lastCrossedPortalId ? ` / portal ${state.lastCrossedPortalId}` : "";
+  const portal = state.lastCrossedPortalId ? ` / last portal ${state.lastCrossedPortalId}` : "";
   const root = state.sharedRenderRootCellId ? ` / xr root ${state.sharedRenderRootCellId}` : "";
 
   return [
-    `xr ${state.sessionStatus}`,
-    state.secureContext ? "secure" : "insecure",
-    `input ${state.activeInputSource}`,
-    `cell ${state.currentCellId}`,
+    `location: cell ${state.currentCellId}`,
     `pos ${formatVec3(state.playerPosition)}`,
     `yaw ${roundNumber(state.yawRadians)}`,
+    `xr ${state.sessionStatus}`,
     blocked,
   ].join(" / ") + portal + root;
 }

@@ -17,6 +17,15 @@ describe("readLaunchOptions", () => {
     expect(readLaunchOptions(locationWithSearch("?renderQuality=0")).renderQualityEnabled).toBe(false);
     expect(readLaunchOptions(locationWithSearch("?renderQuality=false")).renderQualityEnabled).toBe(false);
   });
+
+  it("enables the debug overlay defaults when no explicit overlay params are present", () => {
+    expect(readLaunchOptions(locationWithSearch("")).debugOverlayEnabled).toBe(true);
+    expect(readLaunchOptions(locationWithSearch("")).debugOverlayItems).toEqual([
+      "fps",
+      "location",
+      "portal-quantities",
+    ]);
+  });
 });
 
 function locationWithSearch(search: string): Location {

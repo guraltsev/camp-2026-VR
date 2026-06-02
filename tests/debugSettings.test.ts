@@ -60,4 +60,14 @@ describe("canApplyDebugSettingsAtRuntime", () => {
       }),
     ).toBe(true);
   });
+
+  it("allows visible portal quantity debug summaries at runtime", () => {
+    expect(
+      canApplyDebugSettingsAtRuntime({
+        debugLevel: "basic",
+        portalPanelMode: "panel",
+        debugOptions: ["portal-visible-path-debug"],
+      }),
+    ).toBe(true);
+  });
 });

@@ -1,4 +1,9 @@
 import type { PaletteDefinition, PaletteHeaderAction } from "../../ui/paletteDefinition";
+import type { PortalPanelModeId } from "../../glue/portalPanelMode";
+import type {
+  RuntimeDebugOverlayItemId,
+  RuntimeMenuConsoleLogLevelId,
+} from "../../runtime/runtimeMenuState";
 
 export interface DesktopPaletteView {
   readonly pageId: PaletteDefinition["pageId"];
@@ -8,18 +13,25 @@ export interface DesktopPaletteView {
     | { readonly kind: "empty" }
     | {
       readonly kind: "settings";
-      readonly selectedWorldId: string;
-      readonly worldLabels: readonly string[];
+      readonly debugEnabled: boolean;
+      readonly consoleLogLevel: RuntimeMenuConsoleLogLevelId;
       readonly debugOverlayEnabled: boolean;
+      readonly debugOverlayLabels: readonly string[];
+      readonly portalPanelMode: string;
+      readonly portalInspectionEnabled: boolean;
     };
 }
 
 export interface DesktopToolPaletteOptions {
   readonly onLeftAction: (actionId: PaletteHeaderAction["id"]) => void;
   readonly onRightAction: (actionId: PaletteHeaderAction["id"]) => void;
-  readonly onWorldSelected: (worldId: string) => void;
   readonly onReloadRequested: () => void;
+  readonly onDebugEnabledChanged: (enabled: boolean) => void;
+  readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
   readonly onDebugOverlayToggled: (enabled: boolean) => void;
+  readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
+  readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
+  readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onResumeRequested: () => void;
 }
 
@@ -139,9 +151,14 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
       rightAction: definition.rightAction,
       content: {
         kind: "settings",
-        selectedWorldId: definition.content.selectedWorldId,
-        worldLabels: definition.content.worldOptions.map((option) => option.label),
+        debugEnabled: definition.content.debugEnabled,
+        consoleLogLevel: definition.content.consoleLogLevel,
         debugOverlayEnabled: definition.content.debugOverlayEnabled,
+        debugOverlayLabels: definition.content.debugOverlayItems
+          .filter((item) => item.checked)
+          .map((item) => item.label),
+        portalPanelMode: definition.content.portalPanelMode,
+        portalInspectionEnabled: definition.content.portalInspectionEnabled,
       },
     };
   }
@@ -170,52 +187,153 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     const settings = document.createElement("div");
     settings.className = "desktop-tool-palette-settings";
 
-    const worldField = document.createElement("label");
-    worldField.className = "desktop-tool-palette-field";
-
-    const worldLabel = document.createElement("span");
-    worldLabel.className = "desktop-tool-palette-field-label";
-    worldLabel.textContent = "World";
-
-    const worldSelect = document.createElement("select");
-    worldSelect.className = "desktop-tool-palette-select";
-    worldSelect.ariaLabel = "Select world";
-
-    for (const option of definition.content.worldOptions) {
-      const item = document.createElement("option");
-      item.value = option.id;
-      item.textContent = option.label;
-      item.selected = option.id === definition.content.selectedWorldId;
-      worldSelect.append(item);
-    }
-
-    worldSelect.addEventListener("change", () => {
-      options.onWorldSelected(worldSelect.value);
-    });
-
-    worldField.append(worldLabel, worldSelect);
-
     const reloadButton = document.createElement("button");
     reloadButton.type = "button";
     reloadButton.className = "desktop-tool-palette-button";
     reloadButton.textContent = "Reload";
     reloadButton.addEventListener("click", () => options.onReloadRequested());
 
+    const debugSection = document.createElement("section");
+    debugSection.className = "desktop-tool-palette-section";
+
+    const debugHeading = document.createElement("span");
+    debugHeading.className = "desktop-tool-palette-field-label";
+    debugHeading.textContent = "Debug";
+    debugSection.append(debugHeading);
+
     const debugToggle = document.createElement("label");
     debugToggle.className = "desktop-tool-palette-toggle";
 
-    const debugCheckbox = document.createElement("input");
-    debugCheckbox.type = "checkbox";
-    debugCheckbox.checked = definition.content.debugOverlayEnabled;
-    debugCheckbox.addEventListener("change", () => {
-      options.onDebugOverlayToggled(debugCheckbox.checked);
+    const debugEnabledCheckbox = document.createElement("input");
+    debugEnabledCheckbox.type = "checkbox";
+    debugEnabledCheckbox.checked = definition.content.debugEnabled;
+    debugEnabledCheckbox.addEventListener("change", () => {
+      options.onDebugEnabledChanged(debugEnabledCheckbox.checked);
     });
 
-    const debugText = document.createElement("span");
-    debugText.textContent = "Debug overlay";
+    const debugToggleCopy = document.createElement("span");
+    debugToggleCopy.textContent = "Debug tools";
 
-    debugToggle.append(debugCheckbox, debugText);
-    settings.append(worldField, reloadButton, debugToggle);
+    debugToggle.append(debugEnabledCheckbox, debugToggleCopy);
+    debugSection.append(debugToggle);
+
+    if (definition.content.debugEnabled) {
+      const consoleField = document.createElement("label");
+      consoleField.className = "desktop-tool-palette-field";
+
+      const consoleLabel = document.createElement("span");
+      consoleLabel.className = "desktop-tool-palette-field-label";
+      consoleLabel.textContent = "Console log level";
+
+      const consoleSelect = document.createElement("select");
+      consoleSelect.className = "desktop-tool-palette-select";
+      consoleSelect.ariaLabel = "Console log level";
+
+      for (const option of definition.content.consoleLogLevelOptions) {
+        const item = document.createElement("option");
+        item.value = option.id;
+        item.textContent = option.label;
+        item.selected = option.id === definition.content.consoleLogLevel;
+        consoleSelect.append(item);
+      }
+
+      consoleSelect.addEventListener("change", () => {
+        options.onConsoleLogLevelSelected(consoleSelect.value as RuntimeMenuConsoleLogLevelId);
+      });
+
+      consoleField.append(consoleLabel, consoleSelect);
+      debugSection.append(consoleField);
+
+      const overlayField = document.createElement("div");
+      overlayField.className = "desktop-tool-palette-field";
+
+      const overlayToggle = document.createElement("label");
+      overlayToggle.className = "desktop-tool-palette-toggle";
+
+      const debugCheckbox = document.createElement("input");
+      debugCheckbox.type = "checkbox";
+      debugCheckbox.checked = definition.content.debugOverlayEnabled;
+      debugCheckbox.addEventListener("change", () => {
+        options.onDebugOverlayToggled(debugCheckbox.checked);
+      });
+
+      const debugText = document.createElement("span");
+      debugText.textContent = "UI overlay";
+
+      overlayToggle.append(debugCheckbox, debugText);
+      overlayField.append(overlayToggle);
+
+      if (definition.content.debugOverlayEnabled) {
+        const overlayItems = document.createElement("div");
+        overlayItems.className = "desktop-tool-palette-suboptions";
+
+        for (const item of definition.content.debugOverlayItems) {
+          const itemToggle = document.createElement("label");
+          itemToggle.className = "desktop-tool-palette-toggle";
+
+          const itemCheckbox = document.createElement("input");
+          itemCheckbox.type = "checkbox";
+          itemCheckbox.checked = item.checked;
+          itemCheckbox.addEventListener("change", () => {
+            options.onDebugOverlayItemToggled(item.id, itemCheckbox.checked);
+          });
+
+          const itemText = document.createElement("span");
+          itemText.textContent = item.label;
+
+          itemToggle.append(itemCheckbox, itemText);
+          overlayItems.append(itemToggle);
+        }
+
+        overlayField.append(overlayItems);
+      }
+
+      debugSection.append(overlayField);
+
+      const portalField = document.createElement("label");
+      portalField.className = "desktop-tool-palette-field";
+
+      const portalLabel = document.createElement("span");
+      portalLabel.className = "desktop-tool-palette-field-label";
+      portalLabel.textContent = "Portal labels";
+
+      const portalSelect = document.createElement("select");
+      portalSelect.className = "desktop-tool-palette-select";
+      portalSelect.ariaLabel = "Portal labels";
+
+      for (const option of definition.content.portalPanelModeOptions) {
+        const item = document.createElement("option");
+        item.value = option.id;
+        item.textContent = option.label;
+        item.selected = option.id === definition.content.portalPanelMode;
+        portalSelect.append(item);
+      }
+
+      portalSelect.addEventListener("change", () => {
+        options.onPortalPanelModeSelected(portalSelect.value as PortalPanelModeId);
+      });
+
+      portalField.append(portalLabel, portalSelect);
+      debugSection.append(portalField);
+
+      const portalInspectionToggle = document.createElement("label");
+      portalInspectionToggle.className = "desktop-tool-palette-toggle";
+
+      const portalInspectionCheckbox = document.createElement("input");
+      portalInspectionCheckbox.type = "checkbox";
+      portalInspectionCheckbox.checked = definition.content.portalInspectionEnabled;
+      portalInspectionCheckbox.addEventListener("change", () => {
+        options.onPortalInspectionToggled(portalInspectionCheckbox.checked);
+      });
+
+      const portalInspectionText = document.createElement("span");
+      portalInspectionText.textContent = "Portal inspection tools";
+
+      portalInspectionToggle.append(portalInspectionCheckbox, portalInspectionText);
+      debugSection.append(portalInspectionToggle);
+    }
+
+    settings.append(reloadButton, debugSection);
     return settings;
   }
 

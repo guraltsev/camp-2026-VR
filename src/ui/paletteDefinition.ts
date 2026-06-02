@@ -1,7 +1,12 @@
-import { worldCatalog } from "../authoring/worldCatalog";
-import type { RuntimeMenuPageId, RuntimeMenuState } from "../runtime/runtimeMenuState";
+import { portalPanelModeDefinitions } from "../glue/portalPanelMode";
+import type {
+  RuntimeDebugOverlayItemId,
+  RuntimeMenuConsoleLogLevelId,
+  RuntimeMenuPageId,
+  RuntimeMenuState,
+} from "../runtime/runtimeMenuState";
 
-export interface PaletteWorldOption {
+export interface PaletteSelectOption {
   readonly id: string;
   readonly label: string;
 }
@@ -19,9 +24,18 @@ export interface MainPaletteContent {
 
 export interface SettingsPaletteContent {
   readonly kind: "settings";
-  readonly worldOptions: readonly PaletteWorldOption[];
-  readonly selectedWorldId: string;
+  readonly debugEnabled: boolean;
+  readonly consoleLogLevel: RuntimeMenuConsoleLogLevelId;
+  readonly consoleLogLevelOptions: readonly PaletteSelectOption[];
   readonly debugOverlayEnabled: boolean;
+  readonly debugOverlayItems: readonly {
+    readonly id: RuntimeDebugOverlayItemId;
+    readonly label: string;
+    readonly checked: boolean;
+  }[];
+  readonly portalPanelMode: string;
+  readonly portalPanelModeOptions: readonly PaletteSelectOption[];
+  readonly portalInspectionEnabled: boolean;
 }
 
 export interface PaletteDefinition {
@@ -39,12 +53,28 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       rightAction: createHeaderAction("back"),
       content: {
         kind: "settings",
-        worldOptions: worldCatalog.map((entry) => ({
-          id: entry.id,
-          label: entry.label,
-        })),
-        selectedWorldId: state.selectedWorldId,
+        debugEnabled: state.debugEnabled,
+        consoleLogLevel: state.consoleLogLevel,
+        consoleLogLevelOptions: [
+          { id: "basic", label: "Basic" },
+          { id: "verbose", label: "Verbose" },
+        ],
         debugOverlayEnabled: state.debugOverlayEnabled,
+        debugOverlayItems: [
+          { id: "fps", label: "FPS", checked: state.debugOverlayItems.includes("fps") },
+          { id: "location", label: "Location", checked: state.debugOverlayItems.includes("location") },
+          {
+            id: "portal-quantities",
+            label: "Portal quantities",
+            checked: state.debugOverlayItems.includes("portal-quantities"),
+          },
+        ],
+        portalPanelMode: state.portalPanelMode,
+        portalPanelModeOptions: portalPanelModeDefinitions.map((mode) => ({
+          id: mode.id,
+          label: mode.label,
+        })),
+        portalInspectionEnabled: state.portalInspectionEnabled,
       },
     };
   }

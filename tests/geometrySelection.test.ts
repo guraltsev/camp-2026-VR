@@ -15,6 +15,8 @@ describe("readLaunchOptions", () => {
       debugLevel: "verbose",
       portalPanelMode: "panel-with-text",
       debugOptions: ["runtime-diagnostics"],
+      debugOverlayEnabled: true,
+      debugOverlayItems: ["fps", "location", "portal-quantities"],
     });
   });
 
@@ -61,6 +63,17 @@ describe("readLaunchOptions", () => {
     expect(readLaunchOptions(location)).toMatchObject({
       portalPanelMode: "panel-with-text",
       debugOptions: ["runtime-diagnostics"],
+    });
+  });
+
+  it("reads debug overlay visibility and item selection from URL params", () => {
+    const location = new URL(
+      "https://example.test/?world=cube&debugOverlay=false&debugOverlayItems=location,portal-quantities",
+    ) as unknown as Location;
+
+    expect(readLaunchOptions(location)).toMatchObject({
+      debugOverlayEnabled: false,
+      debugOverlayItems: ["location", "portal-quantities"],
     });
   });
 });

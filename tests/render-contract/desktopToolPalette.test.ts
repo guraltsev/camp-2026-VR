@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createRuntimeMenuState, showRuntimeMenuSettings } from "../../src/runtime/runtimeMenuState";
+import {
+  createRuntimeMenuState,
+  showRuntimeMenuSettings,
+} from "../../src/runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 import { describeDesktopPaletteView } from "../../src/render/dom/desktopToolPalette";
 
@@ -17,10 +20,15 @@ describe("desktopToolPalette", () => {
     expect(view.content.kind).toBe("empty");
   });
 
-  it("describes the settings page with world options, back action, and debug toggle state", () => {
+  it("describes the settings page with the reorganized debug controls", () => {
     const definition = createPaletteDefinition(showRuntimeMenuSettings(createRuntimeMenuState({
       selectedWorldId: "torus",
       debugOverlayEnabled: false,
+      debugSettings: {
+        debugLevel: "verbose",
+        portalPanelMode: "text-only",
+        debugOptions: ["portal-path-debug", "portal-static-cull-debug", "portal-path-overlays"],
+      },
     })));
     const view = describeDesktopPaletteView(definition);
 
@@ -33,9 +41,10 @@ describe("desktopToolPalette", () => {
       throw new Error("Expected settings content.");
     }
 
-    expect(view.content.selectedWorldId).toBe("torus");
+    expect(view.content.debugEnabled).toBe(true);
+    expect(view.content.consoleLogLevel).toBe("verbose");
     expect(view.content.debugOverlayEnabled).toBe(false);
-    expect(view.content.worldLabels).toContain("Cube");
-    expect(view.content.worldLabels).toContain("Torus");
+    expect(view.content.portalPanelMode).toBe("text-only");
+    expect(view.content.portalInspectionEnabled).toBe(true);
   });
 });
