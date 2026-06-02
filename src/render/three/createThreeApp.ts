@@ -14,6 +14,18 @@ import type { DebugLevelId } from "../../glue/debugLevels";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import { vec3 } from "../../math/vec3";
 import { movePlayer } from "../../movement/movePlayer";
+import { createAppCommandDispatcher } from "../../runtime/appCommandDispatcher";
+import type { RuntimeCommand } from "../../runtime/runtimeCommands";
+import {
+  closeRuntimeMenu,
+  createRuntimeMenuState,
+  openRuntimeMenu,
+  setRuntimeMenuDebugOverlayEnabled,
+  setRuntimeMenuSelectedWorldId,
+  showRuntimeMenuMainPage,
+  showRuntimeMenuSettings,
+} from "../../runtime/runtimeMenuState";
+import { createPaletteDefinition } from "../../ui/paletteDefinition";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
 import { createDefaultPlayerPose, type PlayerPose } from "../../movement/playerPose";
 import {
@@ -33,7 +45,9 @@ import {
   type CellRenderArchetype,
 } from "./cellRenderArchetypes";
 import { createDebugOverlay } from "./debugOverlay";
+import { createDesktopToolPalette } from "../dom/desktopToolPalette";
 import { createDesktopControls } from "./desktopControls";
+import { createDesktopPaletteInput } from "./desktopPaletteInput";
 import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
 import { createPortalInstanceDebugRenderer, type PortalInstanceDebugRenderer } from "./portalInstanceDebug";
 import {
@@ -109,6 +123,7 @@ export interface ThreeApp {
 }
 
 export interface ThreeAppOptions {
+  readonly selectedWorldId: string;
   readonly debugLevel: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
   readonly debugOptions: readonly DebugOptionId[];
@@ -175,7 +190,77 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     debugOptions,
     "portal-path-overlay-instances",
   );
+  let menuState = createRuntimeMenuState({
+    selectedWorldId: options.selectedWorldId,
+    debugOverlayEnabled: true,
+  });
   const debugOverlay = createDebugOverlay(container);
+  const commandDispatcher = createAppCommandDispatcher({
+    get currentUrl() {
+      return window.location.href;
+    },
+    reloadWorld() {
+      window.location.reload();
+    },
+    navigateToUrl(url) {
+      window.location.assign(url);
+    },
+    setDebugOverlayEnabled(enabled) {
+      menuState = setRuntimeMenuDebugOverlayEnabled(menuState, enabled);
+    },
+  });
+  const desktopToolPalette = createDesktopToolPalette(container, {
+    onLeftAction(actionId) {
+      if (actionId === "settings") {
+        menuState = showRuntimeMenuSettings(menuState);
+        syncDesktopPalette();
+      }
+    },
+    onRightAction(actionId) {
+      if (actionId === "back") {
+        menuState = showRuntimeMenuMainPage(menuState);
+        syncDesktopPalette();
+        return;
+      }
+
+      if (actionId === "close") {
+        desktopPaletteInput.close();
+      }
+    },
+    onWorldSelected(worldId) {
+      menuState = setRuntimeMenuSelectedWorldId(menuState, worldId);
+      syncDesktopPalette();
+      dispatchRuntimeCommand({ kind: "change-world", worldId });
+    },
+    onReloadRequested() {
+      dispatchRuntimeCommand({ kind: "reload-world" });
+    },
+    onDebugOverlayToggled(enabled) {
+      menuState = setRuntimeMenuDebugOverlayEnabled(menuState, enabled);
+      syncDesktopPalette();
+      dispatchRuntimeCommand({ kind: "set-debug-overlay", enabled });
+    },
+    onResumeRequested() {
+      controls.resume({ requestPointerLock: true });
+      desktopToolPalette.setResumePromptVisible(false);
+    },
+  });
+  const desktopPaletteInput = createDesktopPaletteInput({
+    canvas: renderer.domElement,
+    paletteRoot: desktopToolPalette.root,
+    controls,
+    onOpen() {
+      menuState = openRuntimeMenu(menuState);
+      syncDesktopPalette();
+    },
+    onClose() {
+      menuState = closeRuntimeMenu(menuState);
+      syncDesktopPalette();
+    },
+    setResumePromptVisible(visible) {
+      desktopToolPalette.setResumePromptVisible(visible);
+    },
+  });
   const xrEntryUi = createXrEntryUi(container, enterVr);
   const clipPolygonOverlay = createPortalClipPolygonOverlay(container);
   const sceneLighting = createStylizedSceneLighting(scene);
@@ -237,6 +322,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   syncPortalInstanceRender();
   let portalDebugRuntime = createPortalDebugRuntime();
   logDebugStartupGuide(debugLevel, debugOptions);
+  syncDesktopPalette();
 
   for (const cell of appState.world.cells) {
     for (const objectSpec of cell.objects) {
@@ -437,6 +523,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     dispose() {
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", onResize);
+      desktopPaletteInput.dispose();
+      desktopToolPalette.dispose();
       controls.dispose();
       for (const cellMesh of cellMeshes.values()) {
         disposeObject3D(cellMesh);
@@ -1342,7 +1430,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           : undefined;
 
         debugOverlay.update({
-          visible: portalPathDebugActive || visiblePathDebugActive,
+          visible: menuState.debugOverlayEnabled && (portalPathDebugActive || visiblePathDebugActive),
           visiblePortalPaths: visibleSummary,
           portalInstances: portalInstanceRenderState,
           xr: xrDebugState,
@@ -1378,6 +1466,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         uninstallPortalDebugHelpers();
       },
     };
+  }
+
+  function syncDesktopPalette(): void {
+    desktopToolPalette.setDefinition(createPaletteDefinition(menuState));
+    desktopToolPalette.setOpen(menuState.isOpen);
+  }
+
+  function dispatchRuntimeCommand(command: RuntimeCommand): void {
+    commandDispatcher.dispatch(command);
   }
 }
 

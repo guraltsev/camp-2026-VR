@@ -10,6 +10,10 @@ export interface DesktopInputFrame {
 export interface DesktopControls {
   readonly enabled: boolean;
   consumeFrame(deltaSeconds: number): DesktopInputFrame;
+  pause(): void;
+  resume(options?: { readonly requestPointerLock?: boolean }): void;
+  requestPointerLock(): void;
+  isPointerLocked(): boolean;
   dispose(): void;
 }
 
@@ -39,11 +43,16 @@ export function createDesktopControls(
   const moveSpeed = options.moveSpeedMetersPerSecond ?? 2.5;
   const turnSpeed = options.turnSpeedRadiansPerSecond ?? 2.25;
   const mouseSensitivity = options.mouseSensitivityRadiansPerPixel ?? 0.0025;
+  let paused = false;
   let pendingMouseYawDeltaRadians = 0;
   let pendingMousePitchDeltaRadians = 0;
   let resetRequested = false;
 
   function onKeyDown(event: KeyboardEvent): void {
+    if (paused) {
+      return;
+    }
+
     if (movementKeys.has(event.code) || turnKeys.has(event.code) || event.code === "KeyR") {
       event.preventDefault();
     }
@@ -61,7 +70,7 @@ export function createDesktopControls(
   }
 
   function onClick(): void {
-    void canvas.requestPointerLock();
+    requestPointerLock();
   }
 
   function onMouseMove(event: MouseEvent): void {
@@ -76,9 +85,36 @@ export function createDesktopControls(
   canvas.addEventListener("click", onClick);
   document.addEventListener("mousemove", onMouseMove);
 
+  function clearPendingInput(): void {
+    pressedKeys.clear();
+    pendingMouseYawDeltaRadians = 0;
+    pendingMousePitchDeltaRadians = 0;
+    resetRequested = false;
+  }
+
+  function requestPointerLock(): void {
+    if (paused) {
+      return;
+    }
+
+    void canvas.requestPointerLock();
+  }
+
   return {
-    enabled: true,
+    get enabled() {
+      return !paused;
+    },
     consumeFrame(deltaSeconds: number): DesktopInputFrame {
+      if (paused) {
+        clearPendingInput();
+        return {
+          localDisplacement: vec3(0, 0, 0),
+          yawDeltaRadians: 0,
+          pitchDeltaRadians: 0,
+          resetRequested: false,
+        };
+      }
+
       let yawDeltaRadians = pendingMouseYawDeltaRadians;
       const pitchDeltaRadians = pendingMousePitchDeltaRadians;
       yawDeltaRadians += (pressedKeys.has("KeyQ") ? 1 : 0) * turnSpeed * deltaSeconds;
@@ -104,6 +140,24 @@ export function createDesktopControls(
         pitchDeltaRadians,
         resetRequested: frameResetRequested,
       };
+    },
+    pause(): void {
+      paused = true;
+      clearPendingInput();
+      if (document.pointerLockElement === canvas) {
+        document.exitPointerLock();
+      }
+    },
+    resume(resumeOptions = {}): void {
+      paused = false;
+      clearPendingInput();
+      if (resumeOptions.requestPointerLock) {
+        requestPointerLock();
+      }
+    },
+    requestPointerLock,
+    isPointerLocked(): boolean {
+      return document.pointerLockElement === canvas;
     },
     dispose(): void {
       window.removeEventListener("keydown", onKeyDown);
