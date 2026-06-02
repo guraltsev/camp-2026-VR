@@ -6,6 +6,10 @@ describe("desktopPaletteInput", () => {
     expect(reduceDesktopPaletteInput(false, { kind: "canvas-contextmenu" })).toBe("open");
   });
 
+  it("opens on secondary click when closed", () => {
+    expect(reduceDesktopPaletteInput(false, { kind: "secondary-click" })).toBe("open");
+  });
+
   it("closes on escape when open", () => {
     expect(reduceDesktopPaletteInput(true, { kind: "escape-key" })).toBe("close");
   });

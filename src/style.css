@@ -219,7 +219,17 @@ body {
   pointer-events: none;
 }
 
+.desktop-tool-palette-shell[hidden],
+.desktop-tool-palette[hidden],
+.desktop-palette-resume[hidden] {
+  display: none !important;
+}
+
 .desktop-tool-palette-shell-open {
+  pointer-events: auto;
+}
+
+.desktop-tool-palette-shell-resume {
   pointer-events: auto;
 }
 

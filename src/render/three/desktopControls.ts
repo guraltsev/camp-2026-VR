@@ -97,7 +97,9 @@ export function createDesktopControls(
       return;
     }
 
-    void canvas.requestPointerLock();
+    void canvas.requestPointerLock().catch((error: unknown) => {
+      console.warn("Unable to capture FPS pointer lock.", error);
+    });
   }
 
   return {

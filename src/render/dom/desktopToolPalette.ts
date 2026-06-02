@@ -107,10 +107,12 @@ export function createDesktopToolPalette(
       root.hidden = !isOpen && resumePrompt.hidden;
       panel.hidden = !isOpen;
       root.classList.toggle("desktop-tool-palette-shell-open", isOpen);
+      root.classList.toggle("desktop-tool-palette-shell-resume", false);
     },
     setResumePromptVisible(visible) {
       resumePrompt.hidden = !visible;
       root.hidden = panel.hidden && !visible;
+      root.classList.toggle("desktop-tool-palette-shell-resume", visible);
     },
     contains(target) {
       return target instanceof Node && panel.contains(target);

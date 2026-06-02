@@ -2,6 +2,7 @@ import type { DesktopControls } from "./desktopControls";
 
 export type DesktopPaletteInputEvent =
   | { readonly kind: "canvas-contextmenu" }
+  | { readonly kind: "secondary-click" }
   | { readonly kind: "escape-key" }
   | { readonly kind: "outside-secondary-click"; readonly targetInsidePalette: boolean };
 
@@ -19,14 +20,17 @@ export interface DesktopPaletteInputOptions {
 export interface DesktopPaletteInput {
   readonly isOpen: () => boolean;
   open(): void;
-  close(): void;
+  close(options?: { readonly requestPointerLock?: boolean }): void;
   dispose(): void;
 }
 
 export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): DesktopPaletteInput {
   let menuOpen = false;
 
-  function applyAction(action: DesktopPaletteInputAction): void {
+  function applyAction(
+    action: DesktopPaletteInputAction,
+    actionOptions: { readonly requestPointerLockOnClose?: boolean } = {},
+  ): void {
     if (action === "open" && !menuOpen) {
       menuOpen = true;
       options.controls.pause();
@@ -36,10 +40,11 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
     }
 
     if (action === "close" && menuOpen) {
+      const requestPointerLockOnClose = actionOptions.requestPointerLockOnClose ?? true;
       menuOpen = false;
-      options.controls.resume({ requestPointerLock: false });
-      options.setResumePromptVisible(!options.controls.isPointerLocked());
       options.onClose();
+      options.controls.resume({ requestPointerLock: requestPointerLockOnClose });
+      options.setResumePromptVisible(!requestPointerLockOnClose);
     }
   }
 
@@ -57,12 +62,18 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
 
     if (action !== "none") {
       event.preventDefault();
-      applyAction(action);
+      applyAction(action, { requestPointerLockOnClose: false });
     }
   }
 
   function onWindowMouseDown(event: MouseEvent): void {
     if (event.button !== 2) {
+      return;
+    }
+
+    if (!menuOpen && (event.target === options.canvas || options.controls.isPointerLocked())) {
+      event.preventDefault();
+      applyAction(reduceDesktopPaletteInput(menuOpen, { kind: "secondary-click" }));
       return;
     }
 
@@ -93,8 +104,8 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
     open() {
       applyAction("open");
     },
-    close() {
-      applyAction("close");
+    close(closeOptions = {}) {
+      applyAction("close", { requestPointerLockOnClose: closeOptions.requestPointerLock });
     },
     dispose() {
       options.canvas.removeEventListener("contextmenu", onCanvasContextMenu);
@@ -111,6 +122,7 @@ export function reduceDesktopPaletteInput(
 ): DesktopPaletteInputAction {
   switch (event.kind) {
     case "canvas-contextmenu":
+    case "secondary-click":
       return isOpen ? "none" : "open";
     case "escape-key":
       return isOpen ? "close" : "none";
