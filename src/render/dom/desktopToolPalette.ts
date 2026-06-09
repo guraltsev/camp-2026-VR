@@ -13,6 +13,8 @@ export interface DesktopPaletteView {
     | { readonly kind: "empty" }
     | {
       readonly kind: "settings";
+      readonly selectedWorldId: string;
+      readonly worldLabel?: string;
       readonly debugEnabled: boolean;
       readonly consoleLogLevel: RuntimeMenuConsoleLogLevelId;
       readonly debugOverlayEnabled: boolean;
@@ -25,6 +27,7 @@ export interface DesktopPaletteView {
 export interface DesktopToolPaletteOptions {
   readonly onLeftAction: (actionId: PaletteHeaderAction["id"]) => void;
   readonly onRightAction: (actionId: PaletteHeaderAction["id"]) => void;
+  readonly onWorldSelected: (worldId: string) => void;
   readonly onReloadRequested: () => void;
   readonly onDebugEnabledChanged: (enabled: boolean) => void;
   readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
@@ -145,20 +148,23 @@ export function createDesktopToolPalette(
 
 export function describeDesktopPaletteView(definition: PaletteDefinition): DesktopPaletteView {
   if (definition.content.kind === "settings") {
+    const content = definition.content;
     return {
       pageId: definition.pageId,
       leftAction: definition.leftAction,
       rightAction: definition.rightAction,
       content: {
         kind: "settings",
-        debugEnabled: definition.content.debugEnabled,
-        consoleLogLevel: definition.content.consoleLogLevel,
-        debugOverlayEnabled: definition.content.debugOverlayEnabled,
-        debugOverlayLabels: definition.content.debugOverlayItems
+        selectedWorldId: content.selectedWorldId,
+        worldLabel: content.worldOptions.find((option) => option.id === content.selectedWorldId)?.label,
+        debugEnabled: content.debugEnabled,
+        consoleLogLevel: content.consoleLogLevel,
+        debugOverlayEnabled: content.debugOverlayEnabled,
+        debugOverlayLabels: content.debugOverlayItems
           .filter((item) => item.checked)
           .map((item) => item.label),
-        portalPanelMode: definition.content.portalPanelMode,
-        portalInspectionEnabled: definition.content.portalInspectionEnabled,
+        portalPanelMode: content.portalPanelMode,
+        portalInspectionEnabled: content.portalInspectionEnabled,
       },
     };
   }
@@ -186,6 +192,31 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
   if (definition.content.kind === "settings") {
     const settings = document.createElement("div");
     settings.className = "desktop-tool-palette-settings";
+
+    const worldField = document.createElement("label");
+    worldField.className = "desktop-tool-palette-field";
+
+    const worldLabel = document.createElement("span");
+    worldLabel.className = "desktop-tool-palette-field-label";
+    worldLabel.textContent = "World";
+
+    const worldSelect = document.createElement("select");
+    worldSelect.className = "desktop-tool-palette-select";
+    worldSelect.ariaLabel = "World";
+
+    for (const option of definition.content.worldOptions) {
+      const item = document.createElement("option");
+      item.value = option.id;
+      item.textContent = option.label;
+      item.selected = option.id === definition.content.selectedWorldId;
+      worldSelect.append(item);
+    }
+
+    worldSelect.addEventListener("change", () => {
+      options.onWorldSelected(worldSelect.value);
+    });
+
+    worldField.append(worldLabel, worldSelect);
 
     const reloadButton = document.createElement("button");
     reloadButton.type = "button";
@@ -333,7 +364,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
       debugSection.append(portalInspectionToggle);
     }
 
-    settings.append(reloadButton, debugSection);
+    settings.append(worldField, reloadButton, debugSection);
     return settings;
   }
 

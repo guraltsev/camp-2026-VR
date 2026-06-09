@@ -12,6 +12,7 @@ export interface XrDebugRenderState {
   readonly secureContext: boolean;
   readonly sessionStatus: string;
   readonly activeInputSource: RuntimeInputFrame["source"];
+  readonly inputMode?: string;
   readonly currentCellId: string;
   readonly playerPosition: Vec3;
   readonly yawRadians: number;
@@ -19,6 +20,7 @@ export interface XrDebugRenderState {
   readonly lastBlockingReason?: string;
   readonly lastCrossedPortalId?: string;
   readonly sharedRenderRootCellId?: string;
+  readonly visiblePortalPathCount?: number;
 }
 
 export interface RenderState {

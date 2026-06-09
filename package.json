@@ -17,6 +17,9 @@
     "textures:ktx2:sync-transcoder": "node scripts/texture-build/sync-three-ktx2-transcoder.mjs"
   },
   "dependencies": {
+    "@pmndrs/pointer-events": "^6.6.30",
+    "@pmndrs/uikit": "^1.0.73",
+    "@pmndrs/uikit-default": "^1.0.73",
     "three": "^0.164.1"
   },
   "devDependencies": {

@@ -46,9 +46,14 @@ describe("XR controls", () => {
     expect(frame.yawDeltaRadians).toBe(0);
   });
 
-  it("maps secondary or grip-style buttons to reset", () => {
-    expect(isResetPressed({ buttons: [{ pressed: false }, { pressed: true }] })).toBe(true);
-    expect(createXrInputFrame([{ gamepad: { buttons: [{ pressed: false }, { pressed: true }] } }], 1).resetRequested)
+  it("maps thumbstick click style buttons to reset without consuming menu buttons", () => {
+    expect(isResetPressed({ buttons: [{ pressed: false }, { pressed: false }, { pressed: false }, { pressed: true }] }))
       .toBe(true);
+    expect(isResetPressed({ buttons: [{ pressed: false }, { pressed: true }] })).toBe(false);
+    expect(
+      createXrInputFrame([
+        { gamepad: { buttons: [{ pressed: false }, { pressed: false }, { pressed: false }, { pressed: true }] } },
+      ], 1).resetRequested,
+    ).toBe(true);
   });
 });

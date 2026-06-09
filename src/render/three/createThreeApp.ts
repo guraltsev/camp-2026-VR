@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { reversePainterSortStable } from "@pmndrs/uikit";
 import type { AppState } from "../../appState";
 import type { PortalPathTablesByRootCell } from "../../cell-complex/portalPaths";
 import type { PortalRenderPath } from "../../cell-complex/portalPaths";
@@ -26,6 +27,7 @@ import {
   setRuntimeMenuConsoleLogLevel,
   setRuntimeMenuDebugEnabled,
   setRuntimeMenuDebugOverlayEnabled,
+  setRuntimeMenuSelectedWorldId,
   setRuntimeMenuPortalInspectionEnabled,
   setRuntimeMenuPortalPanelMode,
   showRuntimeMenuMainPage,
@@ -109,6 +111,7 @@ import { createXrControls } from "./xrControls";
 import { createXrEntryUi } from "./xrEntryUi";
 import { resolveXrPortalEyeRenderRoot, type XrPortalEyeRenderRoot } from "./xrPortalEye";
 import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose } from "./xrPlayerRig";
+import { createVrPaletteController } from "./vrPaletteController";
 import {
   createXrSessionState,
   detectXrSessionState,
@@ -176,8 +179,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const pixelRatio = resolveRenderQualityPixelRatio(options.renderQualityEnabled, window.devicePixelRatio);
   const renderer = new THREE.WebGLRenderer({ antialias: renderAntialiasRequested });
   renderer.shadowMap.enabled = false;
+  renderer.localClippingEnabled = true;
   renderer.xr.enabled = true;
   renderer.xr.setReferenceSpaceType("local-floor");
+  renderer.setTransparentSort(reversePainterSortStable);
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(initialCanvasSize.width, initialCanvasSize.height);
   container.append(renderer.domElement);
@@ -243,6 +248,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         desktopPaletteInput.close();
       }
     },
+    onWorldSelected(worldId) {
+      menuState = setRuntimeMenuSelectedWorldId(menuState, worldId);
+      syncDesktopPalette();
+      dispatchRuntimeCommand({ kind: "change-world", worldId });
+    },
     onReloadRequested() {
       dispatchRuntimeCommand({ kind: "reload-world" });
     },
@@ -289,6 +299,38 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const xrEntryUi = createXrEntryUi(container, enterVr);
   const clipPolygonOverlay = createPortalClipPolygonOverlay(container);
   const sceneLighting = createStylizedSceneLighting(scene);
+  const vrPaletteController = createVrPaletteController({
+    scene,
+    getCamera: () => camera,
+    getIsOpen: () => menuState.isOpen,
+    onOpenRequested() {
+      menuState = openRuntimeMenu(menuState);
+      syncDesktopPalette();
+    },
+    onCloseRequested() {
+      menuState = closeRuntimeMenu(menuState);
+      syncDesktopPalette();
+    },
+    onShowSettingsRequested() {
+      menuState = showRuntimeMenuSettings(menuState);
+      syncDesktopPalette();
+    },
+    onShowMainRequested() {
+      menuState = showRuntimeMenuMainPage(menuState);
+      syncDesktopPalette();
+    },
+    onWorldSelected(worldId) {
+      menuState = setRuntimeMenuSelectedWorldId(menuState, worldId);
+      syncDesktopPalette();
+      dispatchRuntimeCommand({ kind: "change-world", worldId });
+    },
+    onReloadRequested() {
+      dispatchRuntimeCommand({ kind: "reload-world" });
+    },
+    onDebugOverlayToggled(enabled) {
+      applyMenuDebugState(setRuntimeMenuDebugOverlayEnabled(menuState, enabled));
+    },
+  });
 
   const cellMeshes = new Map<string, THREE.Object3D>();
   const rootRenderPathMaxDepth = 10;
@@ -512,6 +554,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     syncLegacyObjectPortalRenders();
     syncXrDebugState(frame.source, moveResult);
+    if (xrActive && xrFrame && xrReferenceSpace) {
+      vrPaletteController.update({
+        deltaSeconds,
+        xrFrame,
+        referenceSpace: xrReferenceSpace,
+        inputSources: [...(renderer.xr.getSession()?.inputSources ?? [])],
+        definition: createPaletteDefinition(menuState),
+        xrDebugState,
+      });
+    }
     portalDebugRuntime.updateVisiblePortalPaths();
     const frameBeforeRenderMs = performance.now();
     renderer.render(scene, camera);
@@ -612,6 +664,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     dispose() {
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", onResize);
+      vrPaletteController.dispose();
       desktopPaletteInput.dispose();
       desktopToolPalette.dispose();
       controls.dispose();
@@ -655,11 +708,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     try {
       const session = await xr.requestSession("immersive-vr", {
-        optionalFeatures: ["local-floor", "bounded-floor"],
+        optionalFeatures: ["local-floor", "bounded-floor", "hand-tracking"],
       });
       session.addEventListener("end", () => {
         xrSessionState = transitionXrSessionState(xrSessionState, "ended");
         xrRig.reset();
+        vrPaletteController.onSessionEnded();
         xrEntryUi.update(xrSessionState);
         syncXrDebugState("desktop");
       });
@@ -728,6 +782,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       lastBlockingReason: moveResult?.blockingReason ?? xrDebugState.lastBlockingReason,
       lastCrossedPortalId: moveResult?.crossedPortalId ?? xrDebugState.lastCrossedPortalId,
       sharedRenderRootCellId: renderer.xr.isPresenting ? xrRig.getSharedRenderRootCellId(playerPose) : undefined,
+      visiblePortalPathCount: latestVisibleResult?.paths.length,
     };
   }
 

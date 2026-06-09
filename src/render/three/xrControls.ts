@@ -84,7 +84,7 @@ export function isResetPressed(gamepad: GamepadLike | undefined): boolean {
     return false;
   }
 
-  return [1, 3, 4, 5].some((index) => buttons[index]?.pressed === true);
+  return buttons[3]?.pressed === true;
 }
 
 export function emptyXrInputFrame(): RuntimeInputFrame {

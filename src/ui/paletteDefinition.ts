@@ -1,3 +1,4 @@
+import { worldCatalog } from "../authoring/worldCatalog";
 import { portalPanelModeDefinitions } from "../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -24,6 +25,8 @@ export interface MainPaletteContent {
 
 export interface SettingsPaletteContent {
   readonly kind: "settings";
+  readonly selectedWorldId: string;
+  readonly worldOptions: readonly PaletteSelectOption[];
   readonly debugEnabled: boolean;
   readonly consoleLogLevel: RuntimeMenuConsoleLogLevelId;
   readonly consoleLogLevelOptions: readonly PaletteSelectOption[];
@@ -53,6 +56,11 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       rightAction: createHeaderAction("back"),
       content: {
         kind: "settings",
+        selectedWorldId: state.selectedWorldId,
+        worldOptions: worldCatalog.map((entry) => ({
+          id: entry.id,
+          label: entry.label,
+        })),
         debugEnabled: state.debugEnabled,
         consoleLogLevel: state.consoleLogLevel,
         consoleLogLevelOptions: [
