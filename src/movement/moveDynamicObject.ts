@@ -4,7 +4,7 @@ import { rigidTransform3 } from "../math/rigidTransform3";
 import { addVec3, type Vec3 } from "../math/vec3";
 import {
   findBoundaryCrossing,
-  getCollisionBounds,
+  getDynamicObjectCollisionBounds,
   projectPointAlongSide,
   getSideSupport,
   signedDistanceToSide,
@@ -56,8 +56,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
     if ((request.portalCrossingMode ?? "bounds") === "anchor" && !hasAnchorCrossedSide(candidateObject, crossingSide)) {
       const sourceCollision = testCellCollision({
         cell: startCell,
-        position: candidateObject.localPose.translation,
-        collision: candidateObject.collision,
+        object: candidateObject,
         ignoredPortalSideIndex: crossingSide.sideIndex,
       });
 
@@ -75,8 +74,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
 
     const sourceCollision = testCellCollision({
       cell: startCell,
-      position: candidateObject.localPose.translation,
-      collision: candidateObject.collision,
+      object: candidateObject,
       ignoredPortalSideIndex: crossingSide.sideIndex,
     });
 
@@ -93,8 +91,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
 
     const targetCollision = testCellCollision({
       cell: targetCell,
-      position: crossedObject.localPose.translation,
-      collision: crossedObject.collision,
+      object: crossedObject,
       ignoredPortalSideIndex: targetCell.portalsById.get(crossingSide.portal.targetPortalId)?.sideIndex,
     });
 
@@ -113,8 +110,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
 
   const collision = testCellCollision({
     cell: startCell,
-    position: candidateObject.localPose.translation,
-    collision: candidateObject.collision,
+    object: candidateObject,
   });
 
   if (collision.blocked) {
@@ -166,7 +162,7 @@ function isPortalCrossingReachable(
   side: CompiledPrismSide,
   heightMeters: number,
 ): boolean {
-  const bounds = getCollisionBounds(object.localPose.translation, object.collision);
+  const bounds = getDynamicObjectCollisionBounds(object);
   const point = bounds?.center ?? object.localPose.translation;
   const support = bounds ? getSideSupport(side, bounds) : 0;
   const sideProjection = projectPointAlongSide(side, point);
@@ -181,7 +177,7 @@ function isPortalCrossingReachable(
 }
 
 function hasAnchorCrossedSide(object: DynamicObjectState, side: CompiledPrismSide): boolean {
-  const bounds = getCollisionBounds(object.localPose.translation, object.collision);
+  const bounds = getDynamicObjectCollisionBounds(object);
   const point = bounds?.center ?? object.localPose.translation;
 
   return signedDistanceToSide(side, point) < 0;
@@ -199,7 +195,7 @@ function findReachablePortalSide(
       continue;
     }
 
-    const bounds = getCollisionBounds(object.localPose.translation, object.collision);
+    const bounds = getDynamicObjectCollisionBounds(object);
     const point = bounds?.center ?? object.localPose.translation;
     const clearance = signedDistanceToSide(side, point);
 
@@ -220,7 +216,7 @@ function resolveBlockedWallPosition(
     return object;
   }
 
-  const bounds = getCollisionBounds(object.localPose.translation, object.collision);
+  const bounds = getDynamicObjectCollisionBounds(object);
   const point = bounds?.center ?? object.localPose.translation;
   const support = bounds ? getSideSupport(side, bounds) : 0;
   const clearance = getSignedClearanceToSide(side, point, support);

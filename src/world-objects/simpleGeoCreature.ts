@@ -9,7 +9,10 @@ import {
   moveDynamicObject,
 } from "../movement/moveDynamicObject";
 import { runtimeDiagnostics } from "../render/three/runtimeDiagnostics";
-import { buildObjectCollisionWireframe } from "../render/three/debugCollisionWireframes";
+import {
+  buildObjectCollisionWireframe,
+  updateObjectCollisionWireframe,
+} from "../render/three/debugCollisionWireframes";
 import type { PreparedWorldAssets } from "../render/three/preloadWorldAssets";
 import { applyWorldRigidTransform } from "../render/three/worldAxes";
 import { degreesToRadians } from "./staticAssets";
@@ -112,12 +115,11 @@ export function createSimpleGeoCreatureRuntime(
     prepared.scene.position.copy(new THREE.Vector3(objectSpec.modelOffset.x, objectSpec.modelOffset.z, -objectSpec.modelOffset.y));
   }
   root.add(prepared.scene);
-  const collisionWireframe = buildObjectCollisionWireframe(objectSpec.id, objectSpec.collision);
-  collisionWireframe.visible = false;
-  root.add(collisionWireframe);
-
   const initialState = createDynamicObjectState(objectSpec, startCellId);
   let state = initialState;
+  const collisionWireframe = buildObjectCollisionWireframe(objectSpec.id, state);
+  collisionWireframe.visible = false;
+  root.add(collisionWireframe);
   let elapsedSeconds = 0;
   const diagnostics = runtimeDiagnostics();
 
@@ -147,6 +149,7 @@ export function createSimpleGeoCreatureRuntime(
       });
       state = result.object;
       applyObjectPose(root, state.localPose);
+      updateObjectCollisionWireframe(collisionWireframe, state);
     },
     syncParent(cellRoots) {
       const targetRoot = cellRoots.get(state.cellId);
@@ -162,6 +165,7 @@ export function createSimpleGeoCreatureRuntime(
       elapsedSeconds = 0;
       state = initialState;
       applyObjectPose(root, state.localPose);
+      updateObjectCollisionWireframe(collisionWireframe, state);
       const targetRoot = cellRoots.get(state.cellId);
 
       if (targetRoot && root.parent !== targetRoot) {

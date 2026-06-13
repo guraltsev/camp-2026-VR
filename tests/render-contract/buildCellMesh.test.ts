@@ -197,6 +197,14 @@ describe("buildCellMesh", () => {
       cellId: "room-a",
       junctionId: "room-a:vertex-1",
     });
+    expect(
+      debugMesh.getObjectByName("forbidden-zone-wireframe:room-a:room-a:vertex-1"),
+    ).toBeInstanceOf(THREE.Mesh);
+    expect(
+      (
+        debugMesh.getObjectByName("forbidden-zone-wireframe:room-a:room-a:vertex-1") as THREE.Mesh | undefined
+      )?.geometry,
+    ).toBeInstanceOf(THREE.BoxGeometry);
   });
 
   it("labels portal side redirects as source side to target face and side", () => {

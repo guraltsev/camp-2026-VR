@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import type { CompiledCellComplex } from "../../src/cell-complex/compileCellComplex";
 import type { CellComplexSpec } from "../../src/cell-complex/specs";
-import { identityMat3, yawRigidTransform3 } from "../../src/math/rigidTransform3";
+import { identityMat3, yawRigidTransform3, type Mat3 } from "../../src/math/rigidTransform3";
 import { cube, tetrahedron } from "../../src/authoring/exampleWorlds";
 import { vec3 } from "../../src/math/vec3";
 import {
@@ -43,7 +43,12 @@ describe("moveDynamicObject", () => {
 
   it("crosses centered portals and transforms orientation through the portal mapping", () => {
     const world = compileCellComplex(twoRoomsWithPortal());
-    const object = dynamicObject("room-a", { x: 0.8, y: 0, z: 0.5 }, yawRigidTransform3(Math.PI / 2).rotation);
+    const object = dynamicObject(
+      "room-a",
+      { x: 0.8, y: 0, z: 0.5 },
+      yawRigidTransform3(Math.PI / 2).rotation,
+      simpleCollisionBox(0.2, 0.2, 0.2),
+    );
 
     const result = moveDynamicObject({ world, object, displacement: { x: 0.4, y: 0, z: 0 } });
 
@@ -129,6 +134,75 @@ describe("moveDynamicObject", () => {
 
     expect(result.blocked).toBe(true);
     expect(result.blockingReason).toBe("forbidden-zone");
+  });
+
+  it("uses rotated conservative bounds for forbidden-zone blocking", () => {
+    const world = compileCellComplex(twoRoomsWithPortal());
+    const object = dynamicObject(
+      "room-a",
+      { x: 0.45, y: 0.55, z: 0.5 },
+      yawRigidTransform3(Math.PI / 4).rotation,
+      simpleCollisionBox(0.2, 1, 0.2),
+    );
+
+    const result = moveDynamicObject({ world, object, displacement: { x: 0.1, y: 0, z: 0 } });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockingReason).toBe("forbidden-zone");
+  });
+
+  it("uses rotated conservative bounds for wall blocking", () => {
+    const world = compileCellComplex(singleRoom());
+    const object = dynamicObject(
+      "room",
+      { x: 0.49, y: 0, z: 0.5 },
+      yawRigidTransform3(Math.PI / 2).rotation,
+      simpleCollisionBox(0.2, 1, 0.2),
+    );
+
+    const result = moveDynamicObject({ world, object, displacement: { x: 0.02, y: 0, z: 0 } });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockingReason).toBe("wall");
+    expect(result.object.localPose.translation.x).toBeCloseTo(0.5, 5);
+  });
+
+  it("uses rotated conservative bounds for portal reachability", () => {
+    const world = compileCellComplex(twoRoomsWithPortal());
+    const object = dynamicObject(
+      "room-a",
+      { x: 0.45, y: 0, z: 0.5 },
+      yawRigidTransform3(Math.PI / 2).rotation,
+      simpleCollisionBox(0.2, 1, 0.2),
+    );
+
+    const result = moveDynamicObject({
+      world,
+      object,
+      displacement: { x: 0.1, y: 0, z: 0 },
+      portalCrossingMode: "bounds",
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.crossedPortal).toBe(true);
+    expect(result.object.cellId).toBe("room-b");
+  });
+
+  it("tests portal-crossed objects against target-cell collision with transformed rotated bounds", () => {
+    const world = compileCellComplex(twoRoomsWithPortal({ targetHeightMeters: 0.75 }));
+    const object = dynamicObject(
+      "room-a",
+      { x: 0.75, y: 0, z: 0.5 },
+      pitchMat3(Math.PI / 2),
+      simpleCollisionBox(0.2, 0.8, 0.2),
+    );
+
+    const result = moveDynamicObject({ world, object, displacement: { x: 0.2, y: 0, z: 0 } });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockingReason).toBe("ceiling");
+    expect(result.crossedPortal).toBe(false);
+    expect(result.object).toBe(object);
   });
 
   it("keeps the autonomous dynamic-object traversal policy explicit and anchor-based", () => {
@@ -233,7 +307,7 @@ function singleRoom(): CellComplexSpec {
   };
 }
 
-function twoRoomsWithPortal(): CellComplexSpec {
+function twoRoomsWithPortal(options: { readonly targetHeightMeters?: number } = {}): CellComplexSpec {
   return {
     cells: [
       {
@@ -251,7 +325,7 @@ function twoRoomsWithPortal(): CellComplexSpec {
       },
       {
         id: "room-b",
-        heightMeters: 2,
+        heightMeters: options.targetHeightMeters ?? 2,
         baseVertices: squareRoomBase,
         portals: [
           {
@@ -263,5 +337,22 @@ function twoRoomsWithPortal(): CellComplexSpec {
         ],
       },
     ],
+  };
+}
+
+function pitchMat3(radians: number): Mat3 {
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  return {
+    m00: 1,
+    m01: 0,
+    m02: 0,
+    m10: 0,
+    m11: cos,
+    m12: -sin,
+    m20: 0,
+    m21: sin,
+    m22: cos,
   };
 }

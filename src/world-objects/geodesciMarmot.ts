@@ -9,7 +9,10 @@ import {
   moveDynamicObject,
 } from "../movement/moveDynamicObject";
 import { buildStaticMarmotProxy } from "../render/three/buildDecorationMesh";
-import { buildObjectCollisionWireframe } from "../render/three/debugCollisionWireframes";
+import {
+  buildObjectCollisionWireframe,
+  updateObjectCollisionWireframe,
+} from "../render/three/debugCollisionWireframes";
 import { runtimeDiagnostics } from "../render/three/runtimeDiagnostics";
 import type { PreparedWorldAssets } from "../render/three/preloadWorldAssets";
 import { applyWorldRigidTransform } from "../render/three/worldAxes";
@@ -67,11 +70,11 @@ export function createGeodesciMarmotRuntime(
   visual.rotation.y = Math.PI;
   visual.scale.setScalar(objectSpec.scale ?? defaultScale);
   root.add(visual);
-  const collisionWireframe = buildObjectCollisionWireframe(objectSpec.id, objectSpec.collision);
-  collisionWireframe.visible = false;
-  root.add(collisionWireframe);
   const initialState = createDynamicObjectState(objectSpec, startCellId);
   let state = initialState;
+  const collisionWireframe = buildObjectCollisionWireframe(objectSpec.id, state);
+  collisionWireframe.visible = false;
+  root.add(collisionWireframe);
   const forwardSpeedMetersPerSecond = Math.hypot(objectSpec.velocity.x, objectSpec.velocity.y);
   const diagnostics = runtimeDiagnostics();
 
@@ -98,6 +101,7 @@ export function createGeodesciMarmotRuntime(
       });
       state = result.object;
       applyObjectPose(root, state.localPose);
+      updateObjectCollisionWireframe(collisionWireframe, state);
     },
     syncParent(cellRoots) {
       const targetRoot = cellRoots.get(state.cellId);
@@ -112,6 +116,7 @@ export function createGeodesciMarmotRuntime(
     reset(cellRoots) {
       state = initialState;
       applyObjectPose(root, state.localPose);
+      updateObjectCollisionWireframe(collisionWireframe, state);
       const targetRoot = cellRoots.get(state.cellId);
 
       if (targetRoot && root.parent !== targetRoot) {
