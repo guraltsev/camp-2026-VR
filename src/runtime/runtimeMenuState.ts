@@ -3,7 +3,7 @@ import type { DebugSettings } from "../glue/debugSettings";
 import type { DebugLevelId } from "../glue/debugLevels";
 import type { PortalPanelModeId } from "../glue/portalPanelMode";
 
-export type RuntimeMenuPageId = "main" | "settings";
+export type RuntimeMenuPageId = "main" | "settings" | "debug-settings";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
 
@@ -70,6 +70,13 @@ export function showRuntimeMenuSettings(state: RuntimeMenuState): RuntimeMenuSta
   return {
     ...state,
     page: "settings",
+  };
+}
+
+export function showRuntimeMenuDebugSettings(state: RuntimeMenuState): RuntimeMenuState {
+  return {
+    ...state,
+    page: "debug-settings",
   };
 }
 

@@ -1,4 +1,4 @@
-import { Container, Text } from "@pmndrs/uikit";
+import { Component, Container, Text } from "@pmndrs/uikit";
 import { ArrowLeft, Settings, X } from "@pmndrs/uikit-lucide";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
@@ -13,6 +13,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onWorldSelected: (worldId: string) => void;
   readonly onReloadRequested: () => void;
   readonly onDebugEnabledChanged: (enabled: boolean) => void;
+  readonly onDebugSettingsRequested: () => void;
   readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
   readonly onDebugOverlayToggled: (enabled: boolean) => void;
   readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
@@ -37,18 +38,24 @@ const borderColor = "#475569";
 const actionColor = "#1d4ed8";
 const activeColor = "#0f766e";
 const inactiveColor = "#374151";
+const textColor = "#f8fafc";
+const mutedTextColor = "#e2e8f0";
+const scrollbarColor = "#38bdf8";
+const scrollbarBorderColor = "#0f172a";
 
 export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOptions): VrPaletteLibraryAdapter {
+  let renderedChildren: Container[] = [];
   const root = new Container({
     width: panelWidth,
-    minHeight: panelHeight,
+    height: panelHeight,
     pixelSize: panelPixelSize,
     flexDirection: "column",
     borderRadius: 28,
-    padding: 24,
-    gap: 18,
+    padding: 20,
+    gap: 12,
     backgroundColor: surfaceColor,
-    color: "#f8fafc",
+    color: textColor,
+    fill: textColor,
     opacity: 1,
     overflow: "hidden",
     pointerEvents: "auto",
@@ -66,9 +73,12 @@ export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOp
   return {
     root,
     setDefinition(nextDefinition) {
-      root.clear();
-      root.add(buildHeader(nextDefinition, options));
-      root.add(buildContent(nextDefinition, options));
+      disposeRenderedChildren(renderedChildren);
+      renderedChildren = [
+        buildHeader(nextDefinition, options),
+        buildContent(nextDefinition, options),
+      ];
+      root.add(...renderedChildren);
     },
     setVisible(visible) {
       root.visible = visible;
@@ -77,6 +87,8 @@ export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOp
       root.update(deltaMs);
     },
     dispose() {
+      disposeRenderedChildren(renderedChildren);
+      renderedChildren = [];
       root.removeFromParent();
       root.dispose();
     },
@@ -89,7 +101,7 @@ function buildHeader(
 ): Container {
   const header = new Container({
     width: "100%",
-    height: 64,
+    height: 48,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -102,7 +114,8 @@ function buildHeader(
     text: "",
     fontSize: 28,
     fontWeight: "bold",
-    color: "#f8fafc",
+    color: textColor,
+    fill: textColor,
   }));
   header.add(createHeaderButton(definition.rightAction.label, definition.rightAction.ariaLabel, definition.rightAction.disabled, () => {
     options.onRightAction(definition.rightAction.id);
@@ -118,10 +131,19 @@ function createHeaderButton(
   onClick: () => void,
   actionId: PaletteDefinition["leftAction"]["id"],
 ): Container {
+  if (actionId === "none") {
+    return new Container({
+      width: 64,
+      height: 44,
+      opacity: 0,
+      pointerEvents: "none",
+    });
+  }
+
   const button = createInteractiveSurface({
     width: 64,
     height: 44,
-    label: actionId === "none" ? "" : label,
+    label: "",
     onClick,
     disabled,
     backgroundColor: disabled ? "#334155" : actionColor,
@@ -130,8 +152,9 @@ function createHeaderButton(
   button.userData.xrPaletteItemId = ariaLabel || label;
   const icon = createHeaderIcon(actionId);
   if (icon) {
-    button.clear();
     button.add(icon);
+  } else if (label) {
+    button.add(createButtonText(label, 15));
   }
   return button;
 }
@@ -154,48 +177,51 @@ function buildContent(
     return content;
   }
 
+  if (definition.content.kind === "debug-settings") {
+    return buildDebugSettingsContent(definition.content, options);
+  }
+
   const settings = new Container({
     width: "100%",
     flexDirection: "column",
-    gap: 14,
-    maxHeight: 388,
+    gap: 10,
+    height: 400,
     overflow: "scroll",
-    paddingRight: 8,
+    paddingRight: 24,
+    scrollbarWidth: 14,
+    scrollbarColor,
+    scrollbarBorderColor,
+    scrollbarBorderWidth: 2,
+    scrollbarBorderRadius: 7,
+    scrollbarZIndex: 1004,
   });
 
   const worldSection = new Container({
     width: "100%",
     flexDirection: "column",
-    gap: 10,
-    padding: 16,
+    gap: 8,
+    padding: 12,
     borderRadius: 20,
     backgroundColor: sectionColor,
     borderColor,
     borderWidth: 1,
   });
   worldSection.add(createSectionLabel("World"));
-  const worldList = new Container({
-    width: "100%",
-    maxHeight: 132,
-    flexDirection: "column",
-    gap: 8,
-    overflow: "scroll",
-    paddingRight: 6,
-  });
-  for (const option of definition.content.worldOptions) {
-    worldList.add(createWorldButton(option.id, option.label, option.id === definition.content.selectedWorldId, () => {
-      options.onWorldSelected(option.id);
-    }));
-  }
-  worldSection.add(worldList);
+  worldSection.add(createOptionGrid(
+    definition.content.worldOptions,
+    definition.content.selectedWorldId,
+    "world",
+    options.onWorldSelected,
+  ));
 
   const actionsSection = new Container({
     width: "100%",
+    height: 60,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    padding: 16,
+    padding: 12,
     borderRadius: 20,
     backgroundColor: sectionColor,
     borderColor,
@@ -207,8 +233,8 @@ function buildContent(
   const debugSection = new Container({
     width: "100%",
     flexDirection: "column",
-    gap: 12,
-    padding: 16,
+    gap: 8,
+    padding: 12,
     borderRadius: 20,
     backgroundColor: sectionColor,
     borderColor,
@@ -220,19 +246,43 @@ function buildContent(
   }, "debug-tools-toggle"));
 
   if (definition.content.debugEnabled) {
+    debugSection.add(createActionButton("...", "debug-settings", options.onDebugSettingsRequested));
+  }
+
+  settings.add(worldSection, actionsSection, debugSection);
+  return settings;
+}
+
+function buildDebugSettingsContent(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "debug-settings" }>,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const settings = createSettingsScrollContainer();
+
+  const debugSection = new Container({
+    width: "100%",
+    flexDirection: "column",
+    gap: 8,
+    padding: 12,
+    borderRadius: 20,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 1,
+  });
+  debugSection.add(createSectionLabel("Debug"));
     debugSection.add(createChoiceSection(
       "Console log level",
-      definition.content.consoleLogLevelOptions,
-      definition.content.consoleLogLevel,
+      content.consoleLogLevelOptions,
+      content.consoleLogLevel,
       (id) => options.onConsoleLogLevelSelected(id as RuntimeMenuConsoleLogLevelId),
       "console-log-level",
     ));
-    debugSection.add(createToggleRow("UI overlay", definition.content.debugOverlayEnabled, (enabled) => {
+    debugSection.add(createToggleRow("UI overlay", content.debugOverlayEnabled, (enabled) => {
       options.onDebugOverlayToggled(enabled);
     }, "debug-overlay-toggle"));
 
-    if (definition.content.debugOverlayEnabled) {
-      for (const item of definition.content.debugOverlayItems) {
+    if (content.debugOverlayEnabled) {
+      for (const item of content.debugOverlayItems) {
         debugSection.add(createToggleRow(item.label, item.checked, (enabled) => {
           options.onDebugOverlayItemToggled(item.id, enabled);
         }, `debug-overlay-item:${item.id}`));
@@ -241,42 +291,46 @@ function buildContent(
 
     debugSection.add(createChoiceSection(
       "Portal labels",
-      definition.content.portalPanelModeOptions,
-      definition.content.portalPanelMode,
+      content.portalPanelModeOptions,
+      content.portalPanelMode,
       (id) => options.onPortalPanelModeSelected(id as PortalPanelModeId),
       "portal-labels",
     ));
-    debugSection.add(createToggleRow("Portal inspection tools", definition.content.portalInspectionEnabled, (enabled) => {
+    debugSection.add(createToggleRow("Portal inspection tools", content.portalInspectionEnabled, (enabled) => {
       options.onPortalInspectionToggled(enabled);
     }, "portal-inspection-toggle"));
-  }
 
-  settings.add(worldSection, actionsSection, debugSection);
+  settings.add(debugSection);
   return settings;
+}
+
+function createSettingsScrollContainer(): Container {
+  return new Container({
+    width: "100%",
+    flexDirection: "column",
+    gap: 10,
+    height: 400,
+    overflow: "scroll",
+    paddingRight: 24,
+    scrollbarWidth: 14,
+    scrollbarColor,
+    scrollbarBorderColor,
+    scrollbarBorderWidth: 2,
+    scrollbarBorderRadius: 7,
+    scrollbarZIndex: 1004,
+  });
 }
 
 function createSectionLabel(text: string): Text {
   return new Text({
     text,
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "medium",
-    color: "#e2e8f0",
+    color: mutedTextColor,
+    fill: mutedTextColor,
+    flexShrink: 1,
+    wordBreak: "break-word",
   });
-}
-
-function createWorldButton(id: string, label: string, active: boolean, onClick: () => void): Container {
-  const button = createInteractiveSurface({
-    width: "100%",
-    height: 44,
-    justifyContent: "flex-start",
-    paddingLeft: 16,
-    backgroundColor: active ? activeColor : "#1f2937",
-    label,
-    onClick,
-  });
-  button.userData.xrPaletteItemId = `world:${id}`;
-  button.userData.xrPaletteAction = onClick;
-  return button;
 }
 
 function createChoiceSection(
@@ -292,29 +346,49 @@ function createChoiceSection(
     gap: 8,
   });
   section.add(createSectionLabel(label));
-  const list = new Container({
-    width: "100%",
-    maxHeight: 128,
-    flexDirection: "column",
-    gap: 8,
-    overflow: "scroll",
-    paddingRight: 6,
-  });
-  for (const option of options) {
-    const button = createInteractiveSurface({
-      width: "100%",
-      height: 40,
-      justifyContent: "flex-start",
-      paddingLeft: 16,
-      backgroundColor: option.id === selectedId ? activeColor : "#1f2937",
-      label: option.label,
-      onClick: () => onSelected(option.id),
-    });
-    button.userData.xrPaletteItemId = `${itemPrefix}:${option.id}`;
-    list.add(button);
-  }
-  section.add(list);
+  section.add(createOptionGrid(options, selectedId, itemPrefix, onSelected));
   return section;
+}
+
+function createOptionGrid(
+  options: readonly { readonly id: string; readonly label: string }[],
+  selectedId: string,
+  itemPrefix: string,
+  onSelected: (id: string) => void,
+): Container {
+  const grid = new Container({
+    width: "100%",
+    flexDirection: "column",
+    gap: 6,
+  });
+
+  for (let index = 0; index < options.length; index += 2) {
+    const row = new Container({
+      width: "100%",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: 8,
+    });
+
+    for (const option of options.slice(index, index + 2)) {
+      const button = createInteractiveSurface({
+        width: "49%",
+        height: 34,
+        justifyContent: "flex-start",
+        paddingLeft: 12,
+        backgroundColor: option.id === selectedId ? activeColor : "#1f2937",
+        label: option.label,
+        labelFontSize: 15,
+        onClick: () => onSelected(option.id),
+      });
+      button.userData.xrPaletteItemId = `${itemPrefix}:${option.id}`;
+      row.add(button);
+    }
+
+    grid.add(row);
+  }
+
+  return grid;
 }
 
 function createToggleRow(
@@ -332,9 +406,10 @@ function createToggleRow(
   });
   row.add(createSectionLabel(label));
   const button = createInteractiveSurface({
-    width: 118,
-    height: 42,
+    width: 96,
+    height: 34,
     label: enabled ? "On" : "Off",
+    labelFontSize: 15,
     onClick: () => onToggled(!enabled),
     backgroundColor: enabled ? activeColor : inactiveColor,
   });
@@ -345,10 +420,11 @@ function createToggleRow(
 
 function createActionButton(label: string, itemId: string, onClick: () => void): Container {
   const button = createInteractiveSurface({
-    width: 128,
-    height: 46,
+    width: 112,
+    height: 36,
     backgroundColor: actionColor,
     label,
+    labelFontSize: 15,
     onClick,
   });
   button.userData.xrPaletteItemId = itemId;
@@ -364,11 +440,12 @@ function createInteractiveSurface(options: {
   readonly justifyContent?: "center" | "flex-start";
   readonly paddingLeft?: number;
   readonly backgroundColor: string;
+  readonly labelFontSize?: number;
 }): Container {
   const button = new Container({
     width: options.width,
     height: options.height,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: options.justifyContent ?? "center",
     paddingLeft: options.paddingLeft ?? 0,
@@ -382,7 +459,9 @@ function createInteractiveSurface(options: {
     depthWrite: false,
   });
   button.userData.xrPaletteAction = options.disabled ? undefined : options.onClick;
-  button.add(createButtonText(options.label, 18));
+  if (options.label) {
+    button.add(createButtonText(options.label, options.labelFontSize ?? 15));
+  }
   return button;
 }
 
@@ -391,7 +470,10 @@ function createButtonText(text: string, fontSize: number): Text {
     text,
     fontSize,
     fontWeight: "bold",
-    color: "#f8fafc",
+    color: textColor,
+    fill: textColor,
+    flexShrink: 1,
+    wordBreak: "break-word",
   });
 }
 
@@ -401,7 +483,8 @@ function createHeaderIcon(
   const iconProperties = {
     width: 28,
     height: 28,
-    color: "#f8fafc",
+    color: textColor,
+    fill: textColor,
   };
 
   switch (actionId) {
@@ -414,4 +497,19 @@ function createHeaderIcon(
     case "none":
       return undefined;
   }
+}
+
+function disposeRenderedChildren(children: readonly Container[]): void {
+  for (const child of children) {
+    disposeComponentTree(child);
+  }
+}
+
+function disposeComponentTree(component: Component<any>): void {
+  for (const child of [...component.children]) {
+    if (child instanceof Component) {
+      disposeComponentTree(child);
+    }
+  }
+  component.dispose();
 }

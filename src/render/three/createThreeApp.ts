@@ -30,6 +30,7 @@ import {
   setRuntimeMenuSelectedWorldId,
   setRuntimeMenuPortalInspectionEnabled,
   setRuntimeMenuPortalPanelMode,
+  showRuntimeMenuDebugSettings,
   showRuntimeMenuMainPage,
   showRuntimeMenuSettings,
   toggleRuntimeMenuDebugOverlayItem,
@@ -239,7 +240,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onRightAction(actionId) {
       if (actionId === "back") {
-        menuState = showRuntimeMenuMainPage(menuState);
+        menuState = menuState.page === "debug-settings"
+          ? showRuntimeMenuSettings(menuState)
+          : showRuntimeMenuMainPage(menuState);
         syncDesktopPalette();
         return;
       }
@@ -258,6 +261,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onDebugEnabledChanged(enabled) {
       applyMenuDebugState(setRuntimeMenuDebugEnabled(menuState, enabled));
+    },
+    onDebugSettingsRequested() {
+      menuState = showRuntimeMenuDebugSettings(menuState);
+      syncDesktopPalette();
     },
     onConsoleLogLevelSelected(level) {
       applyMenuDebugState(setRuntimeMenuConsoleLogLevel(menuState, level));
@@ -316,7 +323,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       syncDesktopPalette();
     },
     onShowMainRequested() {
-      menuState = showRuntimeMenuMainPage(menuState);
+      menuState = menuState.page === "debug-settings"
+        ? showRuntimeMenuSettings(menuState)
+        : showRuntimeMenuMainPage(menuState);
       syncDesktopPalette();
     },
     onWorldSelected(worldId) {
@@ -329,6 +338,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onDebugEnabledChanged(enabled) {
       applyMenuDebugState(setRuntimeMenuDebugEnabled(menuState, enabled));
+    },
+    onDebugSettingsRequested() {
+      menuState = showRuntimeMenuDebugSettings(menuState);
+      syncDesktopPalette();
     },
     onConsoleLogLevelSelected(level) {
       applyMenuDebugState(setRuntimeMenuConsoleLogLevel(menuState, level));

@@ -16,6 +16,9 @@ export interface DesktopPaletteView {
       readonly selectedWorldId: string;
       readonly worldLabel?: string;
       readonly debugEnabled: boolean;
+    }
+    | {
+      readonly kind: "debug-settings";
       readonly consoleLogLevel: RuntimeMenuConsoleLogLevelId;
       readonly debugOverlayEnabled: boolean;
       readonly debugOverlayLabels: readonly string[];
@@ -30,6 +33,7 @@ export interface DesktopToolPaletteOptions {
   readonly onWorldSelected: (worldId: string) => void;
   readonly onReloadRequested: () => void;
   readonly onDebugEnabledChanged: (enabled: boolean) => void;
+  readonly onDebugSettingsRequested: () => void;
   readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
   readonly onDebugOverlayToggled: (enabled: boolean) => void;
   readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
@@ -158,6 +162,18 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
         selectedWorldId: content.selectedWorldId,
         worldLabel: content.worldOptions.find((option) => option.id === content.selectedWorldId)?.label,
         debugEnabled: content.debugEnabled,
+      },
+    };
+  }
+
+  if (definition.content.kind === "debug-settings") {
+    const content = definition.content;
+    return {
+      pageId: definition.pageId,
+      leftAction: definition.leftAction,
+      rightAction: definition.rightAction,
+      content: {
+        kind: "debug-settings",
         consoleLogLevel: content.consoleLogLevel,
         debugOverlayEnabled: content.debugOverlayEnabled,
         debugOverlayLabels: content.debugOverlayItems
@@ -249,6 +265,31 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     debugSection.append(debugToggle);
 
     if (definition.content.debugEnabled) {
+      const debugDetailsButton = document.createElement("button");
+      debugDetailsButton.type = "button";
+      debugDetailsButton.className = "desktop-tool-palette-button";
+      debugDetailsButton.textContent = "...";
+      debugDetailsButton.ariaLabel = "Open debug settings";
+      debugDetailsButton.addEventListener("click", () => options.onDebugSettingsRequested());
+      debugSection.append(debugDetailsButton);
+    }
+
+    settings.append(worldField, reloadButton, debugSection);
+    return settings;
+  }
+
+  if (definition.content.kind === "debug-settings") {
+    const settings = document.createElement("div");
+    settings.className = "desktop-tool-palette-settings";
+
+    const debugSection = document.createElement("section");
+    debugSection.className = "desktop-tool-palette-section";
+
+    const debugHeading = document.createElement("span");
+    debugHeading.className = "desktop-tool-palette-field-label";
+    debugHeading.textContent = "Debug";
+    debugSection.append(debugHeading);
+
       const consoleField = document.createElement("label");
       consoleField.className = "desktop-tool-palette-field";
 
@@ -362,9 +403,8 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
 
       portalInspectionToggle.append(portalInspectionCheckbox, portalInspectionText);
       debugSection.append(portalInspectionToggle);
-    }
 
-    settings.append(worldField, reloadButton, debugSection);
+    settings.append(debugSection);
     return settings;
   }
 

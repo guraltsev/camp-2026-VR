@@ -24,6 +24,7 @@ export interface VrPaletteControllerOptions {
   readonly onWorldSelected: (worldId: string) => void;
   readonly onReloadRequested: () => void;
   readonly onDebugEnabledChanged: (enabled: boolean) => void;
+  readonly onDebugSettingsRequested: () => void;
   readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
   readonly onDebugOverlayToggled: (enabled: boolean) => void;
   readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
@@ -78,6 +79,7 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
     onWorldSelected: options.onWorldSelected,
     onReloadRequested: options.onReloadRequested,
     onDebugEnabledChanged: options.onDebugEnabledChanged,
+    onDebugSettingsRequested: options.onDebugSettingsRequested,
     onConsoleLogLevelSelected: options.onConsoleLogLevelSelected,
     onDebugOverlayToggled: options.onDebugOverlayToggled,
     onDebugOverlayItemToggled: options.onDebugOverlayItemToggled,
@@ -86,21 +88,6 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
   });
   adapter.root.rotation.y = Math.PI;
   paletteRoot.add(adapter.root);
-  const debugBacking = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.02, 0.72),
-    new THREE.MeshBasicMaterial({
-      color: 0x22c55e,
-      transparent: true,
-      opacity: 0.18,
-      depthTest: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    }),
-  );
-  debugBacking.name = "vr-palette-debug-backing";
-  debugBacking.position.z = 0.01;
-  debugBacking.renderOrder = 998;
-  paletteRoot.add(debugBacking);
   options.scene.add(paletteRoot);
 
   const debugPanel = createXrDebugPanel();
@@ -170,7 +157,6 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
       paletteRoot.quaternion.copy(placement.quaternion);
       paletteRoot.updateMatrixWorld(true);
       adapter.setVisible(options.getIsOpen());
-      debugBacking.visible = options.getIsOpen();
       adapter.update(frame.deltaSeconds * 1000);
       const pointerSourcesById = new Map(controllerSources.pointerSources.map((source) => [source.id, source] as const));
       const activePointerSource = activePointer ? pointerSourcesById.get(activePointer.id) : undefined;
@@ -191,7 +177,6 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
       previousPosition = undefined;
       previousQuaternion = undefined;
       adapter.setVisible(false);
-      debugBacking.visible = false;
       debugPanel.update({
         secureContext: true,
         sessionStatus: "ended",
@@ -209,8 +194,6 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
       controllerHandModels.dispose();
       adapter.dispose();
       paletteRoot.removeFromParent();
-      debugBacking.geometry.dispose();
-      (debugBacking.material as THREE.Material).dispose();
       debugPanel.dispose();
       controllerObjects.clear();
       disposeControllerRays();

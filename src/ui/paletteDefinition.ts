@@ -28,6 +28,10 @@ export interface SettingsPaletteContent {
   readonly selectedWorldId: string;
   readonly worldOptions: readonly PaletteSelectOption[];
   readonly debugEnabled: boolean;
+}
+
+export interface DebugSettingsPaletteContent {
+  readonly kind: "debug-settings";
   readonly consoleLogLevel: RuntimeMenuConsoleLogLevelId;
   readonly consoleLogLevelOptions: readonly PaletteSelectOption[];
   readonly debugOverlayEnabled: boolean;
@@ -45,23 +49,17 @@ export interface PaletteDefinition {
   readonly pageId: RuntimeMenuPageId;
   readonly leftAction: PaletteHeaderAction;
   readonly rightAction: PaletteHeaderAction;
-  readonly content: MainPaletteContent | SettingsPaletteContent;
+  readonly content: MainPaletteContent | SettingsPaletteContent | DebugSettingsPaletteContent;
 }
 
 export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinition {
-  if (state.page === "settings") {
+  if (state.page === "debug-settings") {
     return {
-      pageId: "settings",
+      pageId: "debug-settings",
       leftAction: createHeaderAction("none"),
       rightAction: createHeaderAction("back"),
       content: {
-        kind: "settings",
-        selectedWorldId: state.selectedWorldId,
-        worldOptions: worldCatalog.map((entry) => ({
-          id: entry.id,
-          label: entry.label,
-        })),
-        debugEnabled: state.debugEnabled,
+        kind: "debug-settings",
         consoleLogLevel: state.consoleLogLevel,
         consoleLogLevelOptions: [
           { id: "basic", label: "Basic" },
@@ -83,6 +81,23 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
           label: mode.label,
         })),
         portalInspectionEnabled: state.portalInspectionEnabled,
+      },
+    };
+  }
+
+  if (state.page === "settings") {
+    return {
+      pageId: "settings",
+      leftAction: createHeaderAction("none"),
+      rightAction: createHeaderAction("back"),
+      content: {
+        kind: "settings",
+        selectedWorldId: state.selectedWorldId,
+        worldOptions: worldCatalog.map((entry) => ({
+          id: entry.id,
+          label: entry.label,
+        })),
+        debugEnabled: state.debugEnabled,
       },
     };
   }
