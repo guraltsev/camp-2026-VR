@@ -78,6 +78,7 @@ import {
   getPortalViewportPixels,
   getRendererCssCanvasSize,
   getWindowCssCanvasSize,
+  portalClipEdgeSmoothingEnabled,
   renderAntialiasRequested,
   resolveRenderQualityPixelRatio,
   type RenderQualityState,
@@ -168,12 +169,16 @@ interface PortalEyeRenderState {
 
 const renderCameraNearMeters = 0.001;
 const renderCameraFarMeters = 250;
+const underCellInfinityFloorSizeMeters = 1_000;
+const underCellInfinityFloorWorldZMeters = -1;
 
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SCENE_BACKGROUND_COLOR);
   scene.environment = null;
   scene.fog = new THREE.Fog(SCENE_BACKGROUND_COLOR, 12, 85);
+  const underCellInfinityFloor = createUnderCellInfinityFloor();
+  scene.add(underCellInfinityFloor);
 
   const initialCanvasSize = getWindowCssCanvasSize(window);
   const camera = new THREE.PerspectiveCamera(
@@ -397,7 +402,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const portalClipMaterialState = createPortalClipMaterialState(
     portalClipData,
     getPortalViewportPixels(renderer),
-    { smoothClipEdges: options.renderQualityEnabled },
+    { smoothClipEdges: options.renderQualityEnabled && portalClipEdgeSmoothingEnabled },
   );
   let latestVisibleResult: ComputeVisiblePortalPathsResult | undefined;
   let portalEyeRenderStates: readonly PortalEyeRenderState[] = [];
@@ -737,6 +742,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       for (const cellMesh of cellMeshes.values()) {
         disposeObject3D(cellMesh);
       }
+      scene.remove(underCellInfinityFloor);
+      disposeObject3D(underCellInfinityFloor);
       for (const archetype of cellRenderArchetypes) {
         scene.remove(archetype.mesh);
       }
@@ -2228,6 +2235,25 @@ function triangleFanIndices(vertexCount: number): number[] {
   }
 
   return indices;
+}
+
+function createUnderCellInfinityFloor(): THREE.Mesh {
+  const geometry = new THREE.PlaneGeometry(
+    underCellInfinityFloorSizeMeters,
+    underCellInfinityFloorSizeMeters,
+  );
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = "under-cell-infinity-floor";
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = underCellInfinityFloorWorldZMeters;
+  mesh.frustumCulled = false;
+  mesh.receiveShadow = false;
+  mesh.castShadow = false;
+  return mesh;
 }
 
 function disableFrustumCulling(root: THREE.Object3D): void {

@@ -63,7 +63,7 @@ describe("render quality policy", () => {
     expect(createRenderQualityState(renderer, 2, true)).toMatchObject({
       enabled: true,
       antialiasRequested: true,
-      portalClipEdgeSmoothing: true,
+      portalClipEdgeSmoothing: false,
       pixelRatio: 2,
       cssCanvasSize: { width: 640, height: 360 },
       drawingBufferSize: { width: 1280, height: 720 },

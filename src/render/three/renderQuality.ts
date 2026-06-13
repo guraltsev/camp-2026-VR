@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
 export const renderAntialiasRequested = true;
+export const portalClipEdgeSmoothingEnabled = false;
 export const defaultMaxDevicePixelRatio = 1.25;
 
 export interface ViewportPixels {
@@ -75,7 +76,7 @@ export function createRenderQualityState(
   return {
     enabled,
     antialiasRequested: renderAntialiasRequested,
-    portalClipEdgeSmoothing: enabled,
+    portalClipEdgeSmoothing: enabled && portalClipEdgeSmoothingEnabled,
     pixelRatio,
     maxDevicePixelRatio,
     cssCanvasSize,

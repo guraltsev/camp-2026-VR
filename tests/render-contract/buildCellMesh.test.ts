@@ -152,7 +152,7 @@ describe("buildCellMesh", () => {
     expect(textOnlyMesh.getObjectByName("portal-debug-label:room-a:side-1")).toBeDefined();
   });
 
-  it("aligns non-square floor geometry with the white outline", () => {
+  it("does not render floor outlines in ordinary cell meshes", () => {
     const compiled = compileCellComplex(dodecahedron);
     const top = compiled.cellsById.get("top")!;
     const mesh = buildCellMesh(top, {
@@ -162,12 +162,8 @@ describe("buildCellMesh", () => {
       assets: createPreparedAssets(),
     });
 
-    const floor = mesh.getObjectByName("floor:top") as THREE.Mesh<THREE.BufferGeometry> | undefined;
-    const outline = mesh.getObjectByName("floor-outline:top") as THREE.Line<THREE.BufferGeometry> | undefined;
-
-    expect(floor).toBeDefined();
-    expect(outline).toBeDefined();
-    expect(xzBounds(floor!.geometry)).toEqual(xzBounds(outline!.geometry));
+    expect(mesh.getObjectByName("floor:top")).toBeDefined();
+    expect(mesh.getObjectByName("floor-outline:top")).toBeUndefined();
   });
 
   it("labels portal side redirects as source side to target face and side", () => {
@@ -305,25 +301,3 @@ function createPreparedAssets(): PreparedWorldAssets {
   };
 }
 
-function xzBounds(geometry: THREE.BufferGeometry): {
-  readonly minX: number;
-  readonly maxX: number;
-  readonly minZ: number;
-  readonly maxZ: number;
-} {
-  const position = geometry.getAttribute("position");
-  const xs: number[] = [];
-  const zs: number[] = [];
-
-  for (let index = 0; index < position.count; index += 1) {
-    xs.push(Number(position.getX(index).toFixed(6)));
-    zs.push(Number(position.getZ(index).toFixed(6)));
-  }
-
-  return {
-    minX: Math.min(...xs),
-    maxX: Math.max(...xs),
-    minZ: Math.min(...zs),
-    maxZ: Math.max(...zs),
-  };
-}

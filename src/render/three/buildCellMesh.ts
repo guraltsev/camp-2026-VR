@@ -38,7 +38,6 @@ export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOpt
   group.add(buildFloorMesh(cell, options.assets));
   group.add(buildCeilingMesh(cell));
   group.add(buildSideWalls(cell, options.assets, options.debugLevel, options.portalPanelMode));
-  group.add(buildFloorOutline(cell));
 
   if (options.debugLevel !== "off" && shouldRenderPortalText(options.portalPanelMode)) {
     group.add(buildPortalDebugPanels(cell, options));
@@ -187,17 +186,6 @@ function buildSideWalls(
   }
 
   return group;
-}
-
-function buildFloorOutline(cell: CompiledPrismCell): THREE.Object3D {
-  const points = cell.baseVertices.map((vertex) => new THREE.Vector3(vertex.x, 0.02, -vertex.y));
-  points.push(points[0].clone());
-
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({ color: 0xffffff });
-  const outline = new THREE.Line(geometry, material);
-  outline.name = `floor-outline:${cell.id}`;
-  return outline;
 }
 
 function buildPortalDebugPanels(cell: CompiledPrismCell, options: BuildCellMeshOptions): THREE.Object3D {
