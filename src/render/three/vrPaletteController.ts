@@ -62,6 +62,12 @@ const raycaster = new THREE.Raycaster();
 const controllerObjects = new Map<string, THREE.Object3D>();
 const controllerRayObjects = new Map<string, THREE.Line>();
 const debugPanelCameraOffset = new THREE.Vector3(-0.12, 0.24, -0.9);
+const menuSurfaceNormal = new THREE.Vector3();
+
+interface PaletteHit {
+  readonly point: THREE.Vector3;
+  readonly action?: () => void;
+}
 
 export function createVrPaletteController(options: VrPaletteControllerOptions): VrPaletteController {
   const paletteRoot = new THREE.Group();
@@ -93,6 +99,8 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
   adapter.root.rotation.y = Math.PI;
   paletteRoot.add(adapter.root);
   options.scene.add(paletteRoot);
+  const paletteHitMarker = createPaletteHitMarker();
+  options.scene.add(paletteHitMarker);
 
   const debugPanel = createXrDebugPanel();
   const camera = options.getCamera();
@@ -164,11 +172,12 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
       adapter.update(frame.deltaSeconds * 1000);
       const pointerSourcesById = new Map(controllerSources.pointerSources.map((source) => [source.id, source] as const));
       const activePointerSource = activePointer ? pointerSourcesById.get(activePointer.id) : undefined;
-      const hoveredAction = options.getIsOpen() && activePointerSource
-        ? resolvePaletteActionHit(adapter.root, activePointerSource.object)
+      const paletteHit = options.getIsOpen() && activePointerSource
+        ? resolvePaletteHit(adapter.root, activePointerSource.object)
         : undefined;
-      if (hoveredAction && activePointer?.justStarted) {
-        hoveredAction();
+      updatePaletteHitMarker(paletteHitMarker, adapter.root, paletteHit);
+      if (paletteHit?.action && activePointer?.justStarted) {
+        paletteHit.action();
       }
 
       debugPanel.update({
@@ -182,6 +191,7 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
       previousPosition = undefined;
       previousQuaternion = undefined;
       adapter.setVisible(false);
+      paletteHitMarker.visible = false;
       debugPanel.update({
         secureContext: true,
         sessionStatus: "ended",
@@ -199,6 +209,9 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
       controllerHandModels.dispose();
       adapter.dispose();
       paletteRoot.removeFromParent();
+      paletteHitMarker.removeFromParent();
+      paletteHitMarker.geometry.dispose();
+      disposeMaterial(paletteHitMarker.material);
       debugPanel.dispose();
       controllerObjects.clear();
       disposeControllerRays();
@@ -364,6 +377,41 @@ function disposeControllerRays(): void {
   controllerRayObjects.clear();
 }
 
+function createPaletteHitMarker(): THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial> {
+  const marker = new THREE.Mesh(
+    new THREE.CircleGeometry(0.018, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.92,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  marker.name = "vr-palette-hit-marker";
+  marker.renderOrder = 1004;
+  marker.visible = false;
+  return marker;
+}
+
+function updatePaletteHitMarker(
+  marker: THREE.Mesh,
+  paletteSurface: THREE.Object3D,
+  hit: PaletteHit | undefined,
+): void {
+  if (!hit) {
+    marker.visible = false;
+    return;
+  }
+
+  paletteSurface.getWorldQuaternion(marker.quaternion);
+  menuSurfaceNormal.set(0, 0, 1).applyQuaternion(marker.quaternion).normalize();
+  marker.position.copy(hit.point).addScaledVector(menuSurfaceNormal, 0.002);
+  marker.visible = true;
+  marker.updateMatrixWorld(true);
+}
+
 function disposeMaterial(material: THREE.Material | readonly THREE.Material[]): void {
   if ("dispose" in material) {
     material.dispose();
@@ -375,10 +423,10 @@ function disposeMaterial(material: THREE.Material | readonly THREE.Material[]): 
   }
 }
 
-function resolvePaletteActionHit(
+function resolvePaletteHit(
   root: THREE.Object3D,
   sourceObject: THREE.Object3D,
-): (() => void) | undefined {
+): PaletteHit | undefined {
   sourceObject.updateMatrixWorld(true);
   sourceObject.matrixWorld.decompose(rayOrigin, worldQuaternion, worldScale);
   rayDirection.copy(forwardAxis).applyQuaternion(worldQuaternion).normalize();
@@ -388,14 +436,23 @@ function resolvePaletteActionHit(
   raycaster.far = 4;
 
   const intersections = raycaster.intersectObject(root, true);
+  const firstIntersection = intersections[0];
+  if (!firstIntersection) {
+    return undefined;
+  }
+
+  let action: (() => void) | undefined;
   for (const intersection of intersections) {
-    const action = findPaletteAction(intersection.object);
+    action = findPaletteAction(intersection.object);
     if (action) {
-      return action;
+      break;
     }
   }
 
-  return undefined;
+  return {
+    point: firstIntersection.point.clone(),
+    action,
+  };
 }
 
 function findPaletteAction(object: THREE.Object3D | null): (() => void) | undefined {
