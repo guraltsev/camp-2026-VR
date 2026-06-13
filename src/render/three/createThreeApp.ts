@@ -84,7 +84,14 @@ import {
 } from "./renderQuality";
 import { installRuntimeDiagnostics, runtimeDiagnostics } from "./runtimeDiagnostics";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
-import type { RuntimeInputFrame, VisiblePortalPathRenderState, XrDebugRenderState } from "./renderState";
+import type {
+  FramePerformanceRenderState,
+  PortalEyeRenderDebugState,
+  RuntimeInputFrame,
+  VisiblePortalPathRenderState,
+  WebGlRenderInfoState,
+  XrDebugRenderState,
+} from "./renderState";
 import { createPortalClipData } from "./portalClipData";
 import {
   createPortalClipMaterialState,
@@ -201,6 +208,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let portalPanelMode = options.portalPanelMode;
   let debugOptions = options.debugOptions;
   let smoothedFrameRateFps: number | undefined;
+  let smoothedFramePerformance: FramePerformanceRenderState | undefined;
+  let latestWebGlRenderInfo: WebGlRenderInfoState | undefined;
   let showCellPathRendersInstances = hasActiveDebugOption(
     debugLevel,
     debugOptions,
@@ -506,8 +515,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const headLocalYawRadians = xrActive
       ? headYawRadiansFromViewerPose(xrViewerPose)
       : undefined;
+    const frameBeforeInputMs = performance.now();
     const frame = xrActive ? getXrInputFrame(deltaSeconds) : getDesktopInputFrame(deltaSeconds);
-    const frameBeforeMoveMs = performance.now();
+    const frameAfterInputMs = performance.now();
+    const frameBeforeMoveMs = frameAfterInputMs;
     const previousCellId = playerPose.cellId;
     let moveResult: ReturnType<typeof movePlayer> | undefined;
 
@@ -552,11 +563,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
     const frameAfterMoveMs = performance.now();
+    const frameBeforeObjectsMs = frameAfterMoveMs;
 
     for (const runtime of dynamicObjectRuntimes) {
       runtime.update(appState.world, frame.resetRequested ? 0 : deltaSeconds);
       runtime.syncParent(cellMeshes);
     }
+    const frameAfterObjectsMs = performance.now();
+    const frameBeforeCameraMs = frameAfterObjectsMs;
 
     updateVisibleCell();
     let portalCullingCameras: readonly THREE.Camera[] = [camera];
@@ -570,6 +584,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else {
       applyDesktopCameraPose();
     }
+    const frameAfterCameraMs = performance.now();
+    const frameBeforePortalMs = frameAfterCameraMs;
+
     if (xrActive && portalCullingCameras.length > 1) {
       syncStereoPortalInstanceRender(portalCullingCameras.map(resolvePortalEyeRenderRoot));
     } else {
@@ -581,6 +598,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       });
     }
     syncLegacyObjectPortalRenders();
+    const frameAfterPortalMs = performance.now();
+    const frameBeforeUiMs = frameAfterPortalMs;
+
     syncXrDebugState(frame.source, moveResult);
     if (xrActive && xrFrame && xrReferenceSpace) {
       vrPaletteController.update({
@@ -597,13 +617,26 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       });
     }
     portalDebugRuntime.updateVisiblePortalPaths();
+    const frameAfterUiMs = performance.now();
     const frameBeforeRenderMs = performance.now();
     renderer.render(scene, camera);
     const frameAfterRenderMs = performance.now();
-    runtimeDiagnostics().recordFrame(playerPose.cellId, {
+    const framePerformance: FramePerformanceRenderState = {
       totalMs: frameAfterRenderMs - frameStartMs,
+      inputMs: frameAfterInputMs - frameBeforeInputMs,
       moveMs: frameAfterMoveMs - frameBeforeMoveMs,
+      objectsMs: frameAfterObjectsMs - frameBeforeObjectsMs,
+      cameraMs: frameAfterCameraMs - frameBeforeCameraMs,
+      portalMs: frameAfterPortalMs - frameBeforePortalMs,
+      uiMs: frameAfterUiMs - frameBeforeUiMs,
       renderMs: frameAfterRenderMs - frameBeforeRenderMs,
+    };
+    smoothedFramePerformance = smoothFramePerformance(smoothedFramePerformance, framePerformance);
+    latestWebGlRenderInfo = captureWebGlRenderInfo(renderer);
+    runtimeDiagnostics().recordFrame(playerPose.cellId, {
+      totalMs: framePerformance.totalMs,
+      moveMs: framePerformance.moveMs,
+      renderMs: framePerformance.renderMs,
     });
   }
 
@@ -807,6 +840,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       secureContext: xrSessionState.secureContext,
       sessionStatus: xrSessionState.status,
       activeInputSource: source,
+      framePerformance: smoothedFramePerformance,
+      webGlRenderInfo: latestWebGlRenderInfo,
       currentCellId: playerPose.cellId,
       playerPosition: playerPose.position,
       yawRadians: playerPose.yawRadians,
@@ -815,7 +850,23 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       lastCrossedPortalId: moveResult?.crossedPortalId ?? xrDebugState.lastCrossedPortalId,
       sharedRenderRootCellId: renderer.xr.isPresenting ? xrRig.getSharedRenderRootCellId(playerPose) : undefined,
       visiblePortalPathCount: latestVisibleResult?.paths.length,
+      visiblePortalPaths: latestVisibleResult ? visibleSummaryToRenderState(latestVisibleResult.summary) : undefined,
+      portalInstances: portalInstanceRenderState,
+      portalEyes: createPortalEyeDebugStates(),
     };
+  }
+
+  function createPortalEyeDebugStates(): readonly PortalEyeRenderDebugState[] | undefined {
+    if (portalEyeRenderStates.length === 0) {
+      return undefined;
+    }
+
+    return portalEyeRenderStates.map((state) => ({
+      eyeIndex: state.eyeIndex,
+      rootCellId: state.rootCellId,
+      visiblePathCount: state.result.paths.length,
+      maxVisibleDepth: state.result.summary.maxVisibleDepth,
+    }));
   }
 
   function rebuildCellMeshes(): void {
@@ -1612,7 +1663,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         debugOverlay.update({
           visible: showDebugOverlay,
           frameRateFps: showFps ? smoothedFrameRateFps : undefined,
+          framePerformance: showFps ? smoothedFramePerformance : undefined,
+          webGlRenderInfo: showFps ? latestWebGlRenderInfo : undefined,
           visiblePortalPaths: showPortalQuantities ? visibleSummary : undefined,
+          portalEyes: showPortalQuantities ? createPortalEyeDebugStates() : undefined,
           portalInstances: showPortalQuantities ? portalInstanceRenderState : undefined,
           location: showLocation ? xrDebugState : undefined,
           inspectedPathLine: showPortalQuantities
@@ -2205,6 +2259,43 @@ function disposeMaterial(material: THREE.Material | THREE.Material[]): void {
   }
 
   material.dispose();
+}
+
+function smoothFramePerformance(
+  previous: FramePerformanceRenderState | undefined,
+  next: FramePerformanceRenderState,
+): FramePerformanceRenderState {
+  if (!previous) {
+    return next;
+  }
+
+  return {
+    totalMs: smoothNumber(previous.totalMs, next.totalMs),
+    inputMs: smoothNumber(previous.inputMs, next.inputMs),
+    moveMs: smoothNumber(previous.moveMs, next.moveMs),
+    objectsMs: smoothNumber(previous.objectsMs, next.objectsMs),
+    cameraMs: smoothNumber(previous.cameraMs, next.cameraMs),
+    portalMs: smoothNumber(previous.portalMs, next.portalMs),
+    uiMs: smoothNumber(previous.uiMs, next.uiMs),
+    renderMs: smoothNumber(previous.renderMs, next.renderMs),
+  };
+}
+
+function captureWebGlRenderInfo(renderer: THREE.WebGLRenderer): WebGlRenderInfoState {
+  const viewportPixels = getPortalViewportPixels(renderer);
+
+  return {
+    drawCalls: renderer.info.render.calls,
+    triangles: renderer.info.render.triangles,
+    lines: renderer.info.render.lines,
+    points: renderer.info.render.points,
+    viewportPixels,
+    pixelRatio: renderer.getPixelRatio(),
+  };
+}
+
+function smoothNumber(previous: number, next: number): number {
+  return THREE.MathUtils.lerp(previous, next, 0.15);
 }
 
 function createInitialXrDebugState(xrSessionState: XrSessionState, playerPose: PlayerPose): XrDebugRenderState {

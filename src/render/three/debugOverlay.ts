@@ -1,9 +1,19 @@
-import type { PortalInstanceRenderState, VisiblePortalPathRenderState, XrDebugRenderState } from "./renderState";
+import type {
+  FramePerformanceRenderState,
+  PortalEyeRenderDebugState,
+  PortalInstanceRenderState,
+  VisiblePortalPathRenderState,
+  WebGlRenderInfoState,
+  XrDebugRenderState,
+} from "./renderState";
 
 export interface DebugOverlayState {
   readonly visible: boolean;
   readonly frameRateFps?: number;
+  readonly framePerformance?: FramePerformanceRenderState;
+  readonly webGlRenderInfo?: WebGlRenderInfoState;
   readonly visiblePortalPaths?: VisiblePortalPathRenderState;
+  readonly portalEyes?: readonly PortalEyeRenderDebugState[];
   readonly portalInstances?: PortalInstanceRenderState;
   readonly location?: XrDebugRenderState;
   readonly inspectedPathLine?: string;
@@ -24,7 +34,10 @@ export function createDebugOverlay(container: HTMLElement): DebugOverlay {
     update(state) {
       const hasContent = Boolean(
         state.frameRateFps !== undefined
+        || state.framePerformance
+        || state.webGlRenderInfo
         || state.visiblePortalPaths
+        || state.portalEyes
         || state.portalInstances
         || state.location
         || state.inspectedPathLine,
@@ -38,7 +51,10 @@ export function createDebugOverlay(container: HTMLElement): DebugOverlay {
 
       root.textContent = [
         state.frameRateFps !== undefined ? formatFrameRateLine(state.frameRateFps) : undefined,
+        state.framePerformance ? formatFramePerformanceLine(state.framePerformance) : undefined,
+        state.webGlRenderInfo ? formatWebGlRenderInfoLine(state.webGlRenderInfo) : undefined,
         state.visiblePortalPaths ? formatVisiblePortalPathLine(state.visiblePortalPaths) : undefined,
+        state.portalEyes && state.portalEyes.length > 1 ? formatPortalEyeLine(state.portalEyes) : undefined,
         state.portalInstances ? formatPortalInstanceLine(state.portalInstances) : undefined,
         state.portalInstances ? formatPortalArchetypeLine(state.portalInstances) : undefined,
         state.location ? formatLocationLine(state.location) : undefined,
@@ -57,10 +73,41 @@ export function formatFrameRateLine(frameRateFps: number): string {
   return `fps: ${roundNumber(frameRateFps)} (${roundNumber(1000 / frameRateFps)} ms)`;
 }
 
+export function formatFramePerformanceLine(state: FramePerformanceRenderState): string {
+  return [
+    `frame ms: total ${roundNumber(state.totalMs)}`,
+    `move ${roundNumber(state.moveMs)}`,
+    `objects ${roundNumber(state.objectsMs)}`,
+    `portal ${roundNumber(state.portalMs)}`,
+    `render ${roundNumber(state.renderMs)}`,
+    `ui ${roundNumber(state.uiMs)}`,
+  ].join(" / ");
+}
+
+export function formatWebGlRenderInfoLine(state: WebGlRenderInfoState): string {
+  const megaPixels = (state.viewportPixels.width * state.viewportPixels.height) / 1_000_000;
+
+  return [
+    `webgl: ${state.drawCalls} calls`,
+    `${formatCount(state.triangles)} tris`,
+    `${state.viewportPixels.width}x${state.viewportPixels.height}`,
+    `${roundNumber(megaPixels)} MP`,
+    `pxr ${roundNumber(state.pixelRatio)}`,
+  ].join(" / ");
+}
+
 export function formatVisiblePortalPathLine(state: VisiblePortalPathRenderState): string {
   const budget = state.budgetExhausted ? " / budget" : "";
 
   return `visible paths: ${state.visiblePathCount} / kept ${state.keptPathCount} / depth ${state.maxVisibleDepth}${budget}`;
+}
+
+export function formatPortalEyeLine(states: readonly PortalEyeRenderDebugState[]): string {
+  const counts = states
+    .map((state) => `${state.eyeIndex}:${state.visiblePathCount}@${state.maxVisibleDepth}`)
+    .join(" / ");
+
+  return `portal eyes: ${counts}`;
 }
 
 export function formatPortalInstanceLine(state: PortalInstanceRenderState): string {
@@ -96,4 +143,16 @@ function formatVec3(point: { readonly x: number; readonly y: number; readonly z:
 
 function roundNumber(value: number): number {
   return Math.round(value * 1_000) / 1_000;
+}
+
+function formatCount(value: number): string {
+  if (value >= 1_000_000) {
+    return `${roundNumber(value / 1_000_000)}M`;
+  }
+
+  if (value >= 1_000) {
+    return `${roundNumber(value / 1_000)}k`;
+  }
+
+  return String(value);
 }

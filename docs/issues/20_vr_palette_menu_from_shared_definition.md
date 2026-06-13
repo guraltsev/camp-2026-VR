@@ -20,7 +20,8 @@ Bring the existing menu into VR:
   - upper-left cogwheel/settings button rendered as a recognizable cog, not a missing-glyph rectangle,
   - upper-right `X` close button,
 - render the settings page in VR:
-  - upper-right `<-` back button replacing the `X`,
+  - `<-` back button for submenu navigation,
+  - `X` close button available alongside back,
   - world selector,
   - reload button,
   - debug overlay toggle,
@@ -135,7 +136,9 @@ The VR menu must match the FPS menu behavior:
 - menu remains closed on XR session start until toggled open,
 - cog opens settings,
 - `X` closes main page,
-- settings page uses `<-` back in the former `X` slot,
+- settings page offers `<-` back without removing the `X` close button,
+- every VR menu page has an `X` close button,
+- VR submenu pages may also have a `<-` back button,
 - world selector uses the shared world catalog,
 - reload dispatches `reload-world`,
 - debug overlay toggle dispatches `set-debug-overlay`.
@@ -197,8 +200,8 @@ Manual checks should cover:
 - Entering XR does not auto-open the VR menu.
 - The side/menu button on either controller toggles the VR menu.
 - The cog opens settings.
-- The `X` closes the main VR menu.
-- The settings page uses `<-` back in the former `X` slot.
+- The `X` closes every VR menu page.
+- The settings page uses `<-` back while still keeping an `X` close button available.
 - Settings include a world selector, reload button, and debug overlay toggle.
 - Controller ray hover/select works.
 - The debug overlay can be toggled in immersive VR.

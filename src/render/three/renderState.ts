@@ -14,6 +14,8 @@ export interface XrDebugRenderState {
   readonly activeInputSource: RuntimeInputFrame["source"];
   readonly inputMode?: string;
   readonly frameRateFps?: number;
+  readonly framePerformance?: FramePerformanceRenderState;
+  readonly webGlRenderInfo?: WebGlRenderInfoState;
   readonly currentCellId: string;
   readonly playerPosition: Vec3;
   readonly yawRadians: number;
@@ -22,12 +24,45 @@ export interface XrDebugRenderState {
   readonly lastCrossedPortalId?: string;
   readonly sharedRenderRootCellId?: string;
   readonly visiblePortalPathCount?: number;
+  readonly visiblePortalPaths?: VisiblePortalPathRenderState;
+  readonly portalInstances?: PortalInstanceRenderState;
+  readonly portalEyes?: readonly PortalEyeRenderDebugState[];
 }
 
 export interface RenderState {
   readonly frameCount: number;
   readonly visiblePortalPaths?: VisiblePortalPathRenderState;
   readonly portalInstances?: PortalInstanceRenderState;
+}
+
+export interface FramePerformanceRenderState {
+  readonly totalMs: number;
+  readonly inputMs: number;
+  readonly moveMs: number;
+  readonly objectsMs: number;
+  readonly cameraMs: number;
+  readonly portalMs: number;
+  readonly uiMs: number;
+  readonly renderMs: number;
+}
+
+export interface WebGlRenderInfoState {
+  readonly drawCalls: number;
+  readonly triangles: number;
+  readonly lines: number;
+  readonly points: number;
+  readonly viewportPixels: {
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly pixelRatio: number;
+}
+
+export interface PortalEyeRenderDebugState {
+  readonly eyeIndex: number;
+  readonly rootCellId: string;
+  readonly visiblePathCount: number;
+  readonly maxVisibleDepth: number;
 }
 
 export interface VisiblePortalPathRenderState {

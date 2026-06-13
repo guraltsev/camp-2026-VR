@@ -5,7 +5,8 @@ import type {
   RuntimeDebugOverlayItemId,
   RuntimeMenuConsoleLogLevelId,
 } from "../../runtime/runtimeMenuState";
-import type { PaletteDefinition } from "../../ui/paletteDefinition";
+import type { PaletteDefinition, PaletteHeaderAction } from "../../ui/paletteDefinition";
+import { resolveVrPaletteHeaderActions } from "./vrPaletteHeaderActions";
 
 export interface VrPaletteLibraryAdapterOptions {
   readonly onLeftAction: (actionId: PaletteDefinition["leftAction"]["id"]) => void;
@@ -99,6 +100,7 @@ function buildHeader(
   definition: PaletteDefinition,
   options: VrPaletteLibraryAdapterOptions,
 ): Container {
+  const headerActions = resolveVrPaletteHeaderActions(definition);
   const header = new Container({
     width: "100%",
     height: 48,
@@ -107,9 +109,9 @@ function buildHeader(
     alignItems: "center",
   });
 
-  header.add(createHeaderButton(definition.leftAction.label, definition.leftAction.ariaLabel, definition.leftAction.disabled, () => {
-    options.onLeftAction(definition.leftAction.id);
-  }, definition.leftAction.id));
+  header.add(createHeaderButton(headerActions.leftAction, () => {
+    dispatchHeaderAction(headerActions.leftAction.id, options);
+  }));
   header.add(new Text({
     text: "",
     fontSize: 28,
@@ -117,21 +119,18 @@ function buildHeader(
     color: textColor,
     fill: textColor,
   }));
-  header.add(createHeaderButton(definition.rightAction.label, definition.rightAction.ariaLabel, definition.rightAction.disabled, () => {
-    options.onRightAction(definition.rightAction.id);
-  }, definition.rightAction.id));
+  header.add(createHeaderButton(headerActions.rightAction, () => {
+    dispatchHeaderAction(headerActions.rightAction.id, options);
+  }));
 
   return header;
 }
 
 function createHeaderButton(
-  label: string,
-  ariaLabel: string,
-  disabled: boolean,
+  action: PaletteHeaderAction,
   onClick: () => void,
-  actionId: PaletteDefinition["leftAction"]["id"],
 ): Container {
-  if (actionId === "none") {
+  if (action.id === "none") {
     return new Container({
       width: 64,
       height: 44,
@@ -145,18 +144,34 @@ function createHeaderButton(
     height: 44,
     label: "",
     onClick,
-    disabled,
-    backgroundColor: disabled ? "#334155" : actionColor,
+    disabled: action.disabled,
+    backgroundColor: action.disabled ? "#334155" : actionColor,
   });
-  button.name = ariaLabel || "palette-header-action";
-  button.userData.xrPaletteItemId = ariaLabel || label;
-  const icon = createHeaderIcon(actionId);
+  button.name = action.ariaLabel || "palette-header-action";
+  button.userData.xrPaletteItemId = action.ariaLabel || action.label;
+  const icon = createHeaderIcon(action.id);
   if (icon) {
     button.add(icon);
-  } else if (label) {
-    button.add(createButtonText(label, 15));
+  } else if (action.label) {
+    button.add(createButtonText(action.label, 15));
   }
   return button;
+}
+
+function dispatchHeaderAction(
+  actionId: PaletteHeaderAction["id"],
+  options: VrPaletteLibraryAdapterOptions,
+): void {
+  if (actionId === "none") {
+    return;
+  }
+
+  if (actionId === "settings") {
+    options.onLeftAction(actionId);
+    return;
+  }
+
+  options.onRightAction(actionId);
 }
 
 function buildContent(

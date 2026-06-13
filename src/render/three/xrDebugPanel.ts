@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import type { RuntimeDebugOverlayItemId } from "../../runtime/runtimeMenuState";
-import type { XrDebugRenderState } from "./renderState";
+import type {
+  FramePerformanceRenderState,
+  PortalEyeRenderDebugState,
+  PortalInstanceRenderState,
+  VisiblePortalPathRenderState,
+  WebGlRenderInfoState,
+  XrDebugRenderState,
+} from "./renderState";
 
 export interface XrDebugPanel {
   readonly root: THREE.Sprite;
@@ -13,7 +20,7 @@ const defaultXrDebugPanelItems = ["fps", "location", "portal-quantities"] as con
 export function createXrDebugPanel(): XrDebugPanel {
   const canvas = document.createElement("canvas");
   canvas.width = 768;
-  canvas.height = 256;
+  canvas.height = 384;
   const context = canvas.getContext("2d");
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -25,7 +32,7 @@ export function createXrDebugPanel(): XrDebugPanel {
   });
   const root = new THREE.Sprite(material);
   root.name = "xr-debug-panel";
-  root.scale.set(0.64, 0.22, 1);
+  root.scale.set(0.68, 0.34, 1);
   root.renderOrder = 999;
   root.visible = false;
 
@@ -44,10 +51,10 @@ export function createXrDebugPanel(): XrDebugPanel {
     context.fillStyle = "#f8fafc";
     context.font = "700 28px sans-serif";
     context.fillText("XR Debug", 24, 40);
-    context.font = "22px sans-serif";
+    context.font = "20px sans-serif";
     const lines = buildXrDebugPanelLines(state, items);
     lines.forEach((line, index) => {
-      context.fillText(line, 24, 86 + index * 32);
+      context.fillText(line, 24, 82 + index * 29);
     });
     texture.needsUpdate = true;
   }
@@ -77,7 +84,15 @@ export function buildXrDebugPanelLines(
   const lines: string[] = [];
 
   if (requestedItems.has("fps")) {
-    lines.push(`FPS: ${state.frameRateFps === undefined ? "n/a" : roundNumber(state.frameRateFps)}`);
+    lines.push(`FPS: ${state.frameRateFps === undefined ? "n/a" : formatFps(state.frameRateFps)}`);
+
+    if (state.framePerformance) {
+      lines.push(formatFramePerformanceLine(state.framePerformance));
+    }
+
+    if (state.webGlRenderInfo) {
+      lines.push(formatWebGlRenderInfoLine(state.webGlRenderInfo));
+    }
   }
 
   if (requestedItems.has("location")) {
@@ -90,12 +105,82 @@ export function buildXrDebugPanelLines(
   }
 
   if (requestedItems.has("portal-quantities")) {
-    lines.push(`Visible paths: ${state.visiblePortalPathCount ?? "n/a"}`);
+    lines.push(formatVisiblePortalPathLine(state.visiblePortalPaths, state.visiblePortalPathCount));
+
+    if (state.portalEyes && state.portalEyes.length > 1) {
+      lines.push(formatPortalEyeLine(state.portalEyes));
+    }
+
+    if (state.portalInstances) {
+      lines.push(formatPortalInstanceLine(state.portalInstances));
+    }
   }
 
   return lines;
 }
 
+function formatFps(value: number): string {
+  return `${roundNumber(value)} (${roundNumber(1000 / value)} ms)`;
+}
+
+function formatFramePerformanceLine(state: FramePerformanceRenderState): string {
+  return [
+    `CPU ms: ${roundNumber(state.totalMs)}`,
+    `portal ${roundNumber(state.portalMs)}`,
+    `draw ${roundNumber(state.renderMs)}`,
+    `move ${roundNumber(state.moveMs)}`,
+  ].join(" / ");
+}
+
+function formatWebGlRenderInfoLine(state: WebGlRenderInfoState): string {
+  return [
+    `GL: ${state.drawCalls} calls`,
+    `${formatCount(state.triangles)} tris`,
+    `${state.viewportPixels.width}x${state.viewportPixels.height}`,
+  ].join(" / ");
+}
+
+function formatVisiblePortalPathLine(
+  state: VisiblePortalPathRenderState | undefined,
+  fallbackVisiblePathCount: number | undefined,
+): string {
+  if (!state) {
+    return `Paths: ${fallbackVisiblePathCount ?? "n/a"}`;
+  }
+
+  const budget = state.budgetExhausted ? " budget" : "";
+  return `Paths: ${state.visiblePathCount} / kept ${state.keptPathCount} / depth ${state.maxVisibleDepth}${budget}`;
+}
+
+function formatPortalEyeLine(states: readonly PortalEyeRenderDebugState[]): string {
+  const counts = states
+    .map((state) => `${state.eyeIndex}:${state.visiblePathCount}@${state.maxVisibleDepth}`)
+    .join(" ");
+
+  return `Eyes: ${counts}`;
+}
+
+function formatPortalInstanceLine(state: PortalInstanceRenderState): string {
+  const clipOverflow = state.clipPolygonOverflowPathIds.length + state.visiblePathOverflowCount;
+  const overflow = state.capacityOverflowCount > 0 || clipOverflow > 0
+    ? ` / overflow ${state.capacityOverflowCount}+${clipOverflow}`
+    : "";
+
+  return `Instances: ${state.renderedInstanceCount} / ${state.totalCapacity}${overflow}`;
+}
+
 function roundNumber(value: number): number {
   return Math.round(value * 1_000) / 1_000;
+}
+
+function formatCount(value: number): string {
+  if (value >= 1_000_000) {
+    return `${roundNumber(value / 1_000_000)}M`;
+  }
+
+  if (value >= 1_000) {
+    return `${roundNumber(value / 1_000)}k`;
+  }
+
+  return String(value);
 }
