@@ -52,7 +52,13 @@ describe("desktopToolPalette", () => {
       debugSettings: {
         debugLevel: "verbose",
         portalPanelMode: "text-only",
-        debugOptions: ["portal-path-debug", "portal-static-cull-debug", "portal-path-overlays"],
+        debugOptions: [
+          "portal-path-debug",
+          "portal-static-cull-debug",
+          "portal-path-overlays",
+          "forbidden-zone-wireframes",
+          "object-collision-wireframes",
+        ],
       },
     })));
     const view = describeDesktopPaletteView(definition);
@@ -70,5 +76,6 @@ describe("desktopToolPalette", () => {
     expect(view.content.debugOverlayEnabled).toBe(false);
     expect(view.content.portalPanelMode).toBe("text-only");
     expect(view.content.portalInspectionEnabled).toBe(true);
+    expect(view.content.collisionGeometryWireframesEnabled).toBe(true);
   });
 });

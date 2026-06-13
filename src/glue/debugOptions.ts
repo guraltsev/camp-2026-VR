@@ -29,6 +29,16 @@ export const debugOptionDefinitions = [
     label: "ShowCellPathRendersInstances",
     description: "Render ShowCellPath overlays through the portal instance archetype path.",
   },
+  {
+    id: "forbidden-zone-wireframes",
+    label: "Forbidden Zone Wireframes",
+    description: "Render wireframe columns around forbidden portal junction zones.",
+  },
+  {
+    id: "object-collision-wireframes",
+    label: "Object Collision Wireframes",
+    description: "Render wireframe boxes for object collision shapes.",
+  },
 ] as const;
 
 export type DebugOptionId = (typeof debugOptionDefinitions)[number]["id"];

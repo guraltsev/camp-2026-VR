@@ -31,7 +31,25 @@ describe("planCellRenderArchetypes", () => {
     expect(planned.some((entry) => entry.kind === "solid-wall")).toBe(true);
     expect(planned.some((entry) => entry.kind === "portal-frame")).toBe(true);
     expect(planned.some((entry) => entry.kind === "static-object")).toBe(true);
+    expect(planned.some((entry) => entry.kind === "debug-wireframe")).toBe(false);
     expect(planned.some((entry) => entry.sourceObjectName?.includes("marmot"))).toBe(false);
+  });
+
+  it("includes forbidden-zone wireframes when requested", () => {
+    const world = compileCellComplex(createStaticObjectWorld());
+    const planned = planCellRenderArchetypes(world, {
+      debugLevel: "basic",
+      portalPanelMode: "none",
+      eyeHeightMeters: 1.6,
+      assets: createPreparedAssets(),
+      capacitiesByCellId: new Map(world.cells.map((cell) => [cell.id, 2])),
+      showForbiddenZoneWireframes: true,
+    });
+
+    expect(planned.some((entry) => entry.kind === "debug-wireframe")).toBe(true);
+    expect(planned.some((entry) => entry.sourceObjectName?.startsWith("forbidden-zone-wireframe:room-a"))).toBe(
+      true,
+    );
   });
 });
 

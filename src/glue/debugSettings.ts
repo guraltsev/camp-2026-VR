@@ -20,6 +20,8 @@ const defaultDebugSettingsSupport: DebugSettingsSupport = {
     "portal-visible-path-debug",
     "portal-path-overlays",
     "portal-path-overlay-instances",
+    "forbidden-zone-wireframes",
+    "object-collision-wireframes",
   ],
 };
 

@@ -120,6 +120,16 @@ describe("worldObjectLibrary", () => {
       oscillationRateHz: 1.6,
       oscillationMagnitudeMeters: 0.018,
     });
+
+    if (object.kind !== "geo-mouse") {
+      throw new Error("Expected a geo mouse.");
+    }
+
+    expect(object.collision.dx).toBeCloseTo(0.672655);
+    expect(object.collision.dy).toBeCloseTo(1.5225);
+    expect(object.collision.dz).toBeCloseTo(1.114935);
+    expect(object.collision.offset?.y).toBeCloseTo(0.3675);
+    expect(object.collision.offset?.z).toBeCloseTo(0.567468);
   });
 
   it("creates geo butterflies as dynamic specs", () => {
@@ -136,5 +146,21 @@ describe("worldObjectLibrary", () => {
       scale: 0.8,
       speedMetersPerSecond: 0.8,
     });
+
+    if (object.kind !== "geo-butterfly") {
+      throw new Error("Expected a geo butterfly.");
+    }
+
+    expect(object.collision.dx).toBeCloseTo(1.240799);
+    expect(object.collision.dy).toBeCloseTo(0.873288);
+    expect(object.collision.dz).toBeCloseTo(0.738591);
+    expect(object.collision.offset).toMatchObject({
+      x: expect.any(Number),
+      y: expect.any(Number),
+      z: expect.any(Number),
+    });
+    expect(object.collision.offset?.x).toBeCloseTo(0.013101);
+    expect(object.collision.offset?.y).toBeCloseTo(0.036391);
+    expect(object.collision.offset?.z).toBeCloseTo(0.379296);
   });
 });

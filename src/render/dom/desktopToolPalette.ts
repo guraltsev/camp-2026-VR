@@ -24,6 +24,7 @@ export interface DesktopPaletteView {
       readonly debugOverlayLabels: readonly string[];
       readonly portalPanelMode: string;
       readonly portalInspectionEnabled: boolean;
+      readonly collisionGeometryWireframesEnabled: boolean;
     };
 }
 
@@ -39,6 +40,7 @@ export interface DesktopToolPaletteOptions {
   readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
+  readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
   readonly onResumeRequested: () => void;
 }
 
@@ -181,6 +183,7 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
           .map((item) => item.label),
         portalPanelMode: content.portalPanelMode,
         portalInspectionEnabled: content.portalInspectionEnabled,
+        collisionGeometryWireframesEnabled: content.collisionGeometryWireframesEnabled,
       },
     };
   }
@@ -403,6 +406,22 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
 
       portalInspectionToggle.append(portalInspectionCheckbox, portalInspectionText);
       debugSection.append(portalInspectionToggle);
+
+      const collisionGeometryToggle = document.createElement("label");
+      collisionGeometryToggle.className = "desktop-tool-palette-toggle";
+
+      const collisionGeometryCheckbox = document.createElement("input");
+      collisionGeometryCheckbox.type = "checkbox";
+      collisionGeometryCheckbox.checked = definition.content.collisionGeometryWireframesEnabled;
+      collisionGeometryCheckbox.addEventListener("change", () => {
+        options.onCollisionGeometryWireframesToggled(collisionGeometryCheckbox.checked);
+      });
+
+      const collisionGeometryText = document.createElement("span");
+      collisionGeometryText.textContent = "Collision geometry wireframes";
+
+      collisionGeometryToggle.append(collisionGeometryCheckbox, collisionGeometryText);
+      debugSection.append(collisionGeometryToggle);
 
     settings.append(debugSection);
     return settings;

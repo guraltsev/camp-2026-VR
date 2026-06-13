@@ -27,6 +27,7 @@ import {
   setRuntimeMenuConsoleLogLevel,
   setRuntimeMenuDebugEnabled,
   setRuntimeMenuDebugOverlayEnabled,
+  setRuntimeMenuCollisionGeometryWireframesEnabled,
   setRuntimeMenuSelectedWorldId,
   setRuntimeMenuPortalInspectionEnabled,
   setRuntimeMenuPortalPanelMode,
@@ -296,6 +297,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onPortalInspectionToggled(enabled) {
       applyMenuDebugState(setRuntimeMenuPortalInspectionEnabled(menuState, enabled));
     },
+    onCollisionGeometryWireframesToggled(enabled) {
+      applyMenuDebugState(setRuntimeMenuCollisionGeometryWireframesEnabled(menuState, enabled));
+    },
     onResumeRequested() {
       void controls.resume({ requestPointerLock: true }).then((captured) => {
         desktopToolPalette.setResumePromptVisible(!captured);
@@ -373,6 +377,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onPortalInspectionToggled(enabled) {
       applyMenuDebugState(setRuntimeMenuPortalInspectionEnabled(menuState, enabled));
     },
+    onCollisionGeometryWireframesToggled(enabled) {
+      applyMenuDebugState(setRuntimeMenuCollisionGeometryWireframesEnabled(menuState, enabled));
+    },
   });
 
   const cellMeshes = new Map<string, THREE.Object3D>();
@@ -440,6 +447,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         const runtime = createGeodesciMarmotRuntime(objectSpec, cell.id, options.assets);
         runtime.syncParent(cellMeshes);
         dynamicObjectRuntimes.push(runtime);
+        syncDynamicObjectDebugWireframes();
         continue;
       }
 
@@ -447,6 +455,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         const runtime = createSimpleGeoCreatureRuntime(objectSpec, cell.id, options.assets);
         runtime.syncParent(cellMeshes);
         dynamicObjectRuntimes.push(runtime);
+        syncDynamicObjectDebugWireframes();
       }
     }
   }
@@ -675,6 +684,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     for (const runtime of dynamicObjectRuntimes) {
       runtime.syncParent(cellMeshes);
     }
+    syncDynamicObjectDebugWireframes();
     syncLegacyObjectPortalRenders();
     applyDesktopCameraPose();
     renderer.render(scene, camera);
@@ -915,6 +925,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       assets: options.assets,
       capacitiesByCellId: archetypeCapacitiesByCellId,
       portalClipMaterialState,
+      showForbiddenZoneWireframes: hasActiveDebugOption(
+        debugLevel,
+        debugOptions,
+        "forbidden-zone-wireframes",
+      ),
     });
     for (const archetype of cellRenderArchetypes) {
       archetype.mesh.onBeforeRender = (renderer, _scene, renderCamera) => {
@@ -1747,6 +1762,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function syncDesktopPalette(): void {
     desktopToolPalette.setDefinition(createPaletteDefinition(menuState));
     desktopToolPalette.setOpen(menuState.isOpen);
+  }
+
+  function syncDynamicObjectDebugWireframes(): void {
+    const visible = hasActiveDebugOption(debugLevel, debugOptions, "object-collision-wireframes");
+
+    for (const runtime of dynamicObjectRuntimes) {
+      runtime.setCollisionWireframeVisible(visible);
+    }
   }
 
   function dispatchRuntimeCommand(command: RuntimeCommand): void {

@@ -30,6 +30,7 @@ export interface VrPaletteControllerOptions {
   readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
+  readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
 }
 
 export interface VrPaletteControllerUpdate {
@@ -87,6 +88,7 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
     onDebugOverlayItemToggled: options.onDebugOverlayItemToggled,
     onPortalPanelModeSelected: options.onPortalPanelModeSelected,
     onPortalInspectionToggled: options.onPortalInspectionToggled,
+    onCollisionGeometryWireframesToggled: options.onCollisionGeometryWireframesToggled,
   });
   adapter.root.rotation.y = Math.PI;
   paletteRoot.add(adapter.root);

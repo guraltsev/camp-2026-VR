@@ -14,6 +14,10 @@ const portalInspectionDebugOptions = [
   "portal-path-overlays",
   "portal-path-overlay-instances",
 ] as const satisfies readonly DebugOptionId[];
+const collisionGeometryDebugOptions = [
+  "forbidden-zone-wireframes",
+  "object-collision-wireframes",
+] as const satisfies readonly DebugOptionId[];
 
 export interface RuntimeMenuState {
   readonly isOpen: boolean;
@@ -25,6 +29,7 @@ export interface RuntimeMenuState {
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly portalPanelMode: PortalPanelModeId;
   readonly portalInspectionEnabled: boolean;
+  readonly collisionGeometryWireframesEnabled: boolean;
 }
 
 export interface CreateRuntimeMenuStateOptions {
@@ -47,6 +52,10 @@ export function createRuntimeMenuState(options: CreateRuntimeMenuStateOptions): 
     debugOverlayItems: options.debugOverlayItems ?? [...defaultRuntimeDebugOverlayItems],
     portalPanelMode: debugSettings?.portalPanelMode ?? "none",
     portalInspectionEnabled: hasAnyDebugOption(debugSettings?.debugOptions, portalInspectionDebugOptions),
+    collisionGeometryWireframesEnabled: hasAnyDebugOption(
+      debugSettings?.debugOptions,
+      collisionGeometryDebugOptions,
+    ),
   };
 }
 
@@ -152,6 +161,16 @@ export function setRuntimeMenuPortalInspectionEnabled(state: RuntimeMenuState, e
   };
 }
 
+export function setRuntimeMenuCollisionGeometryWireframesEnabled(
+  state: RuntimeMenuState,
+  enabled: boolean,
+): RuntimeMenuState {
+  return {
+    ...state,
+    collisionGeometryWireframesEnabled: enabled,
+  };
+}
+
 export function createDebugSettingsFromRuntimeMenuState(state: RuntimeMenuState): DebugSettings {
   const debugOptions: DebugOptionId[] = [];
 
@@ -160,6 +179,10 @@ export function createDebugSettingsFromRuntimeMenuState(state: RuntimeMenuState)
 
     if (state.portalInspectionEnabled) {
       debugOptions.push(...portalInspectionDebugOptions);
+    }
+
+    if (state.collisionGeometryWireframesEnabled) {
+      debugOptions.push(...collisionGeometryDebugOptions);
     }
 
     if (state.debugOverlayEnabled && state.debugOverlayItems.includes("portal-quantities")) {

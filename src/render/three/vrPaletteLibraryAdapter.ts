@@ -20,6 +20,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
+  readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
 }
 
 export interface VrPaletteLibraryAdapter {
@@ -314,6 +315,14 @@ function buildDebugSettingsContent(
     debugSection.add(createToggleRow("Portal inspection tools", content.portalInspectionEnabled, (enabled) => {
       options.onPortalInspectionToggled(enabled);
     }, "portal-inspection-toggle"));
+    debugSection.add(createToggleRow(
+      "Collision geometry wireframes",
+      content.collisionGeometryWireframesEnabled,
+      (enabled) => {
+        options.onCollisionGeometryWireframesToggled(enabled);
+      },
+      "collision-geometry-wireframes-toggle",
+    ));
 
   settings.add(debugSection);
   return settings;

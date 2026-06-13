@@ -15,7 +15,8 @@ export type CellRenderArchetypeKind =
   | "floor"
   | "solid-wall"
   | "portal-frame"
-  | "static-object";
+  | "static-object"
+  | "debug-wireframe";
 
 export interface CellRenderArchetype {
   readonly cellId: string;
@@ -35,6 +36,7 @@ export interface BuildCellRenderArchetypesOptions {
   readonly assets: PreparedWorldAssets;
   readonly capacitiesByCellId: ReadonlyMap<string, number>;
   readonly portalClipMaterialState?: PortalClipMaterialState;
+  readonly showForbiddenZoneWireframes?: boolean;
 }
 
 export interface CellRenderArchetypePlanEntry {
@@ -168,6 +170,7 @@ function collectCellArchetypeSources(
     portalPanelMode: options.portalPanelMode,
     eyeHeightMeters: options.eyeHeightMeters,
     assets: options.assets,
+    showForbiddenZoneWireframes: options.showForbiddenZoneWireframes,
   });
   sourceRoot.updateMatrixWorld(true);
 
@@ -229,6 +232,10 @@ function classifyObjectKind(object: THREE.Mesh): CellRenderArchetypeKind | undef
 
   if (object.name.startsWith("floor-outline:")) {
     return undefined;
+  }
+
+  if (object.userData.kind === "debug-wireframe") {
+    return "debug-wireframe";
   }
 
   if (hasAncestorNamed(object, "decoration:") || hasAncestorNamed(object, "asset:")) {

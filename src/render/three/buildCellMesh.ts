@@ -13,12 +13,14 @@ import { isGeodesciMarmotObjectSpec } from "../../world-objects/geodesciMarmot";
 import { isSimpleGeoCreatureObjectSpec } from "../../world-objects/simpleGeoCreature";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
+import { buildForbiddenZoneWireframe } from "./debugCollisionWireframes";
 
 export interface BuildCellMeshOptions {
   readonly debugLevel: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
   readonly eyeHeightMeters: number;
   readonly assets: PreparedWorldAssets;
+  readonly showForbiddenZoneWireframes?: boolean;
 }
 
 export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOptions): THREE.Object3D {
@@ -43,12 +45,27 @@ export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOpt
     group.add(buildPortalDebugPanels(cell, options));
   }
 
+  if (options.debugLevel !== "off" && options.showForbiddenZoneWireframes) {
+    group.add(buildForbiddenZoneWireframes(cell));
+  }
+
   for (const objectSpec of cell.objects) {
     if (isGeodesciMarmotObjectSpec(objectSpec) || isSimpleGeoCreatureObjectSpec(objectSpec)) {
       continue;
     }
 
     group.add(buildDecorationMesh(cell.id, objectSpec, options.assets));
+  }
+
+  return group;
+}
+
+function buildForbiddenZoneWireframes(cell: CompiledPrismCell): THREE.Object3D {
+  const group = new THREE.Group();
+  group.name = `forbidden-zone-wireframes:${cell.id}`;
+
+  for (const zone of cell.forbiddenZones) {
+    group.add(buildForbiddenZoneWireframe(cell.id, zone.collision));
   }
 
   return group;

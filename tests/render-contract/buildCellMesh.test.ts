@@ -166,6 +166,39 @@ describe("buildCellMesh", () => {
     expect(mesh.getObjectByName("floor-outline:top")).toBeUndefined();
   });
 
+  it("renders forbidden-zone wireframes only when the debug option is enabled", () => {
+    const compiled = compileCellComplex(twoPrismLoop);
+    const roomA = compiled.cellsById.get("room-a")!;
+    const hiddenMesh = buildCellMesh(roomA, {
+      debugLevel: "basic",
+      portalPanelMode: "none",
+      eyeHeightMeters: 1.6,
+      assets: createPreparedAssets(),
+      showForbiddenZoneWireframes: false,
+    });
+    const debugMesh = buildCellMesh(roomA, {
+      debugLevel: "basic",
+      portalPanelMode: "none",
+      eyeHeightMeters: 1.6,
+      assets: createPreparedAssets(),
+      showForbiddenZoneWireframes: true,
+    });
+
+    expect(hiddenMesh.getObjectByName("forbidden-zone-wireframes:room-a")).toBeUndefined();
+
+    const wireframeGroup = debugMesh.getObjectByName("forbidden-zone-wireframes:room-a") as THREE.Group | undefined;
+    expect(wireframeGroup).toBeDefined();
+    expect(wireframeGroup?.children).toHaveLength(roomA.forbiddenZones.length);
+    expect(
+      debugMesh.getObjectByName("forbidden-zone-wireframe:room-a:room-a:vertex-1")?.userData,
+    ).toMatchObject({
+      kind: "debug-wireframe",
+      debugWireframeKind: "forbidden-zone",
+      cellId: "room-a",
+      junctionId: "room-a:vertex-1",
+    });
+  });
+
   it("labels portal side redirects as source side to target face and side", () => {
     const compiled = compileCellComplex(twoPrismLoop);
     const roomA = compiled.cellsById.get("room-a")!;

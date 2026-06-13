@@ -43,6 +43,7 @@ export interface DebugSettingsPaletteContent {
   readonly portalPanelMode: string;
   readonly portalPanelModeOptions: readonly PaletteSelectOption[];
   readonly portalInspectionEnabled: boolean;
+  readonly collisionGeometryWireframesEnabled: boolean;
 }
 
 export interface PaletteDefinition {
@@ -81,6 +82,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
           label: mode.label,
         })),
         portalInspectionEnabled: state.portalInspectionEnabled,
+        collisionGeometryWireframesEnabled: state.collisionGeometryWireframesEnabled,
       },
     };
   }
