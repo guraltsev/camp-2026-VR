@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-export type VrPaletteAnchorKind = "hand" | "controller" | "head";
+export type VrPaletteAnchorKind = "head";
 
 export interface VrPoseSample {
   readonly position: THREE.Vector3;
@@ -9,8 +9,6 @@ export interface VrPoseSample {
 
 export interface ResolveVrPalettePlacementOptions {
   readonly head: VrPoseSample;
-  readonly hand?: VrPoseSample;
-  readonly controller?: VrPoseSample;
   readonly previousPosition?: THREE.Vector3;
   readonly previousQuaternion?: THREE.Quaternion;
   readonly smoothing?: number;
@@ -24,20 +22,12 @@ export interface VrPalettePlacement {
 }
 
 const upAxis = new THREE.Vector3(0, 1, 0);
-const wristOffset = new THREE.Vector3(-0.06, 0.04, 0.02);
-const controllerOffset = new THREE.Vector3(-0.05, 0.03, -0.08);
-const headOffset = new THREE.Vector3(-0.18, -0.1, -0.6);
+const headOffset = new THREE.Vector3(0, -0.12, -0.72);
 const lookAtMatrix = new THREE.Matrix4();
 
 export function resolveVrPalettePlacement(options: ResolveVrPalettePlacementOptions): VrPalettePlacement {
-  const anchor = options.hand ?? options.controller ?? options.head;
-  const anchorKind: VrPaletteAnchorKind = options.hand ? "hand" : options.controller ? "controller" : "head";
-  const localOffset = anchorKind === "hand"
-    ? wristOffset
-    : anchorKind === "controller"
-      ? controllerOffset
-      : headOffset;
-  const targetPosition = anchor.position.clone().add(applyLocalOffset(localOffset, anchor.quaternion));
+  const anchorKind: VrPaletteAnchorKind = "head";
+  const targetPosition = options.head.position.clone().add(applyLocalOffset(headOffset, options.head.quaternion));
   const targetQuaternion = computeFacingQuaternion(targetPosition, options.head.position);
 
   if (options.freeze && options.previousPosition && options.previousQuaternion) {

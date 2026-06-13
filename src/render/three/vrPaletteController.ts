@@ -4,8 +4,14 @@ import { createVrPaletteLibraryAdapter } from "./vrPaletteLibraryAdapter";
 import { resolveVrPalettePlacement } from "./vrPalettePlacement";
 import { createXrDebugPanel } from "./xrDebugPanel";
 import type { XrDebugRenderState } from "./renderState";
-import { createXrHands, type XrHandInputSourceLike, type XrTrackedHandState } from "./xrHands";
+import { createXrControllerHandModels } from "./xrControllerHandModels";
+import { xrRigidTransformLocalMatrix } from "./xrPlayerRig";
 import { chooseActiveXrPointer, createXrPointers } from "./xrPointers";
+import type { PortalPanelModeId } from "../../glue/portalPanelMode";
+import type {
+  RuntimeDebugOverlayItemId,
+  RuntimeMenuConsoleLogLevelId,
+} from "../../runtime/runtimeMenuState";
 
 export interface VrPaletteControllerOptions {
   readonly scene: THREE.Scene;
@@ -17,13 +23,19 @@ export interface VrPaletteControllerOptions {
   readonly onShowMainRequested: () => void;
   readonly onWorldSelected: (worldId: string) => void;
   readonly onReloadRequested: () => void;
+  readonly onDebugEnabledChanged: (enabled: boolean) => void;
+  readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
   readonly onDebugOverlayToggled: (enabled: boolean) => void;
+  readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
+  readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
+  readonly onPortalInspectionToggled: (enabled: boolean) => void;
 }
 
 export interface VrPaletteControllerUpdate {
   readonly deltaSeconds: number;
   readonly xrFrame: XRFrame;
   readonly referenceSpace: XRReferenceSpace;
+  readonly referenceSpaceToWorldMatrix: THREE.Matrix4;
   readonly inputSources: readonly XRInputSource[];
   readonly definition: PaletteDefinition;
   readonly xrDebugState: XrDebugRenderState;
@@ -43,7 +55,7 @@ const rayOrigin = new THREE.Vector3();
 const rayDirection = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const controllerObjects = new Map<string, THREE.Object3D>();
-const handPointerObjects = new Map<string, THREE.Object3D>();
+const controllerRayObjects = new Map<string, THREE.Line>();
 
 export function createVrPaletteController(options: VrPaletteControllerOptions): VrPaletteController {
   const paletteRoot = new THREE.Group();
@@ -63,7 +75,12 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
     },
     onWorldSelected: options.onWorldSelected,
     onReloadRequested: options.onReloadRequested,
+    onDebugEnabledChanged: options.onDebugEnabledChanged,
+    onConsoleLogLevelSelected: options.onConsoleLogLevelSelected,
     onDebugOverlayToggled: options.onDebugOverlayToggled,
+    onDebugOverlayItemToggled: options.onDebugOverlayItemToggled,
+    onPortalPanelModeSelected: options.onPortalPanelModeSelected,
+    onPortalInspectionToggled: options.onPortalInspectionToggled,
   });
   adapter.root.rotation.y = Math.PI;
   paletteRoot.add(adapter.root);
@@ -87,7 +104,7 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
   const debugPanel = createXrDebugPanel();
   options.scene.add(debugPanel.root);
 
-  const xrHands = createXrHands();
+  const controllerHandModels = createXrControllerHandModels(options.scene);
   const xrPointers = createXrPointers(options.getCamera);
   let currentDefinitionSignature = "";
   let previousPosition: THREE.Vector3 | undefined;
@@ -113,10 +130,20 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
       const camera = options.getCamera();
       camera.updateMatrixWorld(true);
       camera.matrixWorld.decompose(worldPosition, worldQuaternion, worldScale);
-      const hands = xrHands.update(frame.inputSources as readonly XrHandInputSourceLike[], frame.xrFrame, frame.referenceSpace);
-      const controllerSources = createControllerSources(frame.inputSources, frame.xrFrame, frame.referenceSpace);
-      const handSources = createHandSources(hands);
-      const pointerStates = xrPointers.update(options.scene, [...controllerSources.pointerSources, ...handSources.pointerSources]);
+      const controllerSources = createControllerSources(
+        frame.inputSources,
+        frame.xrFrame,
+        frame.referenceSpace,
+        frame.referenceSpaceToWorldMatrix,
+      );
+      controllerHandModels.update({
+        inputSources: frame.inputSources,
+        xrFrame: frame.xrFrame,
+        referenceSpace: frame.referenceSpace,
+        referenceSpaceToWorldMatrix: frame.referenceSpaceToWorldMatrix,
+      });
+      syncControllerRays(options.scene, controllerSources.pointerSources, options.getIsOpen());
+      const pointerStates = xrPointers.update(options.scene, controllerSources.pointerSources);
       const activePointer = chooseActiveXrPointer(pointerStates);
       const anyPointerPressed = pointerStates.some((state) => state.pressed);
 
@@ -135,10 +162,6 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
           position: worldPosition,
           quaternion: worldQuaternion,
         },
-        hand: handSources.anchor,
-        // Head-locked fallback is much easier to recover visually than
-        // an off-hand attachment when we are still proving the XR menu path.
-        controller: hands.length > 0 ? controllerSources.anchor : undefined,
         previousPosition,
         previousQuaternion,
         smoothing: 0.22,
@@ -152,9 +175,7 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
       adapter.setVisible(options.getIsOpen());
       debugBacking.visible = options.getIsOpen();
       adapter.update(frame.deltaSeconds * 1000);
-      const pointerSourcesById = new Map(
-        [...controllerSources.pointerSources, ...handSources.pointerSources].map((source) => [source.id, source] as const),
-      );
+      const pointerSourcesById = new Map(controllerSources.pointerSources.map((source) => [source.id, source] as const));
       const activePointerSource = activePointer ? pointerSourcesById.get(activePointer.id) : undefined;
       const hoveredAction = options.getIsOpen() && activePointerSource
         ? resolvePaletteActionHit(adapter.root, activePointerSource.object)
@@ -167,7 +188,7 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
       debugPanel.root.quaternion.copy(placement.quaternion);
       debugPanel.update({
         ...frame.xrDebugState,
-        inputMode: describeVrInputMode(hands.length > 0, controllerSources.pointerSources.length > 0, activePointer?.kind),
+        inputMode: describeVrInputMode(controllerSources.pointerSources.length > 0, activePointer?.kind),
       }, options.getIsOpen() && frame.definition.content.kind === "settings" && frame.definition.content.debugOverlayEnabled);
     },
     onSessionEnded() {
@@ -187,16 +208,18 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
         lastMovementBlocked: false,
       }, false);
       xrPointers.dispose();
+      hideControllerRays();
     },
     dispose() {
       xrPointers.dispose();
+      controllerHandModels.dispose();
       adapter.dispose();
       paletteRoot.removeFromParent();
       debugBacking.geometry.dispose();
       (debugBacking.material as THREE.Material).dispose();
       debugPanel.dispose();
       controllerObjects.clear();
-      handPointerObjects.clear();
+      disposeControllerRays();
     },
   };
 }
@@ -205,6 +228,7 @@ function createControllerSources(
   inputSources: readonly XRInputSource[],
   frame: XRFrame,
   referenceSpace: XRReferenceSpace,
+  referenceSpaceToWorldMatrix: THREE.Matrix4,
 ): {
   readonly pointerSources: readonly {
     readonly id: string;
@@ -214,7 +238,6 @@ function createControllerSources(
     readonly pressed: boolean;
     readonly dominant: boolean;
   }[];
-  readonly anchor?: { readonly position: THREE.Vector3; readonly quaternion: THREE.Quaternion };
   readonly menuTogglePressed: boolean;
 } {
   const pointerSources: Array<{
@@ -225,7 +248,6 @@ function createControllerSources(
     readonly pressed: boolean;
     readonly dominant: boolean;
   }> = [];
-  let anchor: { readonly position: THREE.Vector3; readonly quaternion: THREE.Quaternion } | undefined;
   let menuTogglePressed = false;
 
   for (const source of inputSources) {
@@ -234,30 +256,18 @@ function createControllerSources(
       continue;
     }
 
-    const pose = frame.getPose(source.targetRaySpace, referenceSpace);
-    if (!pose) {
+    const targetRayPose = frame.getPose(source.targetRaySpace, referenceSpace);
+    if (!targetRayPose) {
       continue;
     }
 
     const id = `controller:${handedness}`;
     const object = controllerObjects.get(id) ?? new THREE.Object3D();
-    object.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
-    object.quaternion.set(
-      pose.transform.orientation.x,
-      pose.transform.orientation.y,
-      pose.transform.orientation.z,
-      pose.transform.orientation.w,
-    );
+    applyXrPoseToObject(object, targetRayPose.transform, referenceSpaceToWorldMatrix);
     object.updateMatrixWorld(true);
     controllerObjects.set(id, object);
 
-    if (handedness === "left") {
-      anchor = {
-        position: object.position.clone(),
-        quaternion: object.quaternion.clone(),
-      };
-      menuTogglePressed ||= isMenuTogglePressed(source.gamepad);
-    }
+    menuTogglePressed ||= isMenuTogglePressed(source.gamepad);
 
     pointerSources.push({
       id,
@@ -271,63 +281,17 @@ function createControllerSources(
 
   return {
     pointerSources,
-    anchor,
     menuTogglePressed,
   };
 }
 
-function createHandSources(
-  hands: readonly XrTrackedHandState[],
-): {
-  readonly pointerSources: readonly {
-    readonly id: string;
-    readonly kind: "hand";
-    readonly handedness: "left" | "right";
-    readonly object: THREE.Object3D;
-    readonly pressed: boolean;
-    readonly dominant: boolean;
-  }[];
-  readonly anchor?: { readonly position: THREE.Vector3; readonly quaternion: THREE.Quaternion };
-} {
-  const pointerSources: Array<{
-    readonly id: string;
-    readonly kind: "hand";
-    readonly handedness: "left" | "right";
-    readonly object: THREE.Object3D;
-    readonly pressed: boolean;
-    readonly dominant: boolean;
-  }> = [];
-  let anchor: { readonly position: THREE.Vector3; readonly quaternion: THREE.Quaternion } | undefined;
-
-  for (const hand of hands) {
-    const id = `hand:${hand.handedness}`;
-    const object = handPointerObjects.get(id) ?? new THREE.Object3D();
-    object.position.copy(hand.indexTip);
-    object.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(forwardAxis, hand.pinchDirection));
-    object.updateMatrixWorld(true);
-    handPointerObjects.set(id, object);
-
-    if (hand.handedness === "left") {
-      anchor = {
-        position: hand.wrist.clone(),
-        quaternion: hand.wristQuaternion.clone(),
-      };
-    }
-
-    pointerSources.push({
-      id,
-      kind: "hand",
-      handedness: hand.handedness,
-      object,
-      pressed: hand.pressed,
-      dominant: hand.handedness === "right",
-    });
-  }
-
-  return {
-    pointerSources,
-    anchor,
-  };
+function applyXrPoseToObject(
+  object: THREE.Object3D,
+  transform: Pick<XRRigidTransform, "position" | "orientation">,
+  referenceSpaceToWorldMatrix: THREE.Matrix4,
+): void {
+  const worldMatrix = referenceSpaceToWorldMatrix.clone().multiply(xrRigidTransformLocalMatrix(transform));
+  worldMatrix.decompose(object.position, object.quaternion, object.scale);
 }
 
 function isSelectPressed(gamepad: XRInputSource["gamepad"] | undefined): boolean {
@@ -342,26 +306,91 @@ function isMenuTogglePressed(gamepad: XRInputSource["gamepad"] | undefined): boo
 }
 
 export function describeVrInputMode(
-  hasHands: boolean,
   hasControllers: boolean,
-  activeKind: "controller" | "hand" | undefined,
+  activeKind: "controller" | undefined,
 ): string {
-  if (activeKind === "hand") {
-    return hasControllers ? "hybrid-hands" : "hands";
-  }
   if (activeKind === "controller") {
-    return hasHands ? "hybrid-controllers" : "controllers";
-  }
-  if (hasHands && hasControllers) {
-    return "hybrid";
-  }
-  if (hasHands) {
-    return "hands";
+    return "controllers";
   }
   if (hasControllers) {
     return "controllers";
   }
   return "xr";
+}
+
+function syncControllerRays(
+  scene: THREE.Scene,
+  sources: readonly { readonly id: string; readonly object: THREE.Object3D }[],
+  visible: boolean,
+): void {
+  const seenIds = new Set<string>();
+
+  for (const source of sources) {
+    seenIds.add(source.id);
+    const ray = getOrCreateControllerRay(scene, source.id);
+    ray.visible = visible;
+    ray.position.copy(source.object.position);
+    ray.quaternion.copy(source.object.quaternion);
+    ray.updateMatrixWorld(true);
+  }
+
+  for (const [id, ray] of controllerRayObjects) {
+    if (!seenIds.has(id)) {
+      ray.visible = false;
+    }
+  }
+}
+
+function getOrCreateControllerRay(scene: THREE.Scene, id: string): THREE.Line {
+  const existing = controllerRayObjects.get(id);
+  if (existing) {
+    return existing;
+  }
+
+  const rayGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, -2.5),
+  ]);
+  const rayMaterial = new THREE.LineBasicMaterial({
+    color: 0x93c5fd,
+    transparent: true,
+    opacity: 0.78,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const ray = new THREE.Line(rayGeometry, rayMaterial);
+  ray.name = `vr-palette-ray-${id}`;
+  ray.renderOrder = 1002;
+  ray.visible = false;
+  controllerRayObjects.set(id, ray);
+  scene.add(ray);
+  return ray;
+}
+
+function hideControllerRays(): void {
+  for (const ray of controllerRayObjects.values()) {
+    ray.visible = false;
+  }
+}
+
+function disposeControllerRays(): void {
+  for (const ray of controllerRayObjects.values()) {
+    ray.removeFromParent();
+    ray.geometry.dispose();
+    disposeMaterial(ray.material);
+  }
+  controllerRayObjects.clear();
+}
+
+function disposeMaterial(material: THREE.Material | readonly THREE.Material[]): void {
+  if ("dispose" in material) {
+    material.dispose();
+    return;
+  }
+
+  for (const item of material) {
+    item.dispose();
+  }
 }
 
 function resolvePaletteActionHit(

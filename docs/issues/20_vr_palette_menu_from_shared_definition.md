@@ -16,16 +16,17 @@ Bring the existing menu into VR:
 
 - use the same shared palette/menu definition created for FPS mode,
 - render the main page in VR:
-  - empty rectangular content area,
-  - upper-left cogwheel/settings button,
+  - empty rectangular content area with no placeholder text,
+  - upper-left cogwheel/settings button rendered as a recognizable cog, not a missing-glyph rectangle,
   - upper-right `X` close button,
 - render the settings page in VR:
   - upper-right `<-` back button replacing the `X`,
   - world selector,
   - reload button,
   - debug overlay toggle,
+- toggle the VR menu with the side/menu button on either controller,
+- show the `Lowpolyhands.glb` hand models on the tracked left and right controller poses,
 - support controller ray hover and select,
-- support hand-pinch select if hand tracking is available,
 - preserve controller locomotion, reset, collision, and portal traversal,
 - avoid hand-written widget implementations where the selected UI library can provide them.
 
@@ -53,8 +54,8 @@ Likely new files:
 - `src/render/three/vrPaletteLibraryAdapter.ts`
 - `src/render/three/vrPaletteController.ts`
 - `src/render/three/vrPalettePlacement.ts`
+- `src/render/three/xrControllerHandModels.ts`
 - `src/render/three/xrPointers.ts`
-- `src/render/three/xrHands.ts`
 - `src/render/three/xrDebugPanel.ts`
 
 Likely tests:
@@ -62,7 +63,6 @@ Likely tests:
 - `tests/render-contract/vrPaletteController.test.ts`
 - `tests/render-contract/vrPalettePlacement.test.ts`
 - `tests/render-contract/xrPointers.test.ts`
-- `tests/render-contract/xrHands.test.ts`
 
 ## Implementation Plan
 
@@ -92,22 +92,20 @@ Do not fork menu content into a separate VR-only hierarchy. The library adapter 
 
 First placement target:
 
-- when hand tracking is available, anchor the palette near the non-dominant wrist/palm,
+- place the palette in front of the headset/player at a comfortable fixed distance,
 - face the panel toward the headset,
 - smooth pose changes to reduce jitter,
 - freeze or stabilize while the user is actively selecting.
 
 Fallback placement:
 
-- attach to the off-hand controller if hands are not available,
-- or place the menu in front of the headset at a comfortable distance.
+- keep the menu head-relative even if controller pose data is unavailable; controller tracking is for rays/select only.
 
 ### 4. Add VR input abstraction
 
 Add one pointer abstraction for:
 
 - controller target rays,
-- hand-pinch rays or hand-point rays,
 - select started/ended edges,
 - hover target id,
 - active pointer source.
@@ -118,30 +116,21 @@ The pointer abstraction should produce menu events and commands, not mutate worl
 
 Use the selected UI library's event or hit-testing model if possible.
 
+The side/menu button on either controller should toggle the VR menu. Pointer rays should work from tracked controllers, with whichever controller is actively selecting treated as the active pointer source.
+
 If manual ray bridging is still required:
 
 - raycast against the library's interactive objects,
 - map hits to shared item/action ids,
 - dispatch the same commands used by the desktop menu.
 
-### 6. Wire hand-pinch selection
-
-Request optional `hand-tracking` when starting the XR session.
-
-If hand data is available:
-
-- detect index/thumb pinch,
-- apply hysteresis so noisy hand poses do not double-click,
-- use the dominant hand as the pointer by default,
-- leave controller selection available as fallback.
-
-If hand data is unavailable, the menu must remain fully usable with controllers.
-
-### 7. Render settings behavior
+### 6. Render settings behavior
 
 The VR menu must match the FPS menu behavior:
 
 - main page has no selectable tools,
+- main page content remains empty, matching the desktop palette; do not add VR-only placeholder copy such as `Tool area reserved`,
+- left and right controller poses render the `Lowpolyhands.glb` visual hand models,
 - cog opens settings,
 - `X` closes main page,
 - settings page uses `<-` back in the former `X` slot,
@@ -149,7 +138,7 @@ The VR menu must match the FPS menu behavior:
 - reload dispatches `reload-world`,
 - debug overlay toggle dispatches `set-debug-overlay`.
 
-### 8. Add XR debug overlay rendering
+### 7. Add XR debug overlay rendering
 
 The DOM debug overlay is not visible in immersive VR. Add a renderer-side debug panel that can be toggled from the menu.
 
@@ -161,7 +150,7 @@ The first version can show compact state:
 - last blocked movement reason,
 - visible portal path count if available.
 
-### 9. Preserve VR runtime behavior
+### 8. Preserve VR runtime behavior
 
 Do not regress:
 
@@ -173,16 +162,19 @@ Do not regress:
 - portal traversal,
 - desktop fallback.
 
-### 10. Add tests and manual headset checks
+### 9. Add tests and manual headset checks
 
 Contract tests should cover pure menu and input behavior without requiring a headset.
 
 Manual checks should cover:
 
 - menu opens in headset,
+- main page content is empty, with no placeholder text,
+- cogwheel icon renders as a recognizable cog instead of a missing-glyph rectangle,
+- left and right controller hand models appear and track the controller poses,
+- menu toggles from the side/menu button on either controller,
 - controller ray hover works,
 - controller select works,
-- hand-pinch select works if supported,
 - settings page back behavior,
 - world selector behavior,
 - reload behavior,
@@ -193,14 +185,15 @@ Manual checks should cover:
 
 - The VR menu uses the shared palette definition from issue 19.
 - A VR UI library handles widget rendering/layout rather than local custom widgets.
-- The main VR menu shows an empty rectangular content area with no selectable tools.
+- The main VR menu shows an empty rectangular content area with no selectable tools and no placeholder text.
+- The cog/settings button renders as a recognizable cogwheel icon, not a missing-glyph rectangle.
+- The `Lowpolyhands.glb` models render as left and right controller-tracked hand visuals.
+- The side/menu button on either controller toggles the VR menu.
 - The cog opens settings.
 - The `X` closes the main VR menu.
 - The settings page uses `<-` back in the former `X` slot.
 - Settings include a world selector, reload button, and debug overlay toggle.
 - Controller ray hover/select works.
-- Hand-pinch select works when hand tracking is available.
-- Controller fallback works when hand tracking is unavailable.
 - The debug overlay can be toggled in immersive VR.
 - Existing VR locomotion, collision, reset, and portal traversal still work.
 - Desktop FPS menu from issue 19 still works.
@@ -212,12 +205,11 @@ Manual checks should cover:
 - Do not implement marker, ray, measurement, or path-trace behavior.
 - Do not write custom dropdown, toggle, button, or scrolling widgets from scratch unless the library spike fails and the fallback is explicitly approved.
 - Do not migrate the app to React Three Fiber as part of this issue.
-- Do not require hand tracking for menu use.
+- Do not implement hand tracking or hand-pinch input for this issue.
 - Do not hot-swap worlds inside the current XR session unless it naturally falls out of existing URL/reload behavior.
 
 ## Risks
 
 - `@pmndrs/uikit` may require more integration work than expected in a plain Three.js app.
 - Dropdown behavior in VR may be better represented as a compact scrollable list than as a literal desktop-style dropdown.
-- Hand tracking support varies by browser and headset.
 - Text readability and transparent panel ordering need headset testing, not only desktop inspection.

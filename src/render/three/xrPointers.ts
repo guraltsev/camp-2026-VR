@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { createRayPointer, type Pointer } from "@pmndrs/pointer-events";
 
-export type XrPointerKind = "controller" | "hand";
+export type XrPointerKind = "controller";
 
 export interface XrPointerSourceState {
   readonly id: string;

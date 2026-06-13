@@ -327,8 +327,23 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onReloadRequested() {
       dispatchRuntimeCommand({ kind: "reload-world" });
     },
+    onDebugEnabledChanged(enabled) {
+      applyMenuDebugState(setRuntimeMenuDebugEnabled(menuState, enabled));
+    },
+    onConsoleLogLevelSelected(level) {
+      applyMenuDebugState(setRuntimeMenuConsoleLogLevel(menuState, level));
+    },
     onDebugOverlayToggled(enabled) {
       applyMenuDebugState(setRuntimeMenuDebugOverlayEnabled(menuState, enabled));
+    },
+    onDebugOverlayItemToggled(itemId, enabled) {
+      applyMenuDebugState(toggleRuntimeMenuDebugOverlayItem(menuState, itemId, enabled));
+    },
+    onPortalPanelModeSelected(mode) {
+      applyMenuDebugState(setRuntimeMenuPortalPanelMode(menuState, mode));
+    },
+    onPortalInspectionToggled(enabled) {
+      applyMenuDebugState(setRuntimeMenuPortalInspectionEnabled(menuState, enabled));
     },
   });
 
@@ -559,6 +574,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         deltaSeconds,
         xrFrame,
         referenceSpace: xrReferenceSpace,
+        referenceSpaceToWorldMatrix: xrRig.root.matrixWorld,
         inputSources: [...(renderer.xr.getSession()?.inputSources ?? [])],
         definition: createPaletteDefinition(menuState),
         xrDebugState,
@@ -708,7 +724,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     try {
       const session = await xr.requestSession("immersive-vr", {
-        optionalFeatures: ["local-floor", "bounded-floor", "hand-tracking"],
+        optionalFeatures: ["local-floor", "bounded-floor"],
       });
       session.addEventListener("end", () => {
         xrSessionState = transitionXrSessionState(xrSessionState, "ended");

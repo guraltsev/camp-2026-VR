@@ -15,8 +15,8 @@ describe("xrPointers", () => {
         dominant: false,
       },
       {
-        id: "right-hand",
-        kind: "hand",
+        id: "right-controller",
+        kind: "controller",
         handedness: "right",
         hoveredTargetId: undefined,
         pressed: true,
@@ -26,7 +26,7 @@ describe("xrPointers", () => {
       },
     ]);
 
-    expect(active?.id).toBe("right-hand");
+    expect(active?.id).toBe("right-controller");
   });
 
   it("falls back to the dominant hovered source when nothing is pressed", () => {
