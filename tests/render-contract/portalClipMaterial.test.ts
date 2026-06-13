@@ -44,6 +44,8 @@ describe("portal clip material", () => {
     expect(shader.vertexShader).toContain("attribute float portalPathId;");
     expect(shader.vertexShader).toContain("attribute float portalClipIndex;");
     expect(shader.fragmentShader).toContain("portalFragmentClipCoverage(gl_FragCoord.xy, vPortalClipIndex)");
+    expect(shader.fragmentShader).toContain("if (clipIndex < -1.5)");
+    expect(shader.fragmentShader).toContain("return 1.0;");
     expect(shader.fragmentShader).toContain("smoothstep(-0.5, 0.5, minSignedDistancePixels)");
     expect(shader.fragmentShader).toContain("portalInterleavedGradientNoise(gl_FragCoord.xy)");
     expect(shader.fragmentShader).toContain("if (signedDistancePixels < -0.5)");
@@ -88,6 +90,7 @@ describe("portal clip material", () => {
     material.onBeforeCompile(shader as Parameters<THREE.Material["onBeforeCompile"]>[0], {} as THREE.WebGLRenderer);
 
     expect(shader.fragmentShader).toContain("portalFragmentShouldDiscard(gl_FragCoord.xy, vPortalClipIndex)");
+    expect(shader.fragmentShader).toContain("return false;");
     expect(shader.fragmentShader).toContain("if (edgeSide < -0.00001)");
     expect(shader.fragmentShader).not.toContain("portalClipCoverage < 1.0");
     expect(material.customProgramCacheKey()).toContain(":hard");

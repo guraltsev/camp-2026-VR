@@ -207,6 +207,10 @@ float portalInterleavedGradientNoise(vec2 fragmentPixels) {
 }
 
 bool portalFragmentShouldDiscard(vec2 fragmentPixels, float clipIndex) {
+  if (clipIndex < -1.5) {
+    return false;
+  }
+
   if (clipIndex < -0.5 || clipIndex >= ${maxVisiblePaths}.0) {
     return true;
   }
@@ -258,6 +262,10 @@ bool portalFragmentShouldDiscard(vec2 fragmentPixels, float clipIndex) {
 }
 
 float portalFragmentClipCoverage(vec2 fragmentPixels, float clipIndex) {
+  if (clipIndex < -1.5) {
+    return 1.0;
+  }
+
   if (clipIndex < -0.5 || clipIndex >= ${maxVisiblePaths}.0) {
     return 0.0;
   }

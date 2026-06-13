@@ -107,6 +107,7 @@ import {
   updateStylizedSceneLighting,
 } from "./sceneLighting";
 import {
+  computeIndependentVisiblePortalPaths,
   computeVisiblePortalPaths,
   describeVisiblePortalPath,
   type ComputeVisiblePortalPathsResult,
@@ -1019,9 +1020,40 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    const computedEyeStates = renderRoots.map((renderRoot, eyeIndex) => {
-      const table = portalStaticCull.tables.tablesByRootCellId.get(renderRoot.rootCellId)!;
-      const computed = computeVisiblePortalPaths({
+    const sharedRootCellId = renderRoots.every((renderRoot) => renderRoot.rootCellId === renderRoots[0]?.rootCellId)
+      ? renderRoots[0]?.rootCellId
+      : undefined;
+    const computedEyeStates = sharedRootCellId
+      ? computeIndependentVisiblePortalPaths({
+          world: appState.world,
+          rootCellId: sharedRootCellId,
+          pathTable: portalStaticCull.tables.tablesByRootCellId.get(sharedRootCellId)!,
+          cameras: renderRoots.map((renderRoot) => renderRoot.camera),
+          viewportPixels: getPortalViewportPixels(renderer),
+          options: {
+            maxDepth: rootRenderPathMaxDepth,
+            maxVisiblePaths,
+            minPortalScreenAreaPixels: 16,
+            includeRootCell: true,
+            sortMode: "depth-then-area",
+          },
+        }).map((computed, eyeIndex) => {
+          const renderRoot = renderRoots[eyeIndex];
+          const renderedComputed = transformVisiblePortalResultToRenderFrame(computed, renderRoot.renderFromRootMatrix);
+
+          return {
+            camera: renderRoot.camera,
+            eyeIndex,
+            rootCellId: renderRoot.rootCellId,
+            result: {
+              ...renderedComputed,
+              summary: mergeStaticPathCounts(renderedComputed.summary, portalStaticCull, renderRoot.rootCellId),
+            },
+          };
+        })
+      : renderRoots.map((renderRoot, eyeIndex) => {
+        const table = portalStaticCull.tables.tablesByRootCellId.get(renderRoot.rootCellId)!;
+        const computed = computeVisiblePortalPaths({
         world: appState.world,
         rootCellId: renderRoot.rootCellId,
         pathTable: table,
@@ -1046,7 +1078,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           summary: mergeStaticPathCounts(renderedComputed.summary, portalStaticCull, renderRoot.rootCellId),
         },
       };
-    });
+      });
     portalEyeRenderStates = remapStereoPortalPathIds(computedEyeStates);
 
     latestVisibleResult = portalEyeRenderStates[0]?.result;

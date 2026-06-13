@@ -5,6 +5,7 @@ import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { buildPortalPathTables } from "../../src/cell-complex/portalPaths";
 import {
   clipConvexPolygonByConvexPolygon,
+  computeIndependentVisiblePortalPaths,
   computeVisiblePortalPaths,
   describeVisiblePortalPath,
   type ComputeVisiblePortalPathsResult,
@@ -80,6 +81,36 @@ describe("computeVisiblePortalPaths", () => {
     expect(stereo.visiblePathById.get(1)!.screenAreaPixels).toBeGreaterThanOrEqual(
       mono.visiblePathById.get(1)!.screenAreaPixels,
     );
+  });
+
+  it("matches separate per-eye visibility when computed in one independent-camera pass", () => {
+    const world = compileCellComplex(cube);
+    const table = buildPortalPathTables(world, { maxDepth: 2 }).tablesByRootCellId.get("front")!;
+    const leftEye = createCamera({ x: -0.04, y: 0, z: 1.6 }, { x: 2, y: 2, z: 1.6 }, 110);
+    const rightEye = createCamera({ x: 0.04, y: 0, z: 1.6 }, { x: 2, y: 2, z: 1.6 }, 110);
+    const options = defaultOptions({ maxDepth: 2, maxVisiblePaths: 8, minPortalScreenAreaPixels: 0 });
+    const batched = computeIndependentVisiblePortalPaths({
+      world,
+      rootCellId: "front",
+      pathTable: table,
+      cameras: [leftEye, rightEye],
+      viewportPixels: { width: 800, height: 600 },
+      options,
+    });
+    const separate = [leftEye, rightEye].map((camera) =>
+      computeVisiblePortalPaths({
+        world,
+        rootCellId: "front",
+        pathTable: table,
+        camera,
+        viewportPixels: { width: 800, height: 600 },
+        options,
+      })
+    );
+
+    expect(batched).toHaveLength(2);
+    expectVisibleResultsEquivalent(batched[0], separate[0]);
+    expectVisibleResultsEquivalent(batched[1], separate[1]);
   });
 
   it("keeps a first-hop portal stable when the camera is nearly on its boundary plane", () => {
@@ -442,6 +473,34 @@ function fakeVisibleResult(pathIds: readonly number[]): Pick<ComputeVisiblePorta
       ]),
     ),
   };
+}
+
+function expectVisibleResultsEquivalent(
+  actual: ComputeVisiblePortalPathsResult,
+  expected: ComputeVisiblePortalPathsResult,
+): void {
+  expect(actual.summary).toEqual(expected.summary);
+  expect(actual.paths).toHaveLength(expected.paths.length);
+
+  for (let index = 0; index < expected.paths.length; index += 1) {
+    const actualPath = actual.paths[index];
+    const expectedPath = expected.paths[index];
+
+    expect(actualPath.pathId).toBe(expectedPath.pathId);
+    expect(actualPath.destinationCellId).toBe(expectedPath.destinationCellId);
+    expect(actualPath.depth).toBe(expectedPath.depth);
+    expect(actualPath.rootFromDestinationMatrix.elements).toEqual(expectedPath.rootFromDestinationMatrix.elements);
+    expect(actualPath.clipPolygonNdc).toHaveLength(expectedPath.clipPolygonNdc.length);
+    actualPath.clipPolygonNdc.forEach((point, pointIndex) => {
+      expect(point.x).toBeCloseTo(expectedPath.clipPolygonNdc[pointIndex].x, 12);
+      expect(point.y).toBeCloseTo(expectedPath.clipPolygonNdc[pointIndex].y, 12);
+    });
+    expect(actualPath.clipRectNdc.minX).toBeCloseTo(expectedPath.clipRectNdc.minX, 12);
+    expect(actualPath.clipRectNdc.minY).toBeCloseTo(expectedPath.clipRectNdc.minY, 12);
+    expect(actualPath.clipRectNdc.maxX).toBeCloseTo(expectedPath.clipRectNdc.maxX, 12);
+    expect(actualPath.clipRectNdc.maxY).toBeCloseTo(expectedPath.clipRectNdc.maxY, 12);
+    expect(actualPath.screenAreaPixels).toBeCloseTo(expectedPath.screenAreaPixels, 8);
+  }
 }
 
 function twoRoomsWithPortal() {

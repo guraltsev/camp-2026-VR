@@ -43,6 +43,8 @@ const fullScreenPolygonNdc = [
   { x: -1, y: 1 },
 ] as const;
 
+export const unclippedPortalClipIndex = -2;
+
 export function createPortalInstanceDiagnostics(): PortalInstanceDiagnostics {
   const capacityOverflowArchetypes = new Set<string>();
 
@@ -137,7 +139,10 @@ export function updateCellRenderArchetypeInstances(
       const path = paths[index];
       archetype.mesh.setMatrixAt(index, path.rootFromDestinationMatrix);
       archetype.portalPathIdAttribute.setX(index, path.pathId);
-      archetype.portalClipIndexAttribute.setX(index, clipIndexByPathId.get(path.pathId) ?? -1);
+      archetype.portalClipIndexAttribute.setX(
+        index,
+        path.depth === 0 ? unclippedPortalClipIndex : clipIndexByPathId.get(path.pathId) ?? -1,
+      );
     }
 
     archetype.mesh.count = count;

@@ -27,6 +27,15 @@ export interface ComputeVisiblePortalPathsInput {
   readonly options: VisiblePortalPathOptions;
 }
 
+export interface ComputeIndependentVisiblePortalPathsInput {
+  readonly world: CompiledCellComplex;
+  readonly rootCellId: string;
+  readonly pathTable: PortalPathTable;
+  readonly cameras: readonly THREE.Camera[];
+  readonly viewportPixels: { readonly width: number; readonly height: number };
+  readonly options: VisiblePortalPathOptions;
+}
+
 export interface VisiblePortalPathOptions {
   readonly maxDepth: number;
   readonly maxVisiblePaths: number;
@@ -72,6 +81,14 @@ export interface VisiblePortalPathLookupResult {
 
 interface InternalVisiblePath extends VisiblePortalPath {
   readonly sourcePath: PortalRenderPath;
+}
+
+interface VisiblePathAccumulator {
+  readonly camera: THREE.Camera;
+  readonly visibleBeforeBudgetById: Map<number, InternalVisiblePath>;
+  readonly discovered: InternalVisiblePath[];
+  clippedByCameraCount: number;
+  clippedByAreaCount: number;
 }
 
 const fullScreenPolygonNdc: readonly Vec2[] = [
@@ -159,6 +176,81 @@ export function computeVisiblePortalPaths(input: ComputeVisiblePortalPathsInput)
       budgetExhausted: clippedByBudgetCount > 0,
     },
   };
+}
+
+export function computeIndependentVisiblePortalPaths(
+  input: ComputeIndependentVisiblePortalPathsInput,
+): readonly ComputeVisiblePortalPathsResult[] {
+  const rootPath = input.pathTable.pathsById.get(0);
+
+  if (!rootPath) {
+    throw new Error(`Visible portal path table for root "${input.rootCellId}" has no root path.`);
+  }
+
+  if (input.cameras.length === 0) {
+    return [];
+  }
+
+  for (const camera of input.cameras) {
+    camera.updateMatrixWorld(true);
+    if ("updateProjectionMatrix" in camera && typeof camera.updateProjectionMatrix === "function") {
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  const states = input.cameras.map((camera) => {
+    const rootVisiblePath = createVisiblePath(rootPath, fullScreenPolygonNdc, input.viewportPixels);
+
+    return {
+      camera,
+      visibleBeforeBudgetById: new Map<number, InternalVisiblePath>([[rootPath.id, rootVisiblePath]]),
+      discovered: input.options.includeRootCell ? [rootVisiblePath] : [],
+      clippedByCameraCount: 0,
+      clippedByAreaCount: 0,
+    };
+  });
+
+  for (const path of input.pathTable.paths) {
+    if (path.depth === 0 || path.depth > input.options.maxDepth) {
+      continue;
+    }
+
+    const parentPathId = path.parentPathId;
+    let apertureInRoot: readonly Vec3[] | undefined;
+
+    for (const state of states) {
+      const parentVisible = parentPathId === undefined ? undefined : state.visibleBeforeBudgetById.get(parentPathId);
+
+      if (!parentVisible) {
+        continue;
+      }
+
+      if (!apertureInRoot) {
+        apertureInRoot = buildNewestPortalApertureInRoot(input.world, path, parentVisible.sourcePath);
+      }
+
+      const portalPolygon = projectRootSpacePointsToConservativeNdc(apertureInRoot, [state.camera]);
+
+      if (!portalPolygon) {
+        state.clippedByCameraCount += 1;
+        continue;
+      }
+
+      const clippedPolygon = clipConvexPolygonByConvexPolygon(portalPolygon, parentVisible.clipPolygonNdc);
+      const screenAreaPixels = ndcPolygonAreaPixels(clippedPolygon, input.viewportPixels);
+
+      if (clippedPolygon.length < 3 || screenAreaPixels < input.options.minPortalScreenAreaPixels) {
+        state.clippedByAreaCount += 1;
+        continue;
+      }
+
+      const visiblePath = createVisiblePath(path, clippedPolygon, input.viewportPixels);
+      state.visibleBeforeBudgetById.set(path.id, visiblePath);
+      state.discovered.push(visiblePath);
+    }
+  }
+
+  return states.map((state) => finalizeVisiblePortalPathResult(input, state));
 }
 
 export function buildPortalApertureCorners(
@@ -340,16 +432,54 @@ function projectNewestPortalApertureToNdc(
   parentPath: PortalRenderPath,
   cameras: readonly THREE.Camera[],
 ): readonly Vec2[] | undefined {
+  return projectRootSpacePointsToConservativeNdc(
+    buildNewestPortalApertureInRoot(world, path, parentPath),
+    cameras,
+  );
+}
+
+function buildNewestPortalApertureInRoot(
+  world: CompiledCellComplex,
+  path: PortalRenderPath,
+  parentPath: PortalRenderPath,
+): readonly Vec3[] {
   const newestStep = path.steps[path.steps.length - 1];
 
   if (!newestStep) {
-    return fullScreenPolygonNdc;
+    return [];
   }
 
   const apertureCorners = buildPortalApertureCorners(world, newestStep.sourceCellId, newestStep.sourcePortalSideIndex);
-  const apertureInRoot = transformApertureCornersToRoot(apertureCorners, parentPath.rootFromDestination);
 
-  return projectRootSpacePointsToConservativeNdc(apertureInRoot, cameras);
+  return transformApertureCornersToRoot(apertureCorners, parentPath.rootFromDestination);
+}
+
+function finalizeVisiblePortalPathResult(
+  input: ComputeIndependentVisiblePortalPathsInput,
+  state: VisiblePathAccumulator,
+): ComputeVisiblePortalPathsResult {
+  const sorted = [...state.discovered].sort((a, b) => compareVisiblePaths(a, b, input.options.sortMode));
+  const maxVisiblePaths = Math.max(0, input.options.maxVisiblePaths);
+  const paths = sorted.slice(0, maxVisiblePaths);
+  const clippedByBudgetCount = Math.max(0, sorted.length - paths.length);
+  const visiblePathById = new Map(paths.map((path) => [path.pathId, path]));
+
+  return {
+    paths,
+    visiblePathById,
+    summary: {
+      rootCellId: input.rootCellId,
+      candidatePathCount: input.pathTable.paths.length,
+      keptPathCount: input.pathTable.paths.length,
+      visiblePathCount: paths.length,
+      visiblePathCountByDepth: summarizeVisiblePathCountByDepth(paths),
+      maxVisibleDepth: Math.max(0, ...paths.map((path) => path.depth)),
+      clippedByCameraCount: state.clippedByCameraCount,
+      clippedByAreaCount: state.clippedByAreaCount,
+      clippedByBudgetCount,
+      budgetExhausted: clippedByBudgetCount > 0,
+    },
+  };
 }
 
 function projectRootSpacePointsToConservativeNdc(

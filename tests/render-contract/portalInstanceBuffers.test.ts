@@ -8,6 +8,7 @@ import {
   createPortalInstanceRenderDebugState,
   createRootVisiblePortalPath,
   groupVisiblePortalPathsByDestinationCell,
+  unclippedPortalClipIndex,
   updateCellRenderArchetypeInstances,
 } from "../../src/render/three/renderPortalInstances";
 
@@ -39,6 +40,7 @@ describe("updateCellRenderArchetypeInstances", () => {
     expect(readMatrix(roomA.mesh, 0)).toEqual(new THREE.Matrix4().elements);
     expect(readMatrix(roomB.mesh, 0)).toEqual(new THREE.Matrix4().elements);
     expect(readAttribute(roomA.portalPathIdAttribute, 0)).toBe(0);
+    expect(readAttribute(roomA.portalClipIndexAttribute, 0)).toBe(unclippedPortalClipIndex);
     expect(readAttribute(roomB.portalPathIdAttribute, 0)).toBe(1);
     expect(diagnostics.capacityOverflowCount).toBe(2);
     expect(diagnostics.capacityOverflowArchetypes).toEqual(["room-b:floor:0", "room-b:wall:1"]);
@@ -95,11 +97,13 @@ describe("updateCellRenderArchetypeInstances", () => {
     const visiblePaths = groupVisiblePortalPathsByDestinationCell([
       {
         ...createRootVisiblePortalPath("room-b"),
+        depth: 1,
         pathId: 4,
         rootFromDestinationMatrix: firstTransform,
       },
       {
         ...createRootVisiblePortalPath("room-b"),
+        depth: 1,
         pathId: 9,
         rootFromDestinationMatrix: secondTransform,
       },
