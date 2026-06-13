@@ -1,16 +1,22 @@
 import type { PaletteDefinition, PaletteHeaderAction } from "../../ui/paletteDefinition";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
+  RuntimeDesktopToolId,
   RuntimeDebugOverlayItemId,
   RuntimeMenuConsoleLogLevelId,
 } from "../../runtime/runtimeMenuState";
+import type { PlacedFlagType } from "../../world-objects/placedFlags";
 
 export interface DesktopPaletteView {
   readonly pageId: PaletteDefinition["pageId"];
   readonly leftAction: PaletteHeaderAction;
   readonly rightAction: PaletteHeaderAction;
   readonly content:
-    | { readonly kind: "empty" }
+    | {
+      readonly kind: "main";
+      readonly selectedTool: RuntimeDesktopToolId;
+      readonly placeFlagType: PlacedFlagType;
+    }
     | {
       readonly kind: "settings";
       readonly selectedWorldId: string;
@@ -25,6 +31,11 @@ export interface DesktopPaletteView {
       readonly portalPanelMode: string;
       readonly portalInspectionEnabled: boolean;
       readonly collisionGeometryWireframesEnabled: boolean;
+    }
+    | {
+      readonly kind: "place-flag-options";
+      readonly selectedFlagType: PlacedFlagType;
+      readonly flagTypeLabels: readonly string[];
     };
 }
 
@@ -41,6 +52,9 @@ export interface DesktopToolPaletteOptions {
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
+  readonly onToolSelected: (toolId: RuntimeDesktopToolId) => void;
+  readonly onPlaceFlagOptionsRequested: () => void;
+  readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
   readonly onResumeRequested: () => void;
 }
 
@@ -188,12 +202,27 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
     };
   }
 
+  if (definition.content.kind === "place-flag-options") {
+    return {
+      pageId: definition.pageId,
+      leftAction: definition.leftAction,
+      rightAction: definition.rightAction,
+      content: {
+        kind: "place-flag-options",
+        selectedFlagType: definition.content.selectedFlagType,
+        flagTypeLabels: definition.content.flagTypeOptions.map((option) => option.label),
+      },
+    };
+  }
+
   return {
     pageId: definition.pageId,
     leftAction: definition.leftAction,
     rightAction: definition.rightAction,
     content: {
-      kind: "empty",
+      kind: "main",
+      selectedTool: definition.content.kind === "main" ? definition.content.selectedTool : "none",
+      placeFlagType: definition.content.kind === "main" ? definition.content.placeFlagType : "WoodenSign1",
     },
   };
 }
@@ -208,6 +237,70 @@ function syncActionButton(button: HTMLButtonElement, action: PaletteHeaderAction
 }
 
 function renderContent(definition: PaletteDefinition, options: DesktopToolPaletteOptions): HTMLElement {
+  if (definition.content.kind === "main") {
+    const mainContent = definition.content;
+    const tools = document.createElement("div");
+    tools.className = "desktop-tool-palette-tool-grid";
+
+    const flagTile = document.createElement("div");
+    flagTile.className = "desktop-tool-tile-wrap";
+
+    const flagButton = document.createElement("button");
+    flagButton.type = "button";
+    flagButton.className = "desktop-tool-tile";
+    flagButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "place-flag");
+    flagButton.ariaLabel = "Place flags";
+    flagButton.ariaPressed = String(mainContent.selectedTool === "place-flag");
+    flagButton.addEventListener("click", () => {
+      options.onToolSelected(mainContent.selectedTool === "place-flag" ? "none" : "place-flag");
+    });
+
+    const icon = createFlagTileIcon(mainContent.placeFlagType);
+    const label = document.createElement("span");
+    label.className = "desktop-tool-tile-label";
+    label.textContent = "flags";
+    flagButton.append(icon, label);
+
+    const optionsButton = document.createElement("button");
+    optionsButton.type = "button";
+    optionsButton.className = "desktop-tool-tile-options";
+    optionsButton.textContent = "\u2699";
+    optionsButton.ariaLabel = "Choose flag type";
+    optionsButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      options.onPlaceFlagOptionsRequested();
+    });
+
+    flagTile.append(flagButton, optionsButton);
+    tools.append(flagTile);
+    return tools;
+  }
+
+  if (definition.content.kind === "place-flag-options") {
+    const settings = document.createElement("div");
+    settings.className = "desktop-tool-palette-tool-grid";
+
+    for (const option of definition.content.flagTypeOptions) {
+      const tile = document.createElement("button");
+      tile.type = "button";
+      tile.className = "desktop-tool-tile";
+      tile.classList.toggle("desktop-tool-tile-selected", option.id === definition.content.selectedFlagType);
+      tile.ariaLabel = `Select ${option.label}`;
+      tile.ariaPressed = String(option.id === definition.content.selectedFlagType);
+      tile.addEventListener("click", () => {
+        options.onPlaceFlagTypeSelected(option.id as PlacedFlagType);
+      });
+
+      const label = document.createElement("span");
+      label.className = "desktop-tool-tile-label";
+      label.textContent = option.label;
+      tile.append(createFlagTileIcon(option.id as PlacedFlagType), label);
+      settings.append(tile);
+    }
+
+    return settings;
+  }
+
   if (definition.content.kind === "settings") {
     const settings = document.createElement("div");
     settings.className = "desktop-tool-palette-settings";
@@ -431,4 +524,18 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
   empty.className = "desktop-tool-palette-empty";
   empty.ariaLabel = "Tool area placeholder";
   return empty;
+}
+
+function createFlagTileIcon(flagType: PlacedFlagType): HTMLElement {
+  const icon = document.createElement("span");
+  icon.className = `desktop-tool-tile-icon desktop-tool-flag-icon desktop-tool-flag-icon-${flagType}`;
+  icon.setAttribute("aria-hidden", "true");
+
+  const board = document.createElement("span");
+  board.className = "desktop-tool-flag-board";
+  const post = document.createElement("span");
+  post.className = "desktop-tool-flag-post";
+
+  icon.append(board, post);
+  return icon;
 }

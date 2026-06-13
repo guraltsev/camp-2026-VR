@@ -5,6 +5,8 @@ export interface RuntimeInputFrame {
   readonly yawDeltaRadians: number;
   readonly pitchDeltaRadians: number;
   readonly resetRequested: boolean;
+  readonly primaryActionRequested: boolean;
+  readonly interactRequested: boolean;
   readonly source: "desktop" | "xr";
 }
 

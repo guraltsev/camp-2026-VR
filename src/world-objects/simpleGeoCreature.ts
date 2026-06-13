@@ -16,6 +16,8 @@ import {
 import type { PreparedWorldAssets } from "../render/three/preloadWorldAssets";
 import { applyWorldRigidTransform } from "../render/three/worldAxes";
 import { degreesToRadians } from "./staticAssets";
+import type { RuntimeObjectRegistry } from "./runtimeObjectRegistry";
+import { runtimeObjectToDynamicObjectState, type RuntimeCreatureObject } from "./runtimeObjectRegistry";
 
 export interface SimpleGeoCreatureAuthoringParams {
   readonly position: readonly [x: number, y: number, z: number];
@@ -39,6 +41,14 @@ export interface SimpleGeoCreatureRuntime {
 
 const defaultScale = 1;
 const collisionFloorClearanceMeters = 0.01;
+const tau = Math.PI * 2;
+const butterflyVerticalRateBucketSeconds = 0.1;
+const butterflyVerticalRateMinHz = 0.85;
+const butterflyVerticalRateMaxHz = 2;
+const butterflyVerticalRateMinMultiplier = 1.31;
+const butterflyVerticalRateMaxMultiplier = 1.73;
+const butterflyVerticalMagnitudeFractionOfHeight = 0.1;
+const butterflyVerticalMagnitudeMaxMeters = 0.08;
 const mouseAssetBounds = {
   widthMetersAtAuthorScale: 19.218719482421875 / 30,
   heightMetersAtAuthorScale: 31.855297088623047 / 30,
@@ -97,6 +107,7 @@ export function createSimpleGeoCreatureRuntime(
   objectSpec: SimpleGeoCreatureObjectSpec,
   startCellId: string,
   assets: PreparedWorldAssets,
+  registry?: RuntimeObjectRegistry,
 ): SimpleGeoCreatureRuntime {
   const root = new THREE.Group();
   root.name = `${objectSpec.kind}:${objectSpec.id}`;
@@ -115,12 +126,16 @@ export function createSimpleGeoCreatureRuntime(
     prepared.scene.position.copy(new THREE.Vector3(objectSpec.modelOffset.x, objectSpec.modelOffset.z, -objectSpec.modelOffset.y));
   }
   root.add(prepared.scene);
-  const initialState = createDynamicObjectState(objectSpec, startCellId);
+  const initialObject = createRuntimeCreatureObject(objectSpec, startCellId);
+  registry?.add(initialObject);
+  const initialState = runtimeObjectToDynamicObjectState(initialObject);
   let state = initialState;
   const collisionWireframe = buildObjectCollisionWireframe(objectSpec.id, state);
   collisionWireframe.visible = false;
   root.add(collisionWireframe);
   let elapsedSeconds = 0;
+  let verticalOscillationPhaseRadians = initialButterflyVerticalOscillationPhaseRadians(objectSpec);
+  let verticalOscillationOffsetMeters = butterflyVerticalOscillationHeightOffset(objectSpec, verticalOscillationPhaseRadians);
   const diagnostics = runtimeDiagnostics();
 
   diagnostics.recordAssetInstanceStart(startCellId, objectSpec.id, objectSpec.assetPath, objectSpec.kind);
@@ -140,7 +155,14 @@ export function createSimpleGeoCreatureRuntime(
       elapsedSeconds += deltaSeconds;
       const forward = objectSpec.speedMetersPerSecond * deltaSeconds;
       const lateralOffsetMeters = lateralOscillationOffset(objectSpec, elapsedSeconds);
-      const displacement = transformDirection3(state.localPose, vec3(lateralOffsetMeters, forward, 0));
+      verticalOscillationPhaseRadians += butterflyVerticalOscillationRateHz(objectSpec, elapsedSeconds) * tau * deltaSeconds;
+      const nextVerticalOscillationOffsetMeters = butterflyVerticalOscillationHeightOffset(
+        objectSpec,
+        verticalOscillationPhaseRadians,
+      );
+      const verticalOffsetDeltaMeters = nextVerticalOscillationOffsetMeters - verticalOscillationOffsetMeters;
+      verticalOscillationOffsetMeters = nextVerticalOscillationOffsetMeters;
+      const displacement = transformDirection3(state.localPose, vec3(lateralOffsetMeters, forward, verticalOffsetDeltaMeters));
       const result = moveDynamicObject({
         world,
         object: state,
@@ -148,6 +170,7 @@ export function createSimpleGeoCreatureRuntime(
         portalCrossingMode: AUTONOMOUS_DYNAMIC_OBJECT_PORTAL_CROSSING_MODE,
       });
       state = result.object;
+      syncRegistryObject(registry, objectSpec.id, result.object);
       applyObjectPose(root, state.localPose);
       updateObjectCollisionWireframe(collisionWireframe, state);
     },
@@ -163,7 +186,13 @@ export function createSimpleGeoCreatureRuntime(
     },
     reset(cellRoots) {
       elapsedSeconds = 0;
+      verticalOscillationPhaseRadians = initialButterflyVerticalOscillationPhaseRadians(objectSpec);
+      verticalOscillationOffsetMeters = butterflyVerticalOscillationHeightOffset(
+        objectSpec,
+        verticalOscillationPhaseRadians,
+      );
       state = initialState;
+      syncRegistryObject(registry, objectSpec.id, state);
       applyObjectPose(root, state.localPose);
       updateObjectCollisionWireframe(collisionWireframe, state);
       const targetRoot = cellRoots.get(state.cellId);
@@ -175,15 +204,51 @@ export function createSimpleGeoCreatureRuntime(
   };
 }
 
-function createDynamicObjectState(objectSpec: SimpleGeoCreatureObjectSpec, cellId: string): DynamicObjectState {
+export function createSimpleGeoCreatureRuntimeObject(
+  objectSpec: SimpleGeoCreatureObjectSpec,
+  cellId: string,
+): RuntimeCreatureObject {
+  return createRuntimeCreatureObject(objectSpec, cellId);
+}
+
+function createRuntimeCreatureObject(objectSpec: SimpleGeoCreatureObjectSpec, cellId: string): RuntimeCreatureObject {
   return {
+    id: objectSpec.id,
+    kind: objectSpec.kind,
     cellId,
     localPose: yawRigidTransform3(
       objectSpec.turnRadians ?? 0,
       vec3(objectSpec.position.x, objectSpec.position.y, objectSpec.position.z),
     ),
     collision: objectSpec.collision,
+    portalRenderable: true,
+    tooltip: {
+      label: objectSpec.kind === "geo-mouse" ? "geodesic mouse" : "geodesic butterfly",
+      rangeMeters: 2.25,
+    },
   };
+}
+
+function syncRegistryObject(
+  registry: RuntimeObjectRegistry | undefined,
+  id: string,
+  state: DynamicObjectState,
+): void {
+  if (!registry) {
+    return;
+  }
+
+  const object = registry.get(id);
+  if (!object || (object.kind !== "geo-mouse" && object.kind !== "geo-butterfly")) {
+    return;
+  }
+
+  registry.update({
+    ...object,
+    cellId: state.cellId,
+    localPose: state.localPose,
+    collision: state.collision,
+  });
 }
 
 function lateralOscillationOffset(objectSpec: SimpleGeoCreatureObjectSpec, elapsedSeconds: number): number {
@@ -191,7 +256,73 @@ function lateralOscillationOffset(objectSpec: SimpleGeoCreatureObjectSpec, elaps
     return 0;
   }
 
-  return Math.sin(elapsedSeconds * objectSpec.oscillationRateHz * Math.PI * 2) * objectSpec.oscillationMagnitudeMeters;
+  return Math.sin(elapsedSeconds * objectSpec.oscillationRateHz * tau) * objectSpec.oscillationMagnitudeMeters;
+}
+
+export function butterflyVerticalOscillationRateHz(
+  objectSpec: SimpleGeoCreatureObjectSpec,
+  elapsedSeconds: number,
+): number {
+  if (objectSpec.kind !== "geo-butterfly") {
+    return 0;
+  }
+
+  const lateralRateHz = objectSpec.oscillationRateHz > 0 ? objectSpec.oscillationRateHz : 1;
+  const minRateHz = clamp(
+    lateralRateHz * butterflyVerticalRateMinMultiplier,
+    butterflyVerticalRateMinHz,
+    butterflyVerticalRateMaxHz,
+  );
+  const maxRateHz = clamp(
+    lateralRateHz * butterflyVerticalRateMaxMultiplier,
+    minRateHz,
+    butterflyVerticalRateMaxHz,
+  );
+  const bucket = Math.floor(Math.max(0, elapsedSeconds) / butterflyVerticalRateBucketSeconds);
+  const random = seededUnitInterval(`${objectSpec.id}:vertical-rate:${bucket}`);
+
+  return minRateHz + (maxRateHz - minRateHz) * random;
+}
+
+export function butterflyVerticalOscillationHeightMagnitudeMeters(objectSpec: SimpleGeoCreatureObjectSpec): number {
+  if (objectSpec.kind !== "geo-butterfly") {
+    return 0;
+  }
+
+  return Math.min(
+    objectSpec.collision.dz * butterflyVerticalMagnitudeFractionOfHeight,
+    butterflyVerticalMagnitudeMaxMeters,
+  );
+}
+
+function initialButterflyVerticalOscillationPhaseRadians(objectSpec: SimpleGeoCreatureObjectSpec): number {
+  if (objectSpec.kind !== "geo-butterfly") {
+    return 0;
+  }
+
+  return seededUnitInterval(`${objectSpec.id}:vertical-phase`) * tau;
+}
+
+function butterflyVerticalOscillationHeightOffset(
+  objectSpec: SimpleGeoCreatureObjectSpec,
+  phaseRadians: number,
+): number {
+  return Math.sin(phaseRadians) * butterflyVerticalOscillationHeightMagnitudeMeters(objectSpec);
+}
+
+function seededUnitInterval(seed: string): number {
+  let hash = 2166136261;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0) / 0x100000000;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function defaultSpeed(kind: SimpleGeoCreatureObjectSpec["kind"]): number {

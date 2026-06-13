@@ -284,6 +284,7 @@ body {
   display: flex;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .desktop-tool-palette-empty {
@@ -356,6 +357,207 @@ body {
   flex-direction: column;
   gap: 8px;
   padding-left: 18px;
+}
+
+.desktop-tool-palette-tool-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  grid-auto-rows: minmax(112px, 1fr);
+  align-content: start;
+  gap: 12px;
+  padding: 2px 4px 8px 2px;
+}
+
+.desktop-tool-tile-wrap {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+}
+
+.desktop-tool-tile {
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  place-items: center;
+  gap: 8px;
+  padding: 14px 10px 12px;
+  border: 1px solid #48656e;
+  border-radius: 8px;
+  background: #142027;
+  color: #f4fbfd;
+  cursor: pointer;
+  font: 700 0.9rem/1.1 system-ui, sans-serif;
+}
+
+.desktop-tool-tile-selected {
+  border-color: #38bdf8;
+  background: #17323b;
+  box-shadow: inset 0 0 0 1px rgb(56 189 248 / 42%);
+}
+
+.desktop-tool-tile-options {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(143 184 192 / 70%);
+  border-radius: 999px;
+  background: rgb(10 17 20 / 86%);
+  color: #f4fbfd;
+  cursor: pointer;
+  font: 700 1rem/1 system-ui, sans-serif;
+}
+
+.desktop-tool-tile-label {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.desktop-tool-tile-icon {
+  width: 64px;
+  height: 64px;
+  position: relative;
+  display: block;
+}
+
+.desktop-tool-flag-board {
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  width: 46px;
+  height: 28px;
+  border: 2px solid #6f4b2f;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #b77943, #84512d);
+  box-shadow: inset 0 4px 0 rgb(255 255 255 / 12%);
+}
+
+.desktop-tool-flag-icon-WoodenSign2 .desktop-tool-flag-board {
+  border-radius: 999px 999px 7px 7px;
+  background: linear-gradient(180deg, #d19a5a, #8f5f37);
+}
+
+.desktop-tool-flag-board::before,
+.desktop-tool-flag-board::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgb(42 28 19 / 45%);
+}
+
+.desktop-tool-flag-board::before {
+  top: 9px;
+}
+
+.desktop-tool-flag-board::after {
+  top: 17px;
+}
+
+.desktop-tool-flag-post {
+  position: absolute;
+  left: 29px;
+  top: 34px;
+  width: 6px;
+  height: 26px;
+  border-radius: 2px;
+  background: #6f4b2f;
+}
+
+.desktop-tool-flag-post::after {
+  content: "";
+  position: absolute;
+  left: -12px;
+  bottom: 0;
+  width: 30px;
+  height: 5px;
+  border-radius: 999px;
+  background: #5a3b27;
+}
+
+.desktop-flag-editor {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 30;
+  transform: translateX(-50%);
+  width: min(24rem, calc(100vw - 2rem));
+  pointer-events: auto;
+}
+
+.desktop-flag-editor[hidden] {
+  display: none;
+}
+
+.desktop-flag-editor-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid rgb(226 232 240 / 28%);
+  border-radius: 8px;
+  background: rgb(15 23 42 / 96%);
+  box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 35%);
+}
+
+.desktop-flag-editor-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgb(148 163 184 / 45%);
+  border-radius: 6px;
+  padding: 0.6rem 0.7rem;
+  background: rgb(15 23 42 / 90%);
+  color: #f8fafc;
+  font: inherit;
+}
+
+.desktop-flag-editor-colors {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.desktop-flag-editor-color {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid rgb(248 250 252 / 45%);
+  border-radius: 999px;
+}
+
+.desktop-flag-editor-color[data-selected="true"] {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+.floating-object-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 11;
+  max-width: min(18rem, calc(100vw - 2rem));
+  padding: 0.42rem 0.62rem;
+  border: 1px solid rgb(226 232 240 / 48%);
+  border-radius: 6px;
+  background: rgb(10 17 20 / 86%);
+  color: #f8fafc;
+  font: 700 0.9rem/1.2 system-ui, sans-serif;
+  text-align: center;
+  box-shadow: 0 0.45rem 1.25rem rgb(0 0 0 / 36%);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.floating-object-tooltip[hidden] {
+  display: none;
 }
 
 .desktop-palette-resume {

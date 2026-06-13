@@ -5,6 +5,8 @@ export interface DesktopInputFrame {
   readonly yawDeltaRadians: number;
   readonly pitchDeltaRadians: number;
   readonly resetRequested: boolean;
+  readonly primaryActionRequested: boolean;
+  readonly interactRequested: boolean;
 }
 
 export interface DesktopControls {
@@ -47,18 +49,25 @@ export function createDesktopControls(
   let pendingMouseYawDeltaRadians = 0;
   let pendingMousePitchDeltaRadians = 0;
   let resetRequested = false;
+  let primaryActionRequested = false;
+  let interactRequested = false;
 
   function onKeyDown(event: KeyboardEvent): void {
     if (paused) {
       return;
     }
 
-    if (movementKeys.has(event.code) || turnKeys.has(event.code) || event.code === "KeyR") {
+    if (movementKeys.has(event.code) || turnKeys.has(event.code) || event.code === "KeyR" || event.code === "KeyF") {
       event.preventDefault();
     }
 
     if (event.code === "KeyR") {
       resetRequested = true;
+      return;
+    }
+
+    if (event.code === "KeyF") {
+      interactRequested = true;
       return;
     }
 
@@ -70,6 +79,11 @@ export function createDesktopControls(
   }
 
   function onClick(): void {
+    if (document.pointerLockElement === canvas) {
+      primaryActionRequested = true;
+      return;
+    }
+
     void requestPointerLock();
   }
 
@@ -90,6 +104,8 @@ export function createDesktopControls(
     pendingMouseYawDeltaRadians = 0;
     pendingMousePitchDeltaRadians = 0;
     resetRequested = false;
+    primaryActionRequested = false;
+    interactRequested = false;
   }
 
   async function requestPointerLock(): Promise<boolean> {
@@ -118,6 +134,8 @@ export function createDesktopControls(
           yawDeltaRadians: 0,
           pitchDeltaRadians: 0,
           resetRequested: false,
+          primaryActionRequested: false,
+          interactRequested: false,
         };
       }
 
@@ -135,16 +153,22 @@ export function createDesktopControls(
       const inputLength = Math.hypot(forwardInput, rightInput) || 1;
       const stepMeters = moveSpeed * deltaSeconds;
       const frameResetRequested = resetRequested;
+      const framePrimaryActionRequested = primaryActionRequested;
+      const frameInteractRequested = interactRequested;
 
       pendingMouseYawDeltaRadians = 0;
       pendingMousePitchDeltaRadians = 0;
       resetRequested = false;
+      primaryActionRequested = false;
+      interactRequested = false;
 
       return {
         localDisplacement: vec3((rightInput / inputLength) * stepMeters, (forwardInput / inputLength) * stepMeters, 0),
         yawDeltaRadians,
         pitchDeltaRadians,
         resetRequested: frameResetRequested,
+        primaryActionRequested: framePrimaryActionRequested,
+        interactRequested: frameInteractRequested,
       };
     },
     pause(): void {

@@ -8,7 +8,7 @@ import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 import { describeDesktopPaletteView } from "../../src/render/dom/desktopToolPalette";
 
 describe("desktopToolPalette", () => {
-  it("describes the main page as an empty tool rectangle with settings and close actions", () => {
+  it("describes the main page with place-flag tool controls plus settings and close actions", () => {
     const definition = createPaletteDefinition(createRuntimeMenuState({
       selectedWorldId: "cube",
       debugOverlayEnabled: true,
@@ -18,7 +18,31 @@ describe("desktopToolPalette", () => {
     expect(view.pageId).toBe("main");
     expect(view.leftAction.id).toBe("settings");
     expect(view.rightAction.id).toBe("close");
-    expect(view.content.kind).toBe("empty");
+    expect(view.content.kind).toBe("main");
+    if (view.content.kind !== "main") {
+      throw new Error("Expected main content.");
+    }
+    expect(view.content.selectedTool).toBe("none");
+    expect(view.content.placeFlagType).toBe("WoodenSign1");
+  });
+
+  it("describes the flag options page with both wooden sign types", () => {
+    const state = createRuntimeMenuState({
+      selectedWorldId: "cube",
+      debugOverlayEnabled: true,
+    });
+    const definition = createPaletteDefinition({
+      ...state,
+      page: "place-flag-options",
+    });
+    const view = describeDesktopPaletteView(definition);
+
+    expect(view.pageId).toBe("place-flag-options");
+    expect(view.content.kind).toBe("place-flag-options");
+    if (view.content.kind !== "place-flag-options") {
+      throw new Error("Expected place flag options content.");
+    }
+    expect(view.content.flagTypeLabels).toEqual(["WoodenSign1", "WoodenSign2"]);
   });
 
   it("describes the settings page with compact debug entry", () => {

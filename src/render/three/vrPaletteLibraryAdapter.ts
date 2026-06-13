@@ -179,7 +179,7 @@ function buildContent(
   definition: PaletteDefinition,
   options: VrPaletteLibraryAdapterOptions,
 ): Container {
-  if (definition.content.kind === "empty") {
+  if (definition.content.kind === "main" || definition.content.kind === "place-flag-options") {
     const content = new Container({
       width: "100%",
       minHeight: 300,

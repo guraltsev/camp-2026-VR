@@ -16,6 +16,8 @@ import {
 import { runtimeDiagnostics } from "../render/three/runtimeDiagnostics";
 import type { PreparedWorldAssets } from "../render/three/preloadWorldAssets";
 import { applyWorldRigidTransform } from "../render/three/worldAxes";
+import type { RuntimeObjectRegistry } from "./runtimeObjectRegistry";
+import { runtimeObjectToDynamicObjectState, type RuntimeCreatureObject } from "./runtimeObjectRegistry";
 
 const defaultCollisionOffset = { x: 0, y: 0, z: 0.22 } as const;
 const defaultScale = 0.42;
@@ -62,6 +64,7 @@ export function createGeodesciMarmotRuntime(
   objectSpec: GeodesciMarmotObjectSpec,
   startCellId: string,
   _assets: PreparedWorldAssets,
+  registry?: RuntimeObjectRegistry,
 ): GeodesciMarmotRuntime {
   const root = new THREE.Group();
   root.name = `geodesci-marmot:${objectSpec.id}`;
@@ -70,7 +73,9 @@ export function createGeodesciMarmotRuntime(
   visual.rotation.y = Math.PI;
   visual.scale.setScalar(objectSpec.scale ?? defaultScale);
   root.add(visual);
-  const initialState = createDynamicObjectState(objectSpec, startCellId);
+  const initialObject = createRuntimeCreatureObject(objectSpec, startCellId);
+  registry?.add(initialObject);
+  const initialState = runtimeObjectToDynamicObjectState(initialObject);
   let state = initialState;
   const collisionWireframe = buildObjectCollisionWireframe(objectSpec.id, state);
   collisionWireframe.visible = false;
@@ -100,6 +105,7 @@ export function createGeodesciMarmotRuntime(
         portalCrossingMode: AUTONOMOUS_DYNAMIC_OBJECT_PORTAL_CROSSING_MODE,
       });
       state = result.object;
+      syncRegistryObject(registry, objectSpec.id, result.object);
       applyObjectPose(root, state.localPose);
       updateObjectCollisionWireframe(collisionWireframe, state);
     },
@@ -115,6 +121,7 @@ export function createGeodesciMarmotRuntime(
     },
     reset(cellRoots) {
       state = initialState;
+      syncRegistryObject(registry, objectSpec.id, state);
       applyObjectPose(root, state.localPose);
       updateObjectCollisionWireframe(collisionWireframe, state);
       const targetRoot = cellRoots.get(state.cellId);
@@ -126,15 +133,51 @@ export function createGeodesciMarmotRuntime(
   };
 }
 
-function createDynamicObjectState(objectSpec: GeodesciMarmotObjectSpec, cellId: string): DynamicObjectState {
+export function createGeodesciMarmotRuntimeObject(
+  objectSpec: GeodesciMarmotObjectSpec,
+  cellId: string,
+): RuntimeCreatureObject {
+  return createRuntimeCreatureObject(objectSpec, cellId);
+}
+
+function createRuntimeCreatureObject(objectSpec: GeodesciMarmotObjectSpec, cellId: string): RuntimeCreatureObject {
   return {
+    id: objectSpec.id,
+    kind: "geodesci-marmot",
     cellId,
     localPose: yawRigidTransform3(
       objectSpec.yawRadians ?? yawFromVelocity(objectSpec.velocity),
       vec3(objectSpec.position.x, objectSpec.position.y, objectSpec.position.z),
     ),
     collision: objectSpec.collision,
+    portalRenderable: true,
+    tooltip: {
+      label: "geodesci marmot",
+      rangeMeters: 2.25,
+    },
   };
+}
+
+function syncRegistryObject(
+  registry: RuntimeObjectRegistry | undefined,
+  id: string,
+  state: DynamicObjectState,
+): void {
+  if (!registry) {
+    return;
+  }
+
+  const object = registry.get(id);
+  if (!object || object.kind !== "geodesci-marmot") {
+    return;
+  }
+
+  registry.update({
+    ...object,
+    cellId: state.cellId,
+    localPose: state.localPose,
+    collision: state.collision,
+  });
 }
 
 function yawFromVelocity(velocity: GeodesciMarmotObjectSpec["velocity"]): number {

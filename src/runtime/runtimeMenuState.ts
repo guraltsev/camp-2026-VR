@@ -2,10 +2,12 @@ import type { DebugOptionId } from "../glue/debugOptions";
 import type { DebugSettings } from "../glue/debugSettings";
 import type { DebugLevelId } from "../glue/debugLevels";
 import type { PortalPanelModeId } from "../glue/portalPanelMode";
+import type { PlacedFlagType } from "../world-objects/placedFlags";
 
-export type RuntimeMenuPageId = "main" | "settings" | "debug-settings";
+export type RuntimeMenuPageId = "main" | "settings" | "debug-settings" | "place-flag-options";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
+export type RuntimeDesktopToolId = "none" | "place-flag";
 
 const defaultRuntimeDebugOverlayItems = ["fps", "location", "portal-quantities"] as const;
 const portalInspectionDebugOptions = [
@@ -30,6 +32,11 @@ export interface RuntimeMenuState {
   readonly portalPanelMode: PortalPanelModeId;
   readonly portalInspectionEnabled: boolean;
   readonly collisionGeometryWireframesEnabled: boolean;
+  readonly selectedTool: RuntimeDesktopToolId;
+  readonly placeFlagOptions: {
+    readonly flagType: PlacedFlagType;
+  };
+  readonly editingFlagId?: string;
 }
 
 export interface CreateRuntimeMenuStateOptions {
@@ -56,6 +63,10 @@ export function createRuntimeMenuState(options: CreateRuntimeMenuStateOptions): 
       debugSettings?.debugOptions,
       collisionGeometryDebugOptions,
     ),
+    selectedTool: "none",
+    placeFlagOptions: {
+      flagType: "WoodenSign1",
+    },
   };
 }
 
@@ -86,6 +97,13 @@ export function showRuntimeMenuDebugSettings(state: RuntimeMenuState): RuntimeMe
   return {
     ...state,
     page: "debug-settings",
+  };
+}
+
+export function showRuntimeMenuPlaceFlagOptions(state: RuntimeMenuState): RuntimeMenuState {
+  return {
+    ...state,
+    page: "place-flag-options",
   };
 }
 
@@ -168,6 +186,30 @@ export function setRuntimeMenuCollisionGeometryWireframesEnabled(
   return {
     ...state,
     collisionGeometryWireframesEnabled: enabled,
+  };
+}
+
+export function setRuntimeMenuSelectedTool(state: RuntimeMenuState, selectedTool: RuntimeDesktopToolId): RuntimeMenuState {
+  return {
+    ...state,
+    selectedTool,
+  };
+}
+
+export function setRuntimeMenuPlaceFlagType(state: RuntimeMenuState, flagType: PlacedFlagType): RuntimeMenuState {
+  return {
+    ...state,
+    placeFlagOptions: {
+      ...state.placeFlagOptions,
+      flagType,
+    },
+  };
+}
+
+export function setRuntimeMenuEditingFlagId(state: RuntimeMenuState, editingFlagId: string | undefined): RuntimeMenuState {
+  return {
+    ...state,
+    editingFlagId,
   };
 }
 

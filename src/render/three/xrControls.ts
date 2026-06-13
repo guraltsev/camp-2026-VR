@@ -49,6 +49,8 @@ export function createXrInputFrame(
     yawDeltaRadians,
     pitchDeltaRadians: 0,
     resetRequested: sources.some((source) => isResetPressed(source.gamepad)),
+    primaryActionRequested: false,
+    interactRequested: false,
     source: "xr",
   };
 }
@@ -93,6 +95,8 @@ export function emptyXrInputFrame(): RuntimeInputFrame {
     yawDeltaRadians: 0,
     pitchDeltaRadians: 0,
     resetRequested: false,
+    primaryActionRequested: false,
+    interactRequested: false,
     source: "xr",
   };
 }

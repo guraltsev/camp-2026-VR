@@ -13,7 +13,7 @@ import type { DebugSettings } from "../../glue/debugSettings";
 import { hasActiveDebugOption, type DebugOptionId } from "../../glue/debugOptions";
 import type { DebugLevelId } from "../../glue/debugLevels";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
-import { vec3 } from "../../math/vec3";
+import { distanceVec3, dotVec3, normalizeVec3, subVec3, vec3 } from "../../math/vec3";
 import { movePlayer } from "../../movement/movePlayer";
 import { createAppCommandDispatcher } from "../../runtime/appCommandDispatcher";
 import type { RuntimeCommand } from "../../runtime/runtimeCommands";
@@ -31,9 +31,13 @@ import {
   setRuntimeMenuSelectedWorldId,
   setRuntimeMenuPortalInspectionEnabled,
   setRuntimeMenuPortalPanelMode,
+  setRuntimeMenuEditingFlagId,
+  setRuntimeMenuPlaceFlagType,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuMainPage,
+  showRuntimeMenuPlaceFlagOptions,
   showRuntimeMenuSettings,
+  setRuntimeMenuSelectedTool,
   toggleRuntimeMenuDebugOverlayItem,
 } from "../../runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../ui/paletteDefinition";
@@ -49,6 +53,20 @@ import {
   isSimpleGeoCreatureObjectSpec,
   type SimpleGeoCreatureRuntime,
 } from "../../world-objects/simpleGeoCreature";
+import {
+  placeFlagFromAim,
+  updatePlacedFlagFontColor,
+  updatePlacedFlagMessage,
+} from "../../world-objects/placedFlags";
+import {
+  createRuntimeObjectRegistry,
+  runtimeObjectToDynamicObjectState,
+  type RuntimeWorldObject,
+} from "../../world-objects/runtimeObjectRegistry";
+import { getDynamicObjectCollisionBounds } from "../../movement/collision";
+import { createDesktopFlagEditor } from "../dom/desktopFlagEditor";
+import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
+import { createPlacedFlagRenderer } from "./placedFlagRenderer";
 import {
   buildCellRenderArchetypes,
   deriveCellRenderArchetypeCapacities,
@@ -300,6 +318,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onCollisionGeometryWireframesToggled(enabled) {
       applyMenuDebugState(setRuntimeMenuCollisionGeometryWireframesEnabled(menuState, enabled));
     },
+    onToolSelected(toolId) {
+      menuState = setRuntimeMenuSelectedTool(menuState, toolId);
+      syncDesktopPalette();
+    },
+    onPlaceFlagOptionsRequested() {
+      menuState = showRuntimeMenuPlaceFlagOptions(menuState);
+      syncDesktopPalette();
+    },
+    onPlaceFlagTypeSelected(flagType) {
+      menuState = setRuntimeMenuPlaceFlagType(menuState, flagType);
+      syncDesktopPalette();
+    },
     onResumeRequested() {
       void controls.resume({ requestPointerLock: true }).then((captured) => {
         desktopToolPalette.setResumePromptVisible(!captured);
@@ -322,6 +352,35 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       desktopToolPalette.setResumePromptVisible(visible);
     },
   });
+  const runtimeObjectRegistry = createRuntimeObjectRegistry();
+  const desktopFlagEditor = createDesktopFlagEditor(document.body, {
+    onMessageChanged(flagId, message) {
+      const flag = runtimeObjectRegistry.get(flagId);
+      if (flag?.kind !== "placed-flag") {
+        return;
+      }
+
+      runtimeObjectRegistry.update(updatePlacedFlagMessage(flag, message));
+      syncPlacedFlagViews();
+    },
+    onFontColorChanged(flagId, fontColor) {
+      const flag = runtimeObjectRegistry.get(flagId);
+      if (flag?.kind !== "placed-flag") {
+        return;
+      }
+
+      runtimeObjectRegistry.update(updatePlacedFlagFontColor(flag, fontColor));
+      syncPlacedFlagViews();
+    },
+    onClosed() {
+      menuState = setRuntimeMenuEditingFlagId(menuState, undefined);
+      syncDesktopPalette();
+      void controls.resume({ requestPointerLock: true }).then((captured) => {
+        desktopToolPalette.setResumePromptVisible(!captured);
+      });
+    },
+  });
+  const floatingObjectTooltip = createFloatingObjectTooltip(document.body);
   const xrEntryUi = createXrEntryUi(container, enterVr);
   const clipPolygonOverlay = createPortalClipPolygonOverlay(container);
   const sceneLighting = createStylizedSceneLighting(scene);
@@ -400,6 +459,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     appState.world.cells.map((cell) => [cell.id, createCellWarmupViews(cell)] as const),
   );
   const dynamicObjectRuntimes: Array<GeodesciMarmotRuntime | SimpleGeoCreatureRuntime> = [];
+  const placedFlagRenderer = createPlacedFlagRenderer({
+    registry: runtimeObjectRegistry,
+    assets: options.assets,
+    cellRoots: cellMeshes,
+  });
+  let placedFlagIdCounter = 0;
   const legacyObjectPortalRenderRoot = new THREE.Group();
   legacyObjectPortalRenderRoot.name = "legacy-object-portal-renders";
   scene.add(legacyObjectPortalRenderRoot);
@@ -444,7 +509,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   for (const cell of appState.world.cells) {
     for (const objectSpec of cell.objects) {
       if (isGeodesciMarmotObjectSpec(objectSpec)) {
-        const runtime = createGeodesciMarmotRuntime(objectSpec, cell.id, options.assets);
+        const runtime = createGeodesciMarmotRuntime(objectSpec, cell.id, options.assets, runtimeObjectRegistry);
         runtime.syncParent(cellMeshes);
         dynamicObjectRuntimes.push(runtime);
         syncDynamicObjectDebugWireframes();
@@ -452,7 +517,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
 
       if (isSimpleGeoCreatureObjectSpec(objectSpec)) {
-        const runtime = createSimpleGeoCreatureRuntime(objectSpec, cell.id, options.assets);
+        const runtime = createSimpleGeoCreatureRuntime(objectSpec, cell.id, options.assets, runtimeObjectRegistry);
         runtime.syncParent(cellMeshes);
         dynamicObjectRuntimes.push(runtime);
         syncDynamicObjectDebugWireframes();
@@ -543,6 +608,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       for (const runtime of dynamicObjectRuntimes) {
         runtime.reset(cellMeshes);
       }
+      removePlacedFlags();
     } else {
       const yawDeltaRadians = xrActive
         ? xrRig.resolveCameraYawRadians(headLocalYawRadians) - playerPose.yawRadians + frame.yawDeltaRadians
@@ -577,6 +643,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         recordCellTransition(beforePhysicalCellId, physicalMoveResult);
       }
     }
+
+    if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "place-flag") {
+      tryPlaceFlagFromDesktopAim();
+    }
+
+    if (!xrActive && frame.interactRequested) {
+      tryOpenFocusedFlagEditor();
+    }
     const frameAfterMoveMs = performance.now();
     const frameBeforeObjectsMs = frameAfterMoveMs;
 
@@ -584,6 +658,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtime.update(appState.world, frame.resetRequested ? 0 : deltaSeconds);
       runtime.syncParent(cellMeshes);
     }
+    placedFlagRenderer.sync();
     const frameAfterObjectsMs = performance.now();
     const frameBeforeCameraMs = frameAfterObjectsMs;
 
@@ -599,6 +674,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else {
       applyDesktopCameraPose();
     }
+    updateFloatingObjectTooltip(xrActive);
     const frameAfterCameraMs = performance.now();
     const frameBeforePortalMs = frameAfterCameraMs;
 
@@ -748,7 +824,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       vrPaletteController.dispose();
       desktopPaletteInput.dispose();
       desktopToolPalette.dispose();
+      desktopFlagEditor.dispose();
+      floatingObjectTooltip.dispose();
       controls.dispose();
+      placedFlagRenderer.dispose();
       for (const cellMesh of cellMeshes.values()) {
         disposeObject3D(cellMesh);
       }
@@ -830,11 +909,17 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         yawDeltaRadians: 0,
         pitchDeltaRadians: 0,
         resetRequested: false,
+        primaryActionRequested: false,
+        interactRequested: false,
         source: "xr",
       };
     }
 
-    return xrControls.consumeFrame(session.inputSources, deltaSeconds);
+    return {
+      ...xrControls.consumeFrame(session.inputSources, deltaSeconds),
+      primaryActionRequested: false,
+      interactRequested: false,
+    };
   }
 
   function recordCellTransition(previousCellId: string, moveResult: ReturnType<typeof movePlayer>): void {
@@ -903,6 +988,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     for (const runtime of dynamicObjectRuntimes) {
       runtime.root.removeFromParent();
     }
+    placedFlagRenderer.dispose();
 
     for (const [cellId, cellMesh] of cellMeshes) {
       scene.remove(cellMesh);
@@ -939,6 +1025,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       scene.add(archetype.mesh);
     }
     portalInstanceDebugRenderer = createPortalInstanceDebugRenderer(scene, cellRenderArchetypes);
+    placedFlagRenderer.sync();
     visibleCellId = currentlyVisibleCellId;
   }
 
@@ -1762,6 +1849,186 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function syncDesktopPalette(): void {
     desktopToolPalette.setDefinition(createPaletteDefinition(menuState));
     desktopToolPalette.setOpen(menuState.isOpen);
+  }
+
+  function syncPlacedFlagViews(): void {
+    placedFlagRenderer.sync();
+    syncLegacyObjectPortalRenders();
+  }
+
+  function tryPlaceFlagFromDesktopAim(): void {
+    const result = placeFlagFromAim({
+      world: appState.world,
+      registry: runtimeObjectRegistry,
+      cellId: playerPose.cellId,
+      eyePosition: getDesktopEyePosition(),
+      forward: getPlayerForwardVector(),
+      flagType: menuState.placeFlagOptions.flagType,
+      id: `placed-flag:${Date.now()}:${placedFlagIdCounter++}`,
+    });
+
+    if (result.placed) {
+      syncPlacedFlagViews();
+    }
+  }
+
+  function tryOpenFocusedFlagEditor(): void {
+    const focused = findFocusedRuntimeObject();
+    if (!focused || focused.object.kind !== "placed-flag" || focused.object.interactable?.action !== "edit-flag") {
+      return;
+    }
+
+    controls.pause();
+    menuState = setRuntimeMenuEditingFlagId(menuState, focused.object.id);
+    syncDesktopPalette();
+    desktopFlagEditor.open(focused.object);
+  }
+
+  function updateFloatingObjectTooltip(xrActive: boolean): void {
+    if (menuState.isOpen || desktopFlagEditor.isOpen()) {
+      floatingObjectTooltip.update({ visible: false });
+      return;
+    }
+
+    const focused = findFocusedRuntimeObject();
+    const text = focused ? getRuntimeObjectTooltipText(focused.object, xrActive ? "xr" : "desktop") : undefined;
+    const screenPosition = focused ? projectWorldPointToScreen(focused.tooltipAnchor) : undefined;
+
+    floatingObjectTooltip.update({
+      visible: Boolean(text && screenPosition),
+      text,
+      xPixels: screenPosition?.x,
+      yPixels: screenPosition?.y,
+    });
+  }
+
+  function findFocusedRuntimeObject(): {
+    readonly object: RuntimeWorldObject;
+    readonly distance: number;
+    readonly tooltipAnchor: { readonly x: number; readonly y: number; readonly z: number };
+  } | undefined {
+    const eye = getCameraWorldPosition();
+    const forward = getCameraForwardVector();
+    let best:
+      | {
+        readonly object: RuntimeWorldObject;
+        readonly distance: number;
+        readonly tooltipAnchor: { readonly x: number; readonly y: number; readonly z: number };
+      }
+      | undefined;
+
+    for (const object of runtimeObjectRegistry.getTooltipObjectsInCell(playerPose.cellId)) {
+      if (!object.tooltip && !object.interactable) {
+        continue;
+      }
+
+      const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
+      const target = bounds?.center ?? object.localPose.translation;
+      const distance = distanceVec3(eye, target);
+      const range = object.tooltip?.rangeMeters ?? object.interactable?.rangeMeters ?? 2.25;
+      if (distance > range || distance <= 0.001) {
+        continue;
+      }
+
+      const alignment = dotVec3(normalizeVec3(subVec3(target, eye)), forward);
+      if (alignment < Math.cos(Math.PI / 7)) {
+        continue;
+      }
+
+      if (!best || distance < best.distance) {
+        best = {
+          object,
+          distance,
+          tooltipAnchor: {
+            x: target.x,
+            y: target.y,
+            z: target.z + (bounds?.halfZ ?? 0.35) + 0.25,
+          },
+        };
+      }
+    }
+
+    return best;
+  }
+
+  function getRuntimeObjectTooltipText(object: RuntimeWorldObject, inputMode: "desktop" | "xr"): string | undefined {
+    if (inputMode === "desktop" && object.tooltip?.desktopPrompt) {
+      return object.tooltip.desktopPrompt;
+    }
+
+    if (inputMode === "xr" && object.tooltip?.xrPrompt) {
+      return object.tooltip.xrPrompt;
+    }
+
+    return object.tooltip?.label ?? object.interactable?.label;
+  }
+
+  function projectWorldPointToScreen(point: { readonly x: number; readonly y: number; readonly z: number }):
+    | { readonly x: number; readonly y: number }
+    | undefined {
+    const projected = worldPointToThree(point).project(camera);
+    if (
+      !Number.isFinite(projected.x) ||
+      !Number.isFinite(projected.y) ||
+      !Number.isFinite(projected.z) ||
+      projected.z < -1 ||
+      projected.z > 1
+    ) {
+      return undefined;
+    }
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    return {
+      x: rect.left + ((projected.x + 1) / 2) * rect.width,
+      y: rect.top + ((1 - projected.y) / 2) * rect.height,
+    };
+  }
+
+  function removePlacedFlags(): void {
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "placed-flag") {
+        runtimeObjectRegistry.remove(object.id);
+      }
+    }
+    syncPlacedFlagViews();
+  }
+
+  function getDesktopEyePosition(): { readonly x: number; readonly y: number; readonly z: number } {
+    return {
+      x: playerPose.position.x,
+      y: playerPose.position.y,
+      z: playerPose.position.z + DEFAULT_PLAYER_EYE_HEIGHT_METERS,
+    };
+  }
+
+  function getPlayerForwardVector(): { readonly x: number; readonly y: number; readonly z: number } {
+    return {
+      x: -Math.sin(playerPose.yawRadians) * Math.cos(playerPose.pitchRadians),
+      y: Math.cos(playerPose.yawRadians) * Math.cos(playerPose.pitchRadians),
+      z: Math.sin(playerPose.pitchRadians),
+    };
+  }
+
+  function getCameraWorldPosition(): { readonly x: number; readonly y: number; readonly z: number } {
+    camera.updateMatrixWorld(true);
+    const position = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+    return {
+      x: position.x,
+      y: -position.z,
+      z: position.y,
+    };
+  }
+
+  function getCameraForwardVector(): { readonly x: number; readonly y: number; readonly z: number } {
+    const forward = new THREE.Vector3(0, 0, -1);
+    const quaternion = new THREE.Quaternion();
+    camera.getWorldQuaternion(quaternion);
+    forward.applyQuaternion(quaternion);
+    return {
+      x: forward.x,
+      y: -forward.z,
+      z: forward.y,
+    };
   }
 
   function syncDynamicObjectDebugWireframes(): void {

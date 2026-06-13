@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { worldObjectLibrary } from "../../src/world-objects/library";
+import {
+  butterflyVerticalOscillationHeightMagnitudeMeters,
+  butterflyVerticalOscillationRateHz,
+} from "../../src/world-objects/simpleGeoCreature";
 
 describe("worldObjectLibrary", () => {
   it("maps static wrappers to the expected asset paths and ids", () => {
@@ -172,5 +176,27 @@ describe("worldObjectLibrary", () => {
     expect(object.collision.offset?.x).toBeCloseTo(0.013101);
     expect(object.collision.offset?.y).toBeCloseTo(0.036391);
     expect(object.collision.offset?.z).toBeCloseTo(0.379296);
+  });
+
+  it("gives butterflies bounded vertical bobbing with a tenth-second random rate bucket", () => {
+    const object = worldObjectLibrary.geo_butterfly("flutter", {
+      position: [1, 2, 3],
+      oscillationRate: 1.2,
+      oscillationMagnitude: 0.3,
+    });
+
+    if (object.kind !== "geo-butterfly") {
+      throw new Error("Expected a geo butterfly.");
+    }
+
+    const firstBucketRate = butterflyVerticalOscillationRateHz(object, 0.04);
+    const sameBucketRate = butterflyVerticalOscillationRateHz(object, 0.09);
+    const nextBucketRate = butterflyVerticalOscillationRateHz(object, 0.11);
+
+    expect(firstBucketRate).toBe(sameBucketRate);
+    expect(firstBucketRate).toBeGreaterThanOrEqual(1.2 * 1.31);
+    expect(firstBucketRate).toBeLessThanOrEqual(2);
+    expect(nextBucketRate).not.toBe(firstBucketRate);
+    expect(butterflyVerticalOscillationHeightMagnitudeMeters(object)).toBeCloseTo(0.073859);
   });
 });

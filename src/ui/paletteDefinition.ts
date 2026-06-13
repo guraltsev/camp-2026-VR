@@ -6,6 +6,7 @@ import type {
   RuntimeMenuPageId,
   RuntimeMenuState,
 } from "../runtime/runtimeMenuState";
+import { placedFlagTypes, type PlacedFlagType } from "../world-objects/placedFlags";
 
 export interface PaletteSelectOption {
   readonly id: string;
@@ -20,7 +21,9 @@ export interface PaletteHeaderAction {
 }
 
 export interface MainPaletteContent {
-  readonly kind: "empty";
+  readonly kind: "main";
+  readonly selectedTool: "none" | "place-flag";
+  readonly placeFlagType: PlacedFlagType;
 }
 
 export interface SettingsPaletteContent {
@@ -46,11 +49,17 @@ export interface DebugSettingsPaletteContent {
   readonly collisionGeometryWireframesEnabled: boolean;
 }
 
+export interface PlaceFlagOptionsPaletteContent {
+  readonly kind: "place-flag-options";
+  readonly selectedFlagType: PlacedFlagType;
+  readonly flagTypeOptions: readonly PaletteSelectOption[];
+}
+
 export interface PaletteDefinition {
   readonly pageId: RuntimeMenuPageId;
   readonly leftAction: PaletteHeaderAction;
   readonly rightAction: PaletteHeaderAction;
-  readonly content: MainPaletteContent | SettingsPaletteContent | DebugSettingsPaletteContent;
+  readonly content: MainPaletteContent | SettingsPaletteContent | DebugSettingsPaletteContent | PlaceFlagOptionsPaletteContent;
 }
 
 export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinition {
@@ -104,12 +113,30 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
     };
   }
 
+  if (state.page === "place-flag-options") {
+    return {
+      pageId: "place-flag-options",
+      leftAction: createHeaderAction("none"),
+      rightAction: createHeaderAction("back"),
+      content: {
+        kind: "place-flag-options",
+        selectedFlagType: state.placeFlagOptions.flagType,
+        flagTypeOptions: placedFlagTypes.map((id) => ({
+          id,
+          label: id,
+        })),
+      },
+    };
+  }
+
   return {
     pageId: "main",
     leftAction: createHeaderAction("settings"),
     rightAction: createHeaderAction("close"),
     content: {
-      kind: "empty",
+      kind: "main",
+      selectedTool: state.selectedTool,
+      placeFlagType: state.placeFlagOptions.flagType,
     },
   };
 }

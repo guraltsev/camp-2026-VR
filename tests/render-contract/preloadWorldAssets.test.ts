@@ -58,6 +58,14 @@ describe("preloadWorldAssets", () => {
     expect(assetPaths.some((assetPath) => /disp|rough/i.test(assetPath))).toBe(false);
   });
 
+  it("includes runtime tool sign assets even when no authored object references them", () => {
+    const world = compileCellComplex(cube);
+    const assetPaths = collectWorldAssetPaths(world);
+
+    expect(assetPaths).toContain("WoodenSign1/WoodenSign1.glb");
+    expect(assetPaths).toContain("WoodenSign2/WoodenSign2.glb");
+  });
+
   it("classifies .ktx2 files as textures", () => {
     expect(classifyAssetPreloadKind("textures/floor/runtime/floor_color.ktx2")).toBe("texture-ktx2");
     expect(classifyAssetPreloadKind("textures/floor/source/floor_color.jpg")).toBe("texture");

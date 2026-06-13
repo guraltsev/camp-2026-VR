@@ -1,0 +1,152 @@
+import type { RigidTransform3 } from "../math/rigidTransform3";
+import type { DynamicObjectState, SimpleCollisionBox } from "../movement/dynamicObject";
+import type { PlacedFlagObject } from "./placedFlags";
+
+export interface RuntimeObjectInteraction {
+  readonly label: string;
+  readonly action: "edit-flag";
+  readonly rangeMeters?: number;
+}
+
+export interface RuntimeObjectTooltip {
+  readonly label: string;
+  readonly rangeMeters?: number;
+  readonly desktopPrompt?: string;
+  readonly xrPrompt?: string;
+}
+
+export interface RuntimeWorldObjectBase {
+  readonly id: string;
+  readonly cellId: string;
+  readonly localPose: RigidTransform3;
+  readonly collision?: SimpleCollisionBox;
+  readonly portalRenderable: boolean;
+  readonly tooltip?: RuntimeObjectTooltip;
+  readonly interactable?: RuntimeObjectInteraction;
+}
+
+export interface RuntimeCreatureObject extends RuntimeWorldObjectBase {
+  readonly kind: "geodesci-marmot" | "geo-mouse" | "geo-butterfly";
+}
+
+export type RuntimeWorldObject = RuntimeCreatureObject | PlacedFlagObject;
+
+export interface RuntimeObjectRegistry {
+  add(object: RuntimeWorldObject): void;
+  update(object: RuntimeWorldObject): void;
+  remove(id: string): void;
+  moveToCell(id: string, cellId: string, localPose?: RigidTransform3): RuntimeWorldObject | undefined;
+  get(id: string): RuntimeWorldObject | undefined;
+  getObjectsInCell(cellId: string): readonly RuntimeWorldObject[];
+  getCollidableObjectsInCell(cellId: string): readonly RuntimeWorldObject[];
+  getInteractableObjectsInCell(cellId: string): readonly RuntimeWorldObject[];
+  getTooltipObjectsInCell(cellId: string): readonly RuntimeWorldObject[];
+  getAll(): readonly RuntimeWorldObject[];
+}
+
+export function createRuntimeObjectRegistry(
+  initialObjects: readonly RuntimeWorldObject[] = [],
+): RuntimeObjectRegistry {
+  const objectsById = new Map<string, RuntimeWorldObject>();
+  const objectIdsByCellId = new Map<string, Set<string>>();
+
+  function indexObject(object: RuntimeWorldObject): void {
+    let cellIds = objectIdsByCellId.get(object.cellId);
+    if (!cellIds) {
+      cellIds = new Set<string>();
+      objectIdsByCellId.set(object.cellId, cellIds);
+    }
+    cellIds.add(object.id);
+  }
+
+  function unindexObject(object: RuntimeWorldObject): void {
+    const cellIds = objectIdsByCellId.get(object.cellId);
+    cellIds?.delete(object.id);
+    if (cellIds?.size === 0) {
+      objectIdsByCellId.delete(object.cellId);
+    }
+  }
+
+  const registry: RuntimeObjectRegistry = {
+    add(object) {
+      if (objectsById.has(object.id)) {
+        throw new Error(`Runtime object "${object.id}" already exists.`);
+      }
+
+      objectsById.set(object.id, object);
+      indexObject(object);
+    },
+    update(object) {
+      const previous = objectsById.get(object.id);
+      if (!previous) {
+        throw new Error(`Cannot update missing runtime object "${object.id}".`);
+      }
+
+      if (previous.cellId !== object.cellId) {
+        unindexObject(previous);
+        indexObject(object);
+      }
+
+      objectsById.set(object.id, object);
+    },
+    remove(id) {
+      const object = objectsById.get(id);
+      if (!object) {
+        return;
+      }
+
+      unindexObject(object);
+      objectsById.delete(id);
+    },
+    moveToCell(id, cellId, localPose) {
+      const object = objectsById.get(id);
+      if (!object) {
+        return undefined;
+      }
+
+      const next = {
+        ...object,
+        cellId,
+        localPose: localPose ?? object.localPose,
+      } as RuntimeWorldObject;
+      registry.update(next);
+      return next;
+    },
+    get(id) {
+      return objectsById.get(id);
+    },
+    getObjectsInCell(cellId) {
+      return [...(objectIdsByCellId.get(cellId) ?? [])]
+        .map((id) => objectsById.get(id))
+        .filter((object): object is RuntimeWorldObject => object !== undefined);
+    },
+    getCollidableObjectsInCell(cellId) {
+      return registry.getObjectsInCell(cellId).filter((object) => object.collision !== undefined);
+    },
+    getInteractableObjectsInCell(cellId) {
+      return registry.getObjectsInCell(cellId).filter((object) => object.interactable !== undefined);
+    },
+    getTooltipObjectsInCell(cellId) {
+      return registry.getObjectsInCell(cellId).filter(
+        (object) => object.tooltip !== undefined || object.interactable !== undefined,
+      );
+    },
+    getAll() {
+      return [...objectsById.values()];
+    },
+  };
+
+  for (const object of initialObjects) {
+    registry.add(object);
+  }
+
+  return registry;
+}
+
+export function runtimeObjectToDynamicObjectState(object: RuntimeWorldObjectBase): DynamicObjectState {
+  return {
+    cellId: object.cellId,
+    localPose: object.localPose,
+    collision: object.collision,
+  };
+}
