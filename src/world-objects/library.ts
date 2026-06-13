@@ -58,6 +58,7 @@ export const worldObjectLibrary: WorldObjectLibrary = {
     createStaticLibraryObject(name, "Bench/Bench.glb", {
       ...params,
       scale: (params.scale ?? 1) * 0.9,
+      modelOffset: [0, (params.scale ?? 1) * 0.9 * 0.45, 0],
     }),
   bicycle: (name, params) =>
     createStaticLibraryObject(name, "bicycle/Bicycle.glb", {
@@ -130,7 +131,7 @@ function createStaticLibraryObject(
 
 function treeScaleXYZ(scale = 1): readonly [number, number, number] {
   const assetScale = scale * 0.02;
-  return [assetScale / 1.5, assetScale * 2.5, assetScale / 1.5];
+  return [assetScale / 1.5, (assetScale * 2.5) / 3, assetScale / 1.5];
 }
 
 function brandLibraryObject<T extends CellObjectSpec | GeodesciMarmotObjectSpec>(objectSpec: T): T & WorldLibraryObjectSpec {

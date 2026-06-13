@@ -51,7 +51,6 @@ describe("worldObjectLibrary", () => {
   });
 
   it.each([
-    ["bench", "Bench/Bench.glb"],
     ["bicycle", "bicycle/Bicycle.glb"],
     ["flower_group", "FloweGroup/flower_group.glb"],
     ["flower_pot", "flowerPot/flower_pot.glb"],
@@ -73,6 +72,21 @@ describe("worldObjectLibrary", () => {
     });
   });
 
+  it("raises benches so the seat surface is above the floor", () => {
+    expect(
+      worldObjectLibrary.bench("bench-object", {
+        position: [0, 0, 0],
+        scale: 2,
+      }),
+    ).toMatchObject({
+      id: "bench-object",
+      kind: "asset",
+      assetPath: "Bench/Bench.glb",
+      scale: 1.8,
+      modelOffset: { x: 0, y: 0, z: 0.81 },
+    });
+  });
+
   it("keeps static wrappers non-collidable by default", () => {
     const object = worldObjectLibrary.small_house("front-house", {
       position: [0, 0, 0],
@@ -88,14 +102,10 @@ describe("worldObjectLibrary", () => {
       scale: 3,
     });
 
-    expect(object).toMatchObject({
-      scale: 3,
-      scaleXYZ: {
-        x: 0.04,
-        y: 0.15,
-        z: 0.04,
-      },
-    });
+    expect(object.scale).toBe(3);
+    expect(object.scaleXYZ?.x).toBeCloseTo(0.04);
+    expect(object.scaleXYZ?.y).toBeCloseTo(0.05);
+    expect(object.scaleXYZ?.z).toBeCloseTo(0.04);
   });
 
   it("creates geo mice as dynamic specs with authored speed and oscillation", () => {
