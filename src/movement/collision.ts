@@ -15,6 +15,7 @@ export interface CollisionResult {
 export interface CollisionCandidate {
   readonly cell: CompiledPrismCell;
   readonly object: DynamicObjectState;
+  readonly previousObject?: DynamicObjectState;
   readonly ignoredPortalSideIndex?: number;
 }
 
@@ -54,6 +55,18 @@ export function testCellCollision(candidate: CollisionCandidate): CollisionResul
   for (const exclusionBox of candidate.cell.singularityColumns) {
     if (simpleBoxIntersectsSingularityBox(bounds, exclusionBox)) {
       return { blocked: true, reason: "forbidden-zone" };
+    }
+  }
+
+  const previousBounds = candidate.previousObject
+    ? getDynamicObjectCollisionBounds(candidate.previousObject)
+    : undefined;
+
+  if (previousBounds) {
+    for (const exclusionBox of candidate.cell.singularityColumns) {
+      if (simpleBoxIntersectsSingularityBox(getSweptSimpleBoxBounds(previousBounds, bounds), exclusionBox)) {
+        return { blocked: true, reason: "forbidden-zone" };
+      }
     }
   }
 
@@ -142,6 +155,26 @@ function simpleBoxIntersectsSingularityBox(
     halfY: exclusionBox.halfY,
     halfZ: exclusionBox.halfZ,
   });
+}
+
+function getSweptSimpleBoxBounds(start: SimpleBoxBounds, end: SimpleBoxBounds): SimpleBoxBounds {
+  const minX = Math.min(start.center.x - start.halfX, end.center.x - end.halfX);
+  const maxX = Math.max(start.center.x + start.halfX, end.center.x + end.halfX);
+  const minY = Math.min(start.center.y - start.halfY, end.center.y - end.halfY);
+  const maxY = Math.max(start.center.y + start.halfY, end.center.y + end.halfY);
+  const minZ = Math.min(start.center.z - start.halfZ, end.center.z - end.halfZ);
+  const maxZ = Math.max(start.center.z + start.halfZ, end.center.z + end.halfZ);
+
+  return {
+    center: {
+      x: (minX + maxX) / 2,
+      y: (minY + maxY) / 2,
+      z: (minZ + maxZ) / 2,
+    },
+    halfX: (maxX - minX) / 2,
+    halfY: (maxY - minY) / 2,
+    halfZ: (maxZ - minZ) / 2,
+  };
 }
 
 export function signedDistanceToSide(side: CompiledPrismSide, point: Vec3): number {

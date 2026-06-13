@@ -113,6 +113,28 @@ describe("moveDynamicObject", () => {
     expect(result.object.localPose.translation.x).toBeCloseTo(-0.95);
   });
 
+  it("does not let an offset collision center trigger anchor portal crossing before the object anchor crosses", () => {
+    const world = compileCellComplex(twoRoomsWithPortal());
+    const object = dynamicObject(
+      "room-a",
+      { x: 0.75, y: 0, z: 0.5 },
+      identityMat3,
+      simpleCollisionBox(0.2, 0.2, 0.2, { x: 0.3, y: 0, z: 0 }),
+    );
+
+    const result = moveDynamicObject({
+      world,
+      object,
+      displacement: { x: 0, y: 0, z: 0 },
+      portalCrossingMode: "anchor",
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.crossedPortal).toBe(false);
+    expect(result.object.cellId).toBe("room-a");
+    expect(result.object.localPose.translation.x).toBeCloseTo(0.75);
+  });
+
   it("resolves blocked non-portal exits back to an in-bounds pose near the wall", () => {
     const world = compileCellComplex(singleRoom());
     const object = dynamicObject("room", { x: -0.8, y: 0, z: 0.5 });
@@ -149,6 +171,23 @@ describe("moveDynamicObject", () => {
 
     expect(result.blocked).toBe(true);
     expect(result.blockingReason).toBe("forbidden-zone");
+  });
+
+  it("blocks swept movement through forbidden zones even when the final pose is clear", () => {
+    const world = compileCellComplex(twoRoomsWithPortal());
+    const object = dynamicObject("room-a", { x: 0.6, y: 0.9, z: 0.5 }, identityMat3, simpleCollisionBox(0.2, 0.2, 0.2));
+
+    const result = moveDynamicObject({
+      world,
+      object,
+      displacement: { x: 0.8, y: 0, z: 0 },
+      portalCrossingMode: "anchor",
+    });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockingReason).toBe("forbidden-zone");
+    expect(result.crossedPortal).toBe(false);
+    expect(result.object).toBe(object);
   });
 
   it("uses rotated conservative bounds for wall blocking", () => {

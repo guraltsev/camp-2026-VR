@@ -57,6 +57,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
       const sourceCollision = testCellCollision({
         cell: startCell,
         object: candidateObject,
+        previousObject: request.object,
         ignoredPortalSideIndex: crossingSide.sideIndex,
       });
 
@@ -75,6 +76,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
     const sourceCollision = testCellCollision({
       cell: startCell,
       object: candidateObject,
+      previousObject: request.object,
       ignoredPortalSideIndex: crossingSide.sideIndex,
     });
 
@@ -111,6 +113,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
   const collision = testCellCollision({
     cell: startCell,
     object: candidateObject,
+    previousObject: request.object,
   });
 
   if (collision.blocked) {
@@ -177,10 +180,7 @@ function isPortalCrossingReachable(
 }
 
 function hasAnchorCrossedSide(object: DynamicObjectState, side: CompiledPrismSide): boolean {
-  const bounds = getDynamicObjectCollisionBounds(object);
-  const point = bounds?.center ?? object.localPose.translation;
-
-  return signedDistanceToSide(side, point) < 0;
+  return signedDistanceToSide(side, object.localPose.translation) < 0;
 }
 
 function findReachablePortalSide(
@@ -195,9 +195,7 @@ function findReachablePortalSide(
       continue;
     }
 
-    const bounds = getDynamicObjectCollisionBounds(object);
-    const point = bounds?.center ?? object.localPose.translation;
-    const clearance = signedDistanceToSide(side, point);
+    const clearance = signedDistanceToSide(side, object.localPose.translation);
 
     if (!bestSide || clearance < bestClearance) {
       bestSide = side;
