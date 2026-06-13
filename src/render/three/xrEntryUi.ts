@@ -1,5 +1,7 @@
 import type { XrSessionState } from "./xrSessionState";
 
+export const XR_UNAVAILABLE_MESSAGE_DURATION_MS = 10_000;
+
 export interface XrEntryUi {
   readonly root: HTMLElement;
   update(state: XrSessionState): void;
@@ -41,20 +43,68 @@ export function createXrEntryUi(container: HTMLElement, onEnterVr: () => void): 
 
   button.addEventListener("click", onEnterVr);
 
+  let unavailableMessageTimer: number | undefined;
+  let unavailableMessageTimerStatus: XrSessionState["status"] | undefined;
+  let dismissedUnavailableMessageStatus: XrSessionState["status"] | undefined;
+
+  function clearUnavailableMessageTimer(): void {
+    if (unavailableMessageTimer !== undefined) {
+      window.clearTimeout(unavailableMessageTimer);
+      unavailableMessageTimer = undefined;
+      unavailableMessageTimerStatus = undefined;
+    }
+  }
+
+  function setRootVisible(visible: boolean): void {
+    root.hidden = !visible;
+    root.style.display = visible ? "flex" : "none";
+  }
+
+  function scheduleUnavailableMessageDismissal(state: XrSessionState): void {
+    if (!isTemporaryUnavailableState(state) || dismissedUnavailableMessageStatus === state.status) {
+      clearUnavailableMessageTimer();
+      return;
+    }
+
+    if (unavailableMessageTimerStatus === state.status) {
+      return;
+    }
+
+    clearUnavailableMessageTimer();
+    unavailableMessageTimerStatus = state.status;
+    unavailableMessageTimer = window.setTimeout(() => {
+      dismissedUnavailableMessageStatus = state.status;
+      unavailableMessageTimer = undefined;
+      unavailableMessageTimerStatus = undefined;
+      setRootVisible(false);
+    }, XR_UNAVAILABLE_MESSAGE_DURATION_MS);
+  }
+
   return {
     root,
     update(state) {
-      root.hidden = state.status === "active";
+      if (!isTemporaryUnavailableState(state)) {
+        dismissedUnavailableMessageStatus = undefined;
+      }
+
+      const temporaryUnavailableMessageDismissed = dismissedUnavailableMessageStatus === state.status && isTemporaryUnavailableState(state);
+      setRootVisible(state.status !== "active" && !temporaryUnavailableMessageDismissed);
       const canEnter = state.immersiveVrSupported && (state.status === "available" || state.status === "ended" || state.status === "failed");
       button.hidden = !canEnter;
       button.disabled = !canEnter;
       message.textContent = messageForState(state);
+      scheduleUnavailableMessageDismissal(state);
     },
     dispose() {
+      clearUnavailableMessageTimer();
       button.removeEventListener("click", onEnterVr);
       root.remove();
     },
   };
+}
+
+function isTemporaryUnavailableState(state: XrSessionState): boolean {
+  return state.status === "unsupported" || state.status === "insecure-context";
 }
 
 function messageForState(state: XrSessionState): string {
