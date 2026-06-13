@@ -38,6 +38,7 @@ export interface VrPaletteControllerUpdate {
   readonly referenceSpaceToWorldMatrix: THREE.Matrix4;
   readonly inputSources: readonly XRInputSource[];
   readonly definition: PaletteDefinition;
+  readonly debugPanelVisible: boolean;
   readonly xrDebugState: XrDebugRenderState;
 }
 
@@ -56,6 +57,7 @@ const rayDirection = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const controllerObjects = new Map<string, THREE.Object3D>();
 const controllerRayObjects = new Map<string, THREE.Line>();
+const debugPanelCameraOffset = new THREE.Vector3(-0.12, 0.24, -0.9);
 
 export function createVrPaletteController(options: VrPaletteControllerOptions): VrPaletteController {
   const paletteRoot = new THREE.Group();
@@ -102,34 +104,29 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
   options.scene.add(paletteRoot);
 
   const debugPanel = createXrDebugPanel();
-  options.scene.add(debugPanel.root);
+  const camera = options.getCamera();
+  debugPanel.root.position.copy(debugPanelCameraOffset);
+  debugPanel.root.quaternion.identity();
+  camera.add(debugPanel.root);
 
   const controllerHandModels = createXrControllerHandModels(options.scene);
   const xrPointers = createXrPointers(options.getCamera);
   let currentDefinitionSignature = "";
   let previousPosition: THREE.Vector3 | undefined;
   let previousQuaternion: THREE.Quaternion | undefined;
-  let openedOnceInSession = false;
   let previousMenuTogglePressed = false;
 
   return {
     update(frame) {
-      if (!openedOnceInSession) {
-        openedOnceInSession = true;
-        if (!options.getIsOpen()) {
-          options.onOpenRequested();
-        }
-      }
-
       const definitionSignature = JSON.stringify(frame.definition);
       if (definitionSignature !== currentDefinitionSignature) {
         currentDefinitionSignature = definitionSignature;
         adapter.setDefinition(frame.definition);
       }
 
-      const camera = options.getCamera();
-      camera.updateMatrixWorld(true);
-      camera.matrixWorld.decompose(worldPosition, worldQuaternion, worldScale);
+      const frameCamera = options.getCamera();
+      frameCamera.updateMatrixWorld(true);
+      frameCamera.matrixWorld.decompose(worldPosition, worldQuaternion, worldScale);
       const controllerSources = createControllerSources(
         frame.inputSources,
         frame.xrFrame,
@@ -184,15 +181,12 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
         hoveredAction();
       }
 
-      debugPanel.root.position.copy(placement.position).add(new THREE.Vector3(0, -0.22, 0).applyQuaternion(placement.quaternion));
-      debugPanel.root.quaternion.copy(placement.quaternion);
       debugPanel.update({
         ...frame.xrDebugState,
         inputMode: describeVrInputMode(controllerSources.pointerSources.length > 0, activePointer?.kind),
-      }, options.getIsOpen() && frame.definition.content.kind === "settings" && frame.definition.content.debugOverlayEnabled);
+      }, frame.debugPanelVisible);
     },
     onSessionEnded() {
-      openedOnceInSession = false;
       previousMenuTogglePressed = false;
       previousPosition = undefined;
       previousQuaternion = undefined;

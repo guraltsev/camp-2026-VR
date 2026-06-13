@@ -27,6 +27,7 @@ Bring the existing menu into VR:
 - toggle the VR menu with the side/menu button on either controller,
 - show the `Lowpolyhands.glb` hand models on the tracked left and right controller poses,
 - support controller ray hover and select,
+- keep the VR menu closed when entering XR until the user toggles it open,
 - preserve controller locomotion, reset, collision, and portal traversal,
 - avoid hand-written widget implementations where the selected UI library can provide them.
 
@@ -131,6 +132,7 @@ The VR menu must match the FPS menu behavior:
 - main page has no selectable tools,
 - main page content remains empty, matching the desktop palette; do not add VR-only placeholder copy such as `Tool area reserved`,
 - left and right controller poses render the `Lowpolyhands.glb` visual hand models,
+- menu remains closed on XR session start until toggled open,
 - cog opens settings,
 - `X` closes main page,
 - settings page uses `<-` back in the former `X` slot,
@@ -141,6 +143,8 @@ The VR menu must match the FPS menu behavior:
 ### 7. Add XR debug overlay rendering
 
 The DOM debug overlay is not visible in immersive VR. Add a renderer-side debug panel that can be toggled from the menu.
+
+Place the VR debug panel in the upper-left of the headset view so it remains visible when enabled. Its visibility should follow debug mode and the debug overlay toggle, not whether the palette is currently open.
 
 The first version can show compact state:
 
@@ -172,6 +176,7 @@ Manual checks should cover:
 - main page content is empty, with no placeholder text,
 - cogwheel icon renders as a recognizable cog instead of a missing-glyph rectangle,
 - left and right controller hand models appear and track the controller poses,
+- menu starts closed when entering XR,
 - menu toggles from the side/menu button on either controller,
 - controller ray hover works,
 - controller select works,
@@ -179,6 +184,7 @@ Manual checks should cover:
 - world selector behavior,
 - reload behavior,
 - debug overlay toggle visibility,
+- debug overlay remains visible after closing the menu when debug mode and UI overlay are enabled,
 - locomotion still works when the menu is closed.
 
 ## Acceptance Criteria
@@ -188,6 +194,7 @@ Manual checks should cover:
 - The main VR menu shows an empty rectangular content area with no selectable tools and no placeholder text.
 - The cog/settings button renders as a recognizable cogwheel icon, not a missing-glyph rectangle.
 - The `Lowpolyhands.glb` models render as left and right controller-tracked hand visuals.
+- Entering XR does not auto-open the VR menu.
 - The side/menu button on either controller toggles the VR menu.
 - The cog opens settings.
 - The `X` closes the main VR menu.
@@ -195,6 +202,7 @@ Manual checks should cover:
 - Settings include a world selector, reload button, and debug overlay toggle.
 - Controller ray hover/select works.
 - The debug overlay can be toggled in immersive VR.
+- The debug overlay remains visible independent of menu open/closed state when enabled.
 - Existing VR locomotion, collision, reset, and portal traversal still work.
 - Desktop FPS menu from issue 19 still works.
 - `npm run typecheck`, `npm test`, and `npm run build` pass.

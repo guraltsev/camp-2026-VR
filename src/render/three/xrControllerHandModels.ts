@@ -17,7 +17,8 @@ export interface XrControllerHandModels {
 }
 
 const lowPolyHandsAssetPath = "lowpolyhands/Lowpolyhands.glb";
-const handScale = 0.78;
+const handScale = 0.42;
+const handMeshRotation = new THREE.Euler(THREE.MathUtils.degToRad(110), 0, Math.PI);
 
 export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHandModels {
   const loader = new GLTFLoader();
@@ -95,9 +96,11 @@ interface HandModelTemplates {
 function createHandModelTemplates(sourceScene: THREE.Object3D): HandModelTemplates {
   const meshes = collectMeshRoots(sourceScene);
   const sortedMeshes = meshes.sort((a, b) => boxCenterX(a) - boxCenterX(b));
-  const left = sortedMeshes[0] ? createCenteredTemplate(sortedMeshes[0], "left") : createFallbackTemplate("left");
-  const right = sortedMeshes[sortedMeshes.length - 1]
-    ? createCenteredTemplate(sortedMeshes[sortedMeshes.length - 1], "right")
+  const left = sortedMeshes[sortedMeshes.length - 1]
+    ? createCenteredTemplate(sortedMeshes[sortedMeshes.length - 1], "left")
+    : createFallbackTemplate("left");
+  const right = sortedMeshes[0]
+    ? createCenteredTemplate(sortedMeshes[0], "right")
     : createFallbackTemplate("right");
 
   return { left, right };
@@ -119,6 +122,8 @@ function createCenteredTemplate(source: THREE.Object3D, handedness: "left" | "ri
   template.scale.setScalar(handScale);
 
   const model = cloneSkeleton(source);
+  model.rotation.copy(handMeshRotation);
+  model.updateMatrixWorld(true);
   const center = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
   model.position.sub(center);
   template.add(model);

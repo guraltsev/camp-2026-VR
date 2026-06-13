@@ -577,6 +577,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         referenceSpaceToWorldMatrix: xrRig.root.matrixWorld,
         inputSources: [...(renderer.xr.getSession()?.inputSources ?? [])],
         definition: createPaletteDefinition(menuState),
+        debugPanelVisible: menuState.debugEnabled && menuState.debugOverlayEnabled,
         xrDebugState,
       });
     }
