@@ -13,6 +13,7 @@ export interface XrDebugRenderState {
   readonly sessionStatus: string;
   readonly activeInputSource: RuntimeInputFrame["source"];
   readonly inputMode?: string;
+  readonly frameRateFps?: number;
   readonly currentCellId: string;
   readonly playerPosition: Vec3;
   readonly yawRadians: number;

@@ -40,7 +40,9 @@ export interface VrPaletteControllerUpdate {
   readonly inputSources: readonly XRInputSource[];
   readonly definition: PaletteDefinition;
   readonly debugPanelVisible: boolean;
+  readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly xrDebugState: XrDebugRenderState;
+  readonly frameRateFps?: number;
 }
 
 export interface VrPaletteController {
@@ -169,8 +171,9 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
 
       debugPanel.update({
         ...frame.xrDebugState,
+        frameRateFps: frame.frameRateFps,
         inputMode: describeVrInputMode(controllerSources.pointerSources.length > 0, activePointer?.kind),
-      }, frame.debugPanelVisible);
+      }, frame.debugPanelVisible, frame.debugOverlayItems);
     },
     onSessionEnded() {
       previousMenuTogglePressed = false;

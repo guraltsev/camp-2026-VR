@@ -591,7 +591,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         inputSources: [...(renderer.xr.getSession()?.inputSources ?? [])],
         definition: createPaletteDefinition(menuState),
         debugPanelVisible: menuState.debugEnabled && menuState.debugOverlayEnabled,
+        debugOverlayItems: menuState.debugOverlayItems,
         xrDebugState,
+        frameRateFps: smoothedFrameRateFps,
       });
     }
     portalDebugRuntime.updateVisiblePortalPaths();

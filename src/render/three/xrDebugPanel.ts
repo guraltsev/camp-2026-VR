@@ -1,11 +1,14 @@
 import * as THREE from "three";
+import type { RuntimeDebugOverlayItemId } from "../../runtime/runtimeMenuState";
 import type { XrDebugRenderState } from "./renderState";
 
 export interface XrDebugPanel {
   readonly root: THREE.Sprite;
-  update(state: XrDebugRenderState, visible: boolean): void;
+  update(state: XrDebugRenderState, visible: boolean, items?: readonly RuntimeDebugOverlayItemId[]): void;
   dispose(): void;
 }
+
+const defaultXrDebugPanelItems = ["fps", "location", "portal-quantities"] as const satisfies readonly RuntimeDebugOverlayItemId[];
 
 export function createXrDebugPanel(): XrDebugPanel {
   const canvas = document.createElement("canvas");
@@ -26,7 +29,7 @@ export function createXrDebugPanel(): XrDebugPanel {
   root.renderOrder = 999;
   root.visible = false;
 
-  function draw(state: XrDebugRenderState): void {
+  function draw(state: XrDebugRenderState, items: readonly RuntimeDebugOverlayItemId[]): void {
     if (!context) {
       return;
     }
@@ -42,13 +45,7 @@ export function createXrDebugPanel(): XrDebugPanel {
     context.font = "700 28px sans-serif";
     context.fillText("XR Debug", 24, 40);
     context.font = "22px sans-serif";
-    const lines = [
-      `Cell: ${state.currentCellId}`,
-      `XR: ${state.sessionStatus}`,
-      `Input: ${state.inputMode ?? state.activeInputSource}`,
-      `Blocked: ${state.lastMovementBlocked ? state.lastBlockingReason ?? "yes" : "no"}`,
-      `Visible paths: ${state.visiblePortalPathCount ?? "n/a"}`,
-    ];
+    const lines = buildXrDebugPanelLines(state, items);
     lines.forEach((line, index) => {
       context.fillText(line, 24, 86 + index * 32);
     });
@@ -57,12 +54,12 @@ export function createXrDebugPanel(): XrDebugPanel {
 
   return {
     root,
-    update(state, visible) {
+    update(state, visible, items = defaultXrDebugPanelItems) {
       root.visible = visible;
       if (!visible) {
         return;
       }
-      draw(state);
+      draw(state, items);
     },
     dispose() {
       root.removeFromParent();
@@ -70,4 +67,35 @@ export function createXrDebugPanel(): XrDebugPanel {
       material.dispose();
     },
   };
+}
+
+export function buildXrDebugPanelLines(
+  state: XrDebugRenderState,
+  items: readonly RuntimeDebugOverlayItemId[] = defaultXrDebugPanelItems,
+): readonly string[] {
+  const requestedItems = new Set(items);
+  const lines: string[] = [];
+
+  if (requestedItems.has("fps")) {
+    lines.push(`FPS: ${state.frameRateFps === undefined ? "n/a" : roundNumber(state.frameRateFps)}`);
+  }
+
+  if (requestedItems.has("location")) {
+    lines.push(
+      `Cell: ${state.currentCellId}`,
+      `XR: ${state.sessionStatus}`,
+      `Input: ${state.inputMode ?? state.activeInputSource}`,
+      `Blocked: ${state.lastMovementBlocked ? state.lastBlockingReason ?? "yes" : "no"}`,
+    );
+  }
+
+  if (requestedItems.has("portal-quantities")) {
+    lines.push(`Visible paths: ${state.visiblePortalPathCount ?? "n/a"}`);
+  }
+
+  return lines;
+}
+
+function roundNumber(value: number): number {
+  return Math.round(value * 1_000) / 1_000;
 }
