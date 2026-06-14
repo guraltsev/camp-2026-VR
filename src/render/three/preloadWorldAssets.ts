@@ -3,6 +3,7 @@ import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex"
 import { publicAssetUrl } from "../../glue/assetUrls";
 import { PORTAL_WALL_TEXTURE_FILE } from "./portalWallTexture";
 import { placedFlagAssetPaths } from "../../world-objects/placedFlags";
+import { geodesicFlashlightAssetPaths } from "./geodesicCannonRenderer";
 import { runtimeDiagnostics } from "./runtimeDiagnostics";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
@@ -64,7 +65,10 @@ export function collectWorldAssetPaths(world: CompiledCellComplex): readonly str
     }
   }
 
-  for (const assetPath of Object.values(placedFlagAssetPaths)) {
+  for (const assetPath of [
+    ...Object.values(placedFlagAssetPaths),
+    ...Object.values(geodesicFlashlightAssetPaths),
+  ]) {
     assetPaths.add(assetPath);
   }
 

@@ -102,6 +102,13 @@ export function groupRuntimeObjectRenderRecordsByArchetype(
   return grouped;
 }
 
+export function deriveRuntimeObjectRenderArchetypeCapacity(
+  recordCount: number,
+  maxVisiblePaths: number,
+): number {
+  return Math.max(1, recordCount * maxVisiblePaths);
+}
+
 function cloneMaterial(material: THREE.Material | THREE.Material[]): THREE.Material | THREE.Material[] {
   if (Array.isArray(material)) {
     return material.map((entry) => entry.clone());

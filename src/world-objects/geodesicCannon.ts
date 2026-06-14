@@ -9,6 +9,7 @@ import { runtimeObjectToDynamicObjectState } from "./runtimeObjectRegistry";
 export interface GeodesicCannonObject extends RuntimeWorldObjectBase {
   readonly kind: "geodesic-cannon";
   readonly activeGeodesicId?: string;
+  readonly geodesicIds: readonly string[];
   readonly aimYawRadians: number;
 }
 
@@ -39,6 +40,7 @@ export interface CreateGeodesicCannonOptions {
   readonly cellId: string;
   readonly localPose: RigidTransform3;
   readonly activeGeodesicId?: string;
+  readonly geodesicIds?: readonly string[];
   readonly aimYawRadians?: number;
   readonly collision?: SimpleCollisionCylinder;
 }
@@ -94,8 +96,8 @@ const defaultCannonCollision: SimpleCollisionCylinder = {
   height: 0.5,
   offset: { x: 0, y: 0, z: 0.25 },
 };
-const defaultSegmentHeightMeters = 0.32;
-const cannonMuzzleOffsetMeters = 0.42;
+const defaultSegmentHeightMeters = 0.92;
+const flashlightMuzzleOffsetMeters = 0.34;
 const defaultTraceLengthMeters = 1;
 const portalStartEpsilonMeters = 1e-4;
 const intersectionTolerance = 1e-7;
@@ -114,10 +116,11 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
     collision: options.collision ?? defaultCannonCollision,
     portalRenderable: true,
     tooltip: {
-      label: "Geodesic cannon",
+      label: "Geodesic flashlight",
       rangeMeters: 2.25,
     },
     activeGeodesicId: options.activeGeodesicId,
+    geodesicIds: options.geodesicIds ?? (options.activeGeodesicId ? [options.activeGeodesicId] : []),
     aimYawRadians,
   };
 }
@@ -193,8 +196,14 @@ export function removeGeodesic(registry: RuntimeObjectRegistry, geodesicId: stri
 
 export function removeGeodesicCannonAndSegments(registry: RuntimeObjectRegistry, cannonId: string): void {
   const cannon = registry.get(cannonId);
-  if (cannon?.kind === "geodesic-cannon" && cannon.activeGeodesicId) {
-    removeGeodesic(registry, cannon.activeGeodesicId);
+  if (cannon?.kind === "geodesic-cannon") {
+    const geodesicIds = new Set(cannon.geodesicIds);
+    if (cannon.activeGeodesicId) {
+      geodesicIds.add(cannon.activeGeodesicId);
+    }
+    for (const geodesicId of geodesicIds) {
+      removeGeodesic(registry, geodesicId);
+    }
   }
   registry.remove(cannonId);
 }
@@ -296,7 +305,7 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
       y: input.cannon.localPose.translation.y,
       z: defaultSegmentHeightMeters,
     },
-    scaleVec3(direction, cannonMuzzleOffsetMeters),
+    scaleVec3(direction, flashlightMuzzleOffsetMeters),
   );
   const segment = createSegmentFromTrace({
     id: `${input.geodesicId}:segment:0`,
@@ -315,6 +324,9 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
   input.registry.update({
     ...input.cannon,
     activeGeodesicId: input.geodesicId,
+    geodesicIds: input.cannon.geodesicIds.includes(input.geodesicId)
+      ? input.cannon.geodesicIds
+      : [...input.cannon.geodesicIds, input.geodesicId],
   });
   return segment;
 }

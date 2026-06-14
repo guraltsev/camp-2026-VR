@@ -50,7 +50,9 @@ describe("geodesic cannon world objects", () => {
     registry.add(cannon);
 
     const first = shootGeodesic({ world, registry, cannon, geodesicId: "g-a", maxLengthMeters: 1 });
+    const updatedCannon = registry.get("cannon-a");
     expect(first.segmentIndex).toBe(0);
+    expect(updatedCannon?.kind === "geodesic-cannon" ? updatedCannon.geodesicIds : []).toEqual(["g-a"]);
     expect(first.terminal.kind).toBe("portal-hit");
     if (first.terminal.kind !== "portal-hit") {
       throw new Error("Expected portal-hit terminal.");

@@ -1,105 +1,49 @@
 import * as THREE from "three";
 import type { GeodesicCannonObject, GeodesicSegmentObject } from "../../world-objects/geodesicCannon";
-import type { RuntimeObjectRenderRecord, RuntimeObjectRenderSourceMesh } from "./runtimeObjectRenderRecords";
+import { collectRuntimeObjectRenderSourceMeshes, type RuntimeObjectRenderRecord, type RuntimeObjectRenderSourceMesh } from "./runtimeObjectRenderRecords";
+import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { rigidTransformToThreeMatrix } from "./worldAxes";
 
 export const geodesicSegmentArchetypeKey = "geodesic-segment:ribbon-cross";
-export const geodesicCannonBaseArchetypeKey = "geodesic-cannon:base";
-export const geodesicCannonBarrelArchetypeKey = "geodesic-cannon:barrel";
+export const geodesicFlashlightPostArchetypePrefix = "geodesic-flashlight:post";
+export const geodesicFlashlightHeadArchetypePrefix = "geodesic-flashlight:head";
+export const geodesicFlashlightAssetPaths = {
+  post: "flashlight/Post.glb",
+  flashlight: "flashlight/Flashlight.glb",
+} as const;
 
-export function createGeodesicRuntimeRenderSources(): readonly RuntimeObjectRenderSourceMesh[] {
-  const root = new THREE.Group();
-  root.name = "geodesic-runtime-render-sources";
-
-  const segmentMaterial = new THREE.MeshBasicMaterial({
-    color: 0x38f2ff,
-    transparent: true,
-    opacity: 0.88,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  });
-  const segment = new THREE.Mesh(createCrossRibbonGeometry(0.025), segmentMaterial);
-  segment.name = "geodesic-segment-ribbon-cross";
-  const segmentSourceRoot = new THREE.Group();
-  segmentSourceRoot.add(segment);
-  root.add(segmentSourceRoot);
-
-  const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.28, 0.34, 0.16, 18),
-    new THREE.MeshStandardMaterial({ color: 0x243241, roughness: 0.72, metalness: 0.12 }),
-  );
-  base.name = "geodesic-cannon-base";
-  base.rotation.x = Math.PI / 2;
-  base.position.z = 0.08;
-
-  const barrel = new THREE.Mesh(
-    new THREE.BoxGeometry(0.55, 0.12, 0.12),
-    new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.58, metalness: 0.18 }),
-  );
-  barrel.name = "geodesic-cannon-barrel";
-  barrel.position.set(0.22, 0, 0.28);
-
-  root.updateMatrixWorld(true);
-  segmentSourceRoot.updateMatrixWorld(true);
-
+export function createGeodesicRuntimeRenderSources(
+  assets?: PreparedWorldAssets,
+): readonly RuntimeObjectRenderSourceMesh[] {
   return [
-    {
-      objectId: "geodesic-segment:source",
-      archetypeKey: geodesicSegmentArchetypeKey,
-      mesh: segment,
-      root: segmentSourceRoot,
-    },
-    {
-      objectId: "geodesic-cannon:source",
-      archetypeKey: geodesicCannonBaseArchetypeKey,
-      mesh: base,
-      root,
-    },
-    {
-      objectId: "geodesic-cannon:source",
-      archetypeKey: geodesicCannonBarrelArchetypeKey,
-      mesh: barrel,
-      root,
-    },
+    createSegmentSource(),
+    ...createFlashlightOnPostSources(assets),
   ];
 }
 
-function createCrossRibbonGeometry(width: number): THREE.BufferGeometry {
-  const half = width / 2;
-  const positions = new Float32Array([
-    0, -half, 0, 1, -half, 0, 1, half, 0, 0, half, 0,
-    0, 0, -half, 1, 0, -half, 1, 0, half, 0, 0, half,
-  ]);
-  const indices = [
-    0, 1, 2, 0, 2, 3,
-    4, 5, 6, 4, 6, 7,
-  ];
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
+export function getGeodesicFlashlightArchetypeKeys(
+  sources: readonly RuntimeObjectRenderSourceMesh[],
+): readonly string[] {
+  return sources
+    .map((source) => source.archetypeKey)
+    .filter((key) =>
+      key.startsWith(`${geodesicFlashlightPostArchetypePrefix}:`) ||
+      key.startsWith(`${geodesicFlashlightHeadArchetypePrefix}:`)
+    );
 }
 
 export function collectGeodesicRuntimeRenderRecords(
   object: GeodesicCannonObject | GeodesicSegmentObject,
+  flashlightArchetypeKeys: readonly string[] = [],
 ): readonly RuntimeObjectRenderRecord[] {
   if (object.kind === "geodesic-cannon") {
     const localMatrix = rigidTransformToThreeMatrix(object.localPose);
-    return [
-      {
-        objectId: object.id,
-        cellId: object.cellId,
-        archetypeKey: geodesicCannonBaseArchetypeKey,
-        localMatrix,
-      },
-      {
-        objectId: object.id,
-        cellId: object.cellId,
-        archetypeKey: geodesicCannonBarrelArchetypeKey,
-        localMatrix,
-      },
-    ];
+    return flashlightArchetypeKeys.map((archetypeKey) => ({
+      objectId: object.id,
+      cellId: object.cellId,
+      archetypeKey,
+      localMatrix,
+    }));
   }
 
   return [
@@ -128,4 +72,114 @@ export function composeSegmentMatrix(segment: GeodesicSegmentObject): THREE.Matr
     },
     translation: segment.start,
   }).multiply(new THREE.Matrix4().makeScale(segment.lengthMeters, 1, 1));
+}
+
+function createSegmentSource(): RuntimeObjectRenderSourceMesh {
+  const segmentMaterial = new THREE.MeshBasicMaterial({
+    color: 0x38f2ff,
+    transparent: true,
+    opacity: 0.88,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const segment = new THREE.Mesh(createCrossRibbonGeometry(0.025), segmentMaterial);
+  segment.name = "geodesic-segment-ribbon-cross";
+  const root = new THREE.Group();
+  root.name = "geodesic-segment-runtime-render-source";
+  root.add(segment);
+  root.updateMatrixWorld(true);
+
+  return {
+    objectId: "geodesic-segment:source",
+    archetypeKey: geodesicSegmentArchetypeKey,
+    mesh: segment,
+    root,
+  };
+}
+
+function createFlashlightOnPostSources(
+  assets: PreparedWorldAssets | undefined,
+): readonly RuntimeObjectRenderSourceMesh[] {
+  const postRoot = new THREE.Group();
+  postRoot.name = "geodesic-flashlight-post-source";
+  const headRoot = new THREE.Group();
+  headRoot.name = "geodesic-flashlight-head-source";
+
+  const post = assets?.instantiateGltf(geodesicFlashlightAssetPaths.post)?.scene ?? createFallbackPost();
+  post.name = "asset:geodesic-flashlight-post";
+  post.scale.setScalar(0.42);
+  postRoot.add(post);
+
+  const flashlight = assets?.instantiateGltf(geodesicFlashlightAssetPaths.flashlight)?.scene ?? createFallbackFlashlight();
+  flashlight.name = "asset:geodesic-flashlight-head";
+  flashlight.scale.setScalar(0.42);
+  flashlight.position.set(0.18, 0.92, 0);
+  headRoot.add(flashlight);
+
+  postRoot.updateMatrixWorld(true);
+  headRoot.updateMatrixWorld(true);
+
+  return [
+    ...collectRuntimeObjectRenderSourceMeshes(
+      "geodesic-flashlight:post-source",
+      postRoot,
+      geodesicFlashlightPostArchetypePrefix,
+    ),
+    ...collectRuntimeObjectRenderSourceMeshes(
+      "geodesic-flashlight:head-source",
+      headRoot,
+      geodesicFlashlightHeadArchetypePrefix,
+    ),
+  ];
+}
+
+function createCrossRibbonGeometry(width: number): THREE.BufferGeometry {
+  const half = width / 2;
+  const positions = new Float32Array([
+    0, -half, 0, 1, -half, 0, 1, half, 0, 0, half, 0,
+    0, 0, -half, 1, 0, -half, 1, 0, half, 0, 0, half,
+  ]);
+  const indices = [
+    0, 1, 2, 0, 2, 3,
+    4, 5, 6, 4, 6, 7,
+  ];
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createFallbackPost(): THREE.Object3D {
+  const root = new THREE.Group();
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.04, 0.05, 1.55, 14),
+    new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.8, metalness: 0.18 }),
+  );
+  pole.position.y = 0.775;
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.26, 0.08, 18),
+    new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.72, metalness: 0.14 }),
+  );
+  base.position.y = 0.04;
+  root.add(base, pole);
+  return root;
+}
+
+function createFallbackFlashlight(): THREE.Object3D {
+  const root = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.07, 0.09, 0.32, 18),
+    new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5, metalness: 0.35 }),
+  );
+  body.rotation.z = Math.PI / 2;
+  body.position.x = 0.08;
+  const lens = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.095, 0.095, 0.035, 18),
+    new THREE.MeshStandardMaterial({ color: 0x67e8f9, emissive: 0x0e7490, roughness: 0.22 }),
+  );
+  lens.rotation.z = Math.PI / 2;
+  lens.position.x = 0.26;
+  root.add(body, lens);
+  return root;
 }

@@ -39,11 +39,11 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
       root.classList.toggle("desktop-tool-indicator-geodesic-cannon", toolId === "geodesic-cannon");
       root.classList.toggle("desktop-tool-indicator-WoodenSign1", flagType === "WoodenSign1");
       root.classList.toggle("desktop-tool-indicator-WoodenSign2", flagType === "WoodenSign2");
-      label.textContent = toolId === "geodesic-cannon" ? "Cannon" : toolId === "place-flag" ? "Flags" : toolId === "aim" ? "Aim" : "";
+      label.textContent = toolId === "geodesic-cannon" ? "Light" : toolId === "place-flag" ? "Flags" : toolId === "aim" ? "Aim" : "";
       root.ariaLabel = toolId === "place-flag"
         ? "Selected tool: flags"
         : toolId === "geodesic-cannon"
-          ? "Selected tool: geodesic cannon"
+          ? "Selected tool: geodesic flashlight"
           : toolId === "aim"
             ? "Selected tool: aim"
             : "No selected tool";

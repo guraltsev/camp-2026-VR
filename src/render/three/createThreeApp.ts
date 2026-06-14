@@ -79,6 +79,7 @@ import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRen
 import {
   collectGeodesicRuntimeRenderRecords,
   createGeodesicRuntimeRenderSources,
+  getGeodesicFlashlightArchetypeKeys,
 } from "./geodesicCannonRenderer";
 import {
   buildCellRenderArchetypes,
@@ -110,6 +111,7 @@ import {
 import {
   buildRuntimeObjectRenderArchetype,
   createRuntimeObjectRenderArchetypeDiagnostics,
+  deriveRuntimeObjectRenderArchetypeCapacity,
   disposeRuntimeObjectRenderArchetypes,
   groupRuntimeObjectRenderRecordsByArchetype,
   type RuntimeObjectRenderArchetype,
@@ -508,7 +510,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const runtimeObjectRootsById = new Map<string, THREE.Object3D>();
   const runtimeObjectRenderSourcesByKey = new Map<string, RuntimeObjectRenderSourceMesh>();
   const runtimeObjectRenderArchetypesByKey = new Map<string, RuntimeObjectRenderArchetype>();
-  const geodesicRuntimeRenderSources = createGeodesicRuntimeRenderSources();
+  const geodesicRuntimeRenderSources = createGeodesicRuntimeRenderSources(options.assets);
+  const geodesicFlashlightArchetypeKeys = getGeodesicFlashlightArchetypeKeys(geodesicRuntimeRenderSources);
   const runtimeObjectRenderDiagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
   const portalInstanceDiagnostics = createPortalInstanceDiagnostics();
   const portalClipData = createPortalClipData({ maxVisiblePaths });
@@ -1469,15 +1472,26 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtimeObjectRenderSourcesByKey.delete(key);
     }
 
-    const capacity = Math.max(1, maxVisiblePaths);
+    const recordsByArchetypeKey = groupRuntimeObjectRenderRecordsByArchetype(collectRuntimeObjectRenderRecords());
     for (const key of activeKeys) {
-      if (runtimeObjectRenderArchetypesByKey.has(key)) {
+      const capacity = deriveRuntimeObjectRenderArchetypeCapacity(
+        recordsByArchetypeKey.get(key)?.length ?? 1,
+        maxVisiblePaths,
+      );
+      const existing = runtimeObjectRenderArchetypesByKey.get(key);
+      if (existing && existing.capacity >= capacity) {
         continue;
       }
 
       const source = runtimeObjectRenderSourcesByKey.get(key);
       if (!source) {
         continue;
+      }
+
+      if (existing) {
+        runtimeObjectRenderRoot.remove(existing.mesh);
+        disposeRuntimeObjectRenderArchetypes([existing]);
+        runtimeObjectRenderArchetypesByKey.delete(key);
       }
 
       const archetype = buildRuntimeObjectRenderArchetype(source, capacity, portalClipMaterialState);
@@ -1493,7 +1507,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function collectRuntimeObjectRenderRecords(): readonly RuntimeObjectRenderRecord[] {
     return runtimeObjectRegistry.getAll().flatMap((object) => {
       if (object.portalRenderable && (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment")) {
-        return collectGeodesicRuntimeRenderRecords(object);
+        return collectGeodesicRuntimeRenderRecords(object, geodesicFlashlightArchetypeKeys);
       }
 
       if (!object.portalRenderable || !runtimeObjectRootsById.has(object.id)) {

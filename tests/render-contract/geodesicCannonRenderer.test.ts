@@ -5,9 +5,12 @@ import {
   collectGeodesicRuntimeRenderRecords,
   composeSegmentMatrix,
   createGeodesicRuntimeRenderSources,
+  geodesicFlashlightHeadArchetypePrefix,
+  geodesicFlashlightPostArchetypePrefix,
   geodesicSegmentArchetypeKey,
+  getGeodesicFlashlightArchetypeKeys,
 } from "../../src/render/three/geodesicCannonRenderer";
-import type { GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
+import type { GeodesicCannonObject, GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 
 describe("geodesic cannon renderer", () => {
@@ -40,6 +43,18 @@ describe("geodesic cannon renderer", () => {
     expect(archetype.mesh.geometry.getAttribute("portalClipIndex")).toBe(archetype.portalClipIndexAttribute);
     expect(archetype.capacity).toBe(3);
   });
+
+  it("publishes flashlight-on-post records from shared source archetype keys", () => {
+    const sources = createGeodesicRuntimeRenderSources();
+    const flashlightKeys = getGeodesicFlashlightArchetypeKeys(sources);
+    const records = collectGeodesicRuntimeRenderRecords(createFlashlight(), flashlightKeys);
+
+    expect(flashlightKeys.length).toBeGreaterThan(0);
+    expect(flashlightKeys.some((key) => key.startsWith(`${geodesicFlashlightPostArchetypePrefix}:`))).toBe(true);
+    expect(flashlightKeys.some((key) => key.startsWith(`${geodesicFlashlightHeadArchetypePrefix}:`))).toBe(true);
+    expect(records).toHaveLength(flashlightKeys.length);
+    expect(records.every((record) => record.objectId === "flashlight-a" && record.cellId === "cell-a")).toBe(true);
+  });
 });
 
 function createSegment(overrides: Partial<GeodesicSegmentObject> = {}): GeodesicSegmentObject {
@@ -56,5 +71,19 @@ function createSegment(overrides: Partial<GeodesicSegmentObject> = {}): Geodesic
     lengthMeters: 1,
     terminal: { kind: "open" },
     ...overrides,
+  };
+}
+
+function createFlashlight(): GeodesicCannonObject {
+  return {
+    id: "flashlight-a",
+    kind: "geodesic-cannon",
+    cellId: "cell-a",
+    localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+    collision: { radius: 0.3, height: 0.5 },
+    portalRenderable: true,
+    activeGeodesicId: "g-a",
+    geodesicIds: ["g-a"],
+    aimYawRadians: 0,
   };
 }

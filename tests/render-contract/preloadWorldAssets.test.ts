@@ -58,12 +58,14 @@ describe("preloadWorldAssets", () => {
     expect(assetPaths.some((assetPath) => /disp|rough/i.test(assetPath))).toBe(false);
   });
 
-  it("includes runtime tool sign assets even when no authored object references them", () => {
+  it("includes runtime tool assets even when no authored object references them", () => {
     const world = compileCellComplex(cube);
     const assetPaths = collectWorldAssetPaths(world);
 
     expect(assetPaths).toContain("WoodenSign1/WoodenSign1.glb");
     expect(assetPaths).toContain("WoodenSign2/WoodenSign2.glb");
+    expect(assetPaths).toContain("flashlight/Post.glb");
+    expect(assetPaths).toContain("flashlight/Flashlight.glb");
   });
 
   it("classifies .ktx2 files as textures", () => {

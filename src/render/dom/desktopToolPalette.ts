@@ -295,7 +295,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     cannonButton.type = "button";
     cannonButton.className = "desktop-tool-tile";
     cannonButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "geodesic-cannon");
-    cannonButton.ariaLabel = "Geodesic cannon";
+    cannonButton.ariaLabel = "Geodesic flashlight";
     cannonButton.ariaPressed = String(mainContent.selectedTool === "geodesic-cannon");
     cannonButton.addEventListener("click", () => {
       options.onToolSelected(mainContent.selectedTool === "geodesic-cannon" ? "none" : "geodesic-cannon");
@@ -303,7 +303,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
 
     const cannonLabel = document.createElement("span");
     cannonLabel.className = "desktop-tool-tile-label";
-    cannonLabel.textContent = "cannon";
+    cannonLabel.textContent = "light";
     cannonButton.append(createCannonTileIcon(), cannonLabel);
 
     tools.append(aimButton, flagTile, cannonButton);
