@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import type { CompiledCellComplex } from "../cell-complex/compileCellComplex";
+import type { CompiledPrismCell } from "../cell-complex/prismCells";
 import type { CellObjectSpec, SimpleGeoCreatureObjectSpec } from "../cell-complex/specs";
 import { yawRigidTransform3, transformDirection3, type RigidTransform3 } from "../math/rigidTransform3";
 import { vec3 } from "../math/vec3";
+import { getDynamicObjectCollisionBounds } from "../movement/collision";
 import type { DynamicObjectState } from "../movement/dynamicObject";
 import {
   AUTONOMOUS_DYNAMIC_OBJECT_PORTAL_CROSSING_MODE,
@@ -49,6 +51,8 @@ const butterflyVerticalRateMinMultiplier = 1.31;
 const butterflyVerticalRateMaxMultiplier = 1.73;
 const butterflyVerticalMagnitudeFractionOfHeight = 0.1;
 const butterflyVerticalMagnitudeMaxMeters = 0.08;
+const forbiddenZoneLateralStopClearanceMeters = 0.5;
+const forbiddenZoneLateralFadeMeters = 0.5;
 const mouseAssetBounds = {
   widthMetersAtAuthorScale: 19.218719482421875 / 30,
   heightMetersAtAuthorScale: 31.855297088623047 / 30,
@@ -134,6 +138,7 @@ export function createSimpleGeoCreatureRuntime(
   collisionWireframe.visible = false;
   root.add(collisionWireframe);
   let elapsedSeconds = 0;
+  let lateralOscillationOffsetMeters = 0;
   let verticalOscillationPhaseRadians = initialButterflyVerticalOscillationPhaseRadians(objectSpec);
   let verticalOscillationOffsetMeters = butterflyVerticalOscillationHeightOffset(objectSpec, verticalOscillationPhaseRadians);
   const diagnostics = runtimeDiagnostics();
@@ -154,7 +159,11 @@ export function createSimpleGeoCreatureRuntime(
 
       elapsedSeconds += deltaSeconds;
       const forward = objectSpec.speedMetersPerSecond * deltaSeconds;
-      const lateralOffsetMeters = lateralOscillationOffset(objectSpec, elapsedSeconds);
+      const cell = world.cellsById.get(state.cellId);
+      const nextLateralOscillationOffsetMeters = lateralOscillationOffset(objectSpec, elapsedSeconds);
+      const lateralOffsetDeltaMeters = (nextLateralOscillationOffsetMeters - lateralOscillationOffsetMeters) *
+        (cell ? forbiddenZoneLateralOscillationScale(cell, state) : 1);
+      lateralOscillationOffsetMeters = nextLateralOscillationOffsetMeters;
       verticalOscillationPhaseRadians += butterflyVerticalOscillationRateHz(objectSpec, elapsedSeconds) * tau * deltaSeconds;
       const nextVerticalOscillationOffsetMeters = butterflyVerticalOscillationHeightOffset(
         objectSpec,
@@ -162,12 +171,13 @@ export function createSimpleGeoCreatureRuntime(
       );
       const verticalOffsetDeltaMeters = nextVerticalOscillationOffsetMeters - verticalOscillationOffsetMeters;
       verticalOscillationOffsetMeters = nextVerticalOscillationOffsetMeters;
-      const displacement = transformDirection3(state.localPose, vec3(lateralOffsetMeters, forward, verticalOffsetDeltaMeters));
+      const displacement = transformDirection3(state.localPose, vec3(lateralOffsetDeltaMeters, forward, verticalOffsetDeltaMeters));
       const result = moveDynamicObject({
         world,
         object: state,
         displacement,
         portalCrossingMode: AUTONOMOUS_DYNAMIC_OBJECT_PORTAL_CROSSING_MODE,
+        ignoreForbiddenZones: true,
       });
       state = result.object;
       syncRegistryObject(registry, objectSpec.id, result.object);
@@ -186,6 +196,7 @@ export function createSimpleGeoCreatureRuntime(
     },
     reset(cellRoots) {
       elapsedSeconds = 0;
+      lateralOscillationOffsetMeters = 0;
       verticalOscillationPhaseRadians = initialButterflyVerticalOscillationPhaseRadians(objectSpec);
       verticalOscillationOffsetMeters = butterflyVerticalOscillationHeightOffset(
         objectSpec,
@@ -257,6 +268,32 @@ function lateralOscillationOffset(objectSpec: SimpleGeoCreatureObjectSpec, elaps
   }
 
   return Math.sin(elapsedSeconds * objectSpec.oscillationRateHz * tau) * objectSpec.oscillationMagnitudeMeters;
+}
+
+export function forbiddenZoneLateralOscillationScale(
+  cell: CompiledPrismCell,
+  state: DynamicObjectState,
+): number {
+  const bounds = getDynamicObjectCollisionBounds(state);
+
+  if (!bounds || cell.singularityColumns.length === 0) {
+    return 1;
+  }
+
+  let nearestClearanceMeters = Infinity;
+
+  for (const exclusionCylinder of cell.singularityColumns) {
+    const dx = bounds.center.x - exclusionCylinder.center.x;
+    const dy = bounds.center.y - exclusionCylinder.center.y;
+    const clearanceMeters = Math.sqrt(dx * dx + dy * dy) - bounds.radius - exclusionCylinder.radius;
+    nearestClearanceMeters = Math.min(nearestClearanceMeters, clearanceMeters);
+  }
+
+  const fadeStartMeters = forbiddenZoneLateralStopClearanceMeters;
+  const fadeEndMeters = fadeStartMeters + forbiddenZoneLateralFadeMeters;
+  const t = clamp((nearestClearanceMeters - fadeStartMeters) / (fadeEndMeters - fadeStartMeters), 0, 1);
+
+  return t * t * (3 - 2 * t);
 }
 
 export function butterflyVerticalOscillationRateHz(

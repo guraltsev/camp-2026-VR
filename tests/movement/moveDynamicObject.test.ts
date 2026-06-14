@@ -158,6 +158,22 @@ describe("moveDynamicObject", () => {
     expect(result.blockingReason).toBe("forbidden-zone");
   });
 
+  it("can ignore forbidden zones while preserving other movement collision", () => {
+    const world = compileCellComplex(twoRoomsWithPortal());
+    const object = dynamicObject("room-a", { x: 0.65, y: 0.7, z: 0.5 });
+
+    const result = moveDynamicObject({
+      world,
+      object,
+      displacement: { x: 0.2, y: 0.2, z: 0 },
+      ignoreForbiddenZones: true,
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.object.localPose.translation.x).toBeCloseTo(0.85);
+    expect(result.object.localPose.translation.y).toBeCloseTo(0.9);
+  });
+
   it("uses cylindrical bounds for forbidden-zone blocking regardless of rotation", () => {
     const world = compileCellComplex(twoRoomsWithPortal());
     const object = dynamicObject(

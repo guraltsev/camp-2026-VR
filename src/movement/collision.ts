@@ -17,6 +17,7 @@ export interface CollisionCandidate {
   readonly object: DynamicObjectState;
   readonly previousObject?: DynamicObjectState;
   readonly ignoredPortalSideIndex?: number;
+  readonly ignoreForbiddenZones?: boolean;
 }
 
 export interface SimpleCylinderBounds {
@@ -51,20 +52,22 @@ export function testCellCollision(candidate: CollisionCandidate): CollisionResul
     return { blocked: true, reason: "ceiling" };
   }
 
-  for (const exclusionCylinder of candidate.cell.singularityColumns) {
-    if (simpleCylinderIntersectsSingularityCylinder(bounds, exclusionCylinder)) {
-      return { blocked: true, reason: "forbidden-zone" };
-    }
-  }
-
-  const previousBounds = candidate.previousObject
-    ? getDynamicObjectCollisionBounds(candidate.previousObject)
-    : undefined;
-
-  if (previousBounds) {
+  if (!candidate.ignoreForbiddenZones) {
     for (const exclusionCylinder of candidate.cell.singularityColumns) {
-      if (sweptCylinderIntersectsSingularityCylinder(previousBounds, bounds, exclusionCylinder)) {
+      if (simpleCylinderIntersectsSingularityCylinder(bounds, exclusionCylinder)) {
         return { blocked: true, reason: "forbidden-zone" };
+      }
+    }
+
+    const previousBounds = candidate.previousObject
+      ? getDynamicObjectCollisionBounds(candidate.previousObject)
+      : undefined;
+
+    if (previousBounds) {
+      for (const exclusionCylinder of candidate.cell.singularityColumns) {
+        if (sweptCylinderIntersectsSingularityCylinder(previousBounds, bounds, exclusionCylinder)) {
+          return { blocked: true, reason: "forbidden-zone" };
+        }
       }
     }
   }

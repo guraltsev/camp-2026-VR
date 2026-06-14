@@ -19,6 +19,7 @@ export interface MoveDynamicObjectRequest {
   readonly object: DynamicObjectState;
   readonly displacement: Vec3;
   readonly portalCrossingMode?: PortalCrossingMode;
+  readonly ignoreForbiddenZones?: boolean;
 }
 
 export interface MoveDynamicObjectResult {
@@ -59,6 +60,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
         object: candidateObject,
         previousObject: request.object,
         ignoredPortalSideIndex: crossingSide.sideIndex,
+        ignoreForbiddenZones: request.ignoreForbiddenZones,
       });
 
       if (sourceCollision.blocked) {
@@ -78,6 +80,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
       object: candidateObject,
       previousObject: request.object,
       ignoredPortalSideIndex: crossingSide.sideIndex,
+      ignoreForbiddenZones: request.ignoreForbiddenZones,
     });
 
     if (sourceCollision.blocked) {
@@ -95,6 +98,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
       cell: targetCell,
       object: crossedObject,
       ignoredPortalSideIndex: targetCell.portalsById.get(crossingSide.portal.targetPortalId)?.sideIndex,
+      ignoreForbiddenZones: request.ignoreForbiddenZones,
     });
 
     if (targetCollision.blocked) {
@@ -114,6 +118,7 @@ export function moveDynamicObject(request: MoveDynamicObjectRequest): MoveDynami
     cell: startCell,
     object: candidateObject,
     previousObject: request.object,
+    ignoreForbiddenZones: request.ignoreForbiddenZones,
   });
 
   if (collision.blocked) {
