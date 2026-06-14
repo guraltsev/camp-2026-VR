@@ -28,7 +28,7 @@ The result is that the debug toggle is not simply drawing a few local lines. It 
 Replace the expensive collision debug rendering path with a lightweight renderer:
 
 - keep collision debug helpers out of the cell archetype collection path,
-- keep collision debug helpers out of legacy object portal clone rendering unless explicitly needed,
+- keep collision debug helpers out of runtime-object portal rendering unless explicitly needed,
 - render forbidden zones and object cylinders as simple `THREE.LineSegments` or equivalent line helpers,
 - prefer current-cell-only rendering for the first fix,
 - keep the existing debug option ids and palette toggle,

@@ -4,7 +4,7 @@
 
 Add a desktop-only place-flag tool backed by a general runtime object registry.
 
-Placed flags should be live world objects, not renderer-only decorations. Existing authored creatures such as marmots, mice, and butterflies should also be represented as runtime objects so that collision, portal cloning, interaction, reset behavior, and future object-object logic have one authoritative object system.
+Placed flags should be live world objects, not renderer-only decorations. Existing authored creatures such as marmots, mice, and butterflies should also be represented as runtime objects so that collision, portal rendering, interaction, reset behavior, and future object-object logic have one authoritative object system.
 
 Depends on: [23_cylindrical_collision_shapes.md](./23_cylindrical_collision_shapes.md).
 
@@ -22,7 +22,7 @@ Implement the first runtime object system and use it for the desktop place-flag 
 - allow desktop interaction with focused flags using `F`,
 - open a desktop editor for a placed flag message of up to 15 characters and font color,
 - render sign text on the sign surface,
-- keep placed signs visible through portals using the existing portal object cloning path,
+- keep placed signs visible through portals using the runtime-object portal rendering path,
 - keep shared palette data compatible with VR, but do not implement VR placement or editing.
 
 ## Non-Goals
@@ -168,7 +168,7 @@ The editor should support:
 
 The runtime object registry should store the authoritative message and font color. The sign renderer should update from registry state.
 
-### Rendering and portal cloning
+### Rendering and Portal Visibility
 
 Use these assets:
 
@@ -179,9 +179,9 @@ WoodenSign2/WoodenSign2.glb
 
 Ensure these runtime tool assets are preloaded even when no authored world object references them.
 
-Each runtime object renderer should create a root `THREE.Object3D` and parent it under the current cell root. When an object changes cells, the renderer should reparent it to the new cell root.
+Each runtime object adapter should own a root `THREE.Object3D` and parent it under the current cell root. When an object changes cells, the adapter should reparent it to the new cell root.
 
-This is important because the current portal object cloning path clones children of visible destination cell roots. Placed flags and migrated creature render roots should participate in portal cloning by living under the correct cell root, not by adding a separate portal-rendering system.
+This is important because the runtime-object portal rendering path clones children of visible destination cell roots. Placed flags and migrated creature render roots should participate in portal rendering by living under the correct cell root, not by adding a separate side system.
 
 For sign text, render a small canvas texture on a plane slightly in front of the sign board. Updating a sign message or font color should redraw the canvas texture and mark it dirty.
 
@@ -270,9 +270,9 @@ Extend desktop controls or app input aggregation with:
 
 When `Place flag` is active and the primary action fires, compute a placement candidate from camera aim and register it if collision checks pass.
 
-### 6. Add flag rendering
+### 6. Add flag runtime rendering
 
-Add a Three.js renderer adapter for placed flags:
+Add a Three.js runtime adapter for placed flags, matching the marmot and simple geodesic creature adapter shape:
 
 - instantiate the selected sign GLB,
 - place it from the runtime object's cell-local pose,
@@ -280,13 +280,13 @@ Add a Three.js renderer adapter for placed flags:
 - update pose/text/color when registry state changes,
 - dispose geometries/materials/textures cleanly.
 
-Runtime object roots should be parented under cell roots so existing portal clone logic includes them.
+Runtime object roots should be parented under cell roots so runtime-object portal rendering includes them.
 
 ### 7. Add desktop flag editing
 
 When `F` targets a placed flag, open the DOM editor.
 
-The editor should update the registry, and the flag renderer should sync from registry state. The editor must not require pointer lock while typing.
+The editor should update the registry, and the flag runtime should sync from registry state. The editor must not require pointer lock while typing.
 
 ### 8. Integrate object-object collision carefully
 
@@ -342,10 +342,10 @@ Required interaction/editor tests:
 Required render/preload tests:
 
 - both WoodenSign assets are included in the preload set for the runtime tool,
-- placed flag renderer creates a root parented to the correct cell root,
-- changing a flag cell reparents the root,
+- placed flag runtime creates a root parented to the correct cell root,
+- changing a flag cell reparents the runtime root,
 - updating message or font color refreshes the text material/texture state,
-- portal cloning continues to include runtime object roots parented under cell roots.
+- runtime-object portal rendering continues to include runtime object roots parented under cell roots.
 
 ## Acceptance Criteria
 
@@ -361,7 +361,7 @@ Required render/preload tests:
 - Flag messages are limited to 15 characters.
 - The user can press `F` in desktop mode to edit a focused placed flag.
 - The flag editor supports message and font color changes.
-- Placed flags participate in existing portal cloning by being parented under the correct cell root.
+- Placed flags participate in runtime-object portal rendering by being parented under the correct cell root.
 - Shared palette definitions remain compatible with VR code, but no VR placement or VR editing behavior is implemented.
 - Collision uses runtime object state and existing cylinder bounds helpers, not renderer mesh bounds.
 - Existing movement, portal, desktop controls, and VR tests continue to pass.
@@ -377,5 +377,7 @@ render objects: views of runtime state
 ```
 
 Do not build the flag tool as a special-case Three.js mesh list. The flag tool should prove the runtime object registry is useful by sharing it with existing dynamic creatures.
+
+Avoid using legacy code for new runtime-object behavior unless it is strictly necessary to preserve an existing compatibility boundary. If legacy code must be touched, keep it isolated, name the new runtime-object path clearly, and document why the legacy dependency could not be removed in the same change.
 
 Do not implement VR controls for this issue. It is acceptable and intentional for shared palette types to mention tool content while the VR adapter ignores or renders empty content for those pages.

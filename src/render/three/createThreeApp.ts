@@ -69,7 +69,7 @@ import { createDesktopToolIndicator } from "../dom/desktopToolIndicator";
 import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
 import { createAimCrossMarker } from "./aimCrossMarker";
 import { resolveAimTarget } from "./aimTarget";
-import { createPlacedFlagRenderer } from "./placedFlagRenderer";
+import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRenderer";
 import {
   buildCellRenderArchetypes,
   deriveCellRenderArchetypeCapacities,
@@ -176,11 +176,13 @@ export interface ThreeAppOptions {
   readonly assets: PreparedWorldAssets;
 }
 
-interface LegacyObjectPortalRenderEntry {
+interface RuntimeObjectPortalRenderEntry {
   readonly root: THREE.Group;
   readonly destinationCellId: string;
   readonly sourceChildren: readonly THREE.Object3D[];
   readonly cloneChildren: readonly THREE.Object3D[];
+  portalPathId: number;
+  clipIndex: number;
 }
 
 interface PortalEyeRenderState {
@@ -194,6 +196,7 @@ const renderCameraNearMeters = 0.001;
 const renderCameraFarMeters = 250;
 const underCellInfinityFloorSizeMeters = 1_000;
 const underCellInfinityFloorWorldZMeters = -1;
+const maxRetainedRuntimeObjectPortalRenderEntries = 64;
 
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const scene = new THREE.Scene();
@@ -368,8 +371,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         return;
       }
 
-      runtimeObjectRegistry.update(updatePlacedFlagMessage(flag, message));
-      syncPlacedFlagViews();
+      const nextFlag = updatePlacedFlagMessage(flag, message);
+      runtimeObjectRegistry.update(nextFlag);
+      syncPlacedFlagRuntime(nextFlag);
     },
     onFontColorChanged(flagId, fontColor) {
       const flag = runtimeObjectRegistry.get(flagId);
@@ -377,8 +381,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         return;
       }
 
-      runtimeObjectRegistry.update(updatePlacedFlagFontColor(flag, fontColor));
-      syncPlacedFlagViews();
+      const nextFlag = updatePlacedFlagFontColor(flag, fontColor);
+      runtimeObjectRegistry.update(nextFlag);
+      syncPlacedFlagRuntime(nextFlag);
     },
     onDeleteRequested(flagId) {
       const flag = runtimeObjectRegistry.get(flagId);
@@ -387,7 +392,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
 
       runtimeObjectRegistry.remove(flagId);
-      syncPlacedFlagViews();
+      removePlacedFlagRuntime(flagId);
+      syncRuntimeObjectPortalRenders();
     },
     onClosed() {
       menuState = setRuntimeMenuEditingFlagId(menuState, undefined);
@@ -477,16 +483,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     appState.world.cells.map((cell) => [cell.id, createCellWarmupViews(cell)] as const),
   );
   const dynamicObjectRuntimes: Array<GeodesciMarmotRuntime | SimpleGeoCreatureRuntime> = [];
-  const placedFlagRenderer = createPlacedFlagRenderer({
-    registry: runtimeObjectRegistry,
-    assets: options.assets,
-    cellRoots: cellMeshes,
-  });
+  const placedFlagRuntimes = new Map<string, PlacedFlagRuntime>();
   let placedFlagIdCounter = 0;
-  const legacyObjectPortalRenderRoot = new THREE.Group();
-  legacyObjectPortalRenderRoot.name = "legacy-object-portal-renders";
-  scene.add(legacyObjectPortalRenderRoot);
-  const legacyObjectPortalRenderEntries = new Map<number, LegacyObjectPortalRenderEntry>();
+  const runtimeObjectPortalRenderRoot = new THREE.Group();
+  runtimeObjectPortalRenderRoot.name = "runtime-object-portal-renders";
+  scene.add(runtimeObjectPortalRenderRoot);
+  const runtimeObjectPortalRenderEntries = new Map<number, RuntimeObjectPortalRenderEntry>();
+  // Shared by all runtime-object adapters. Retaining entries avoids deep-cloning heavy runtime roots
+  // whenever portal visibility churns but the destination cell's runtime children are unchanged.
+  const retainedRuntimeObjectPortalRenderEntries: RuntimeObjectPortalRenderEntry[] = [];
   const portalInstanceDiagnostics = createPortalInstanceDiagnostics();
   const portalClipData = createPortalClipData({ maxVisiblePaths });
   const portalClipMaterialState = createPortalClipMaterialState(
@@ -542,7 +547,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
   }
-  syncLegacyObjectPortalRenders();
+  syncRuntimeObjectPortalRenders();
   disableFrustumCulling(scene);
   disableShadows(scene);
 
@@ -676,7 +681,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtime.update(appState.world, frame.resetRequested ? 0 : deltaSeconds);
       runtime.syncParent(cellMeshes);
     }
-    placedFlagRenderer.sync();
+    for (const runtime of placedFlagRuntimes.values()) {
+      runtime.syncParent(cellMeshes);
+    }
     const frameAfterObjectsMs = performance.now();
     const frameBeforeCameraMs = frameAfterObjectsMs;
 
@@ -706,7 +713,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         renderFromRootMatrix: new THREE.Matrix4(),
       });
     }
-    syncLegacyObjectPortalRenders();
+    syncRuntimeObjectPortalRenders();
     const frameAfterPortalMs = performance.now();
     const frameBeforeUiMs = frameAfterPortalMs;
 
@@ -780,7 +787,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtime.syncParent(cellMeshes);
     }
     syncDynamicObjectDebugWireframes();
-    syncLegacyObjectPortalRenders();
+    syncRuntimeObjectPortalRenders();
     applyDesktopCameraPose();
     renderer.render(scene, camera);
   }
@@ -848,7 +855,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       aimCrossMarker.dispose();
       floatingObjectTooltip.dispose();
       controls.dispose();
-      placedFlagRenderer.dispose();
+      for (const runtime of placedFlagRuntimes.values()) {
+        runtime.dispose();
+      }
+      placedFlagRuntimes.clear();
       for (const cellMesh of cellMeshes.values()) {
         disposeObject3D(cellMesh);
       }
@@ -860,10 +870,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       disposeCellRenderArchetypes(cellRenderArchetypes);
       portalInstanceDebugRenderer?.dispose();
       portalClipData.dispose();
-      for (const pathId of [...legacyObjectPortalRenderEntries.keys()]) {
-        removeLegacyObjectPortalRenderEntry(pathId);
+      for (const pathId of [...runtimeObjectPortalRenderEntries.keys()]) {
+        disposeRuntimeObjectPortalRenderEntry(pathId);
       }
-      legacyObjectPortalRenderRoot.removeFromParent();
+      disposeRetainedRuntimeObjectPortalRenderEntries();
+      runtimeObjectPortalRenderRoot.removeFromParent();
       portalDebugRuntime.dispose();
       debugOverlay.dispose();
       xrEntryUi.dispose();
@@ -1003,13 +1014,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     disposeCellRenderArchetypes(cellRenderArchetypes);
     cellRenderArchetypes = [];
-    for (const pathId of [...legacyObjectPortalRenderEntries.keys()]) {
-      removeLegacyObjectPortalRenderEntry(pathId);
+    for (const pathId of [...runtimeObjectPortalRenderEntries.keys()]) {
+      disposeRuntimeObjectPortalRenderEntry(pathId);
     }
+    disposeRetainedRuntimeObjectPortalRenderEntries();
     for (const runtime of dynamicObjectRuntimes) {
       runtime.root.removeFromParent();
     }
-    placedFlagRenderer.dispose();
+    for (const runtime of placedFlagRuntimes.values()) {
+      runtime.root.removeFromParent();
+    }
 
     for (const [cellId, cellMesh] of cellMeshes) {
       scene.remove(cellMesh);
@@ -1051,7 +1065,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       scene.add(archetype.mesh);
     }
     portalInstanceDebugRenderer = createPortalInstanceDebugRenderer(scene, cellRenderArchetypes);
-    placedFlagRenderer.sync();
+    for (const runtime of placedFlagRuntimes.values()) {
+      runtime.syncParent(cellMeshes);
+    }
     visibleCellId = currentlyVisibleCellId;
   }
 
@@ -1286,7 +1302,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       visiblePathById,
     );
     updatePortalVisiblePathInstances(visiblePathsByDestinationCell);
-    syncLegacyObjectPortalClipIndexes(visiblePaths, portalClipData.clipIndexByPathId);
+    syncRuntimeObjectPortalClipIndexes(visiblePaths, portalClipData.clipIndexByPathId);
   }
 
   function applyPortalVisiblePaths(
@@ -1297,7 +1313,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalClipData.update(visiblePaths);
     }
     updatePortalVisiblePathInstances(groupVisiblePortalPathsByDestinationCell(visiblePaths));
-    syncLegacyObjectPortalClipIndexes(visiblePaths, portalClipData.clipIndexByPathId);
+    syncRuntimeObjectPortalClipIndexes(visiblePaths, portalClipData.clipIndexByPathId);
   }
 
   function updatePortalVisiblePathInstances(
@@ -1366,18 +1382,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return portalEyeRenderStates[0];
   }
 
-  function syncLegacyObjectPortalClipIndexes(
+  function syncRuntimeObjectPortalClipIndexes(
     visiblePaths: readonly VisiblePortalPath[],
     clipIndexByPathId: ReadonlyMap<number, number>,
   ): void {
     const visiblePathIds = new Set(visiblePaths.map((path) => path.pathId));
 
-    for (const [pathId, entry] of legacyObjectPortalRenderEntries) {
+    for (const [pathId, entry] of runtimeObjectPortalRenderEntries) {
       const clipIndex = visiblePathIds.has(pathId) ? clipIndexByPathId.get(pathId) ?? -1 : -1;
 
-      for (let index = 0; index < entry.cloneChildren.length; index += 1) {
-        stampPortalClipAttributes(entry.cloneChildren[index], pathId, clipIndex);
-      }
+      stampRuntimeObjectPortalEntry(entry, pathId, clipIndex);
     }
   }
 
@@ -1446,10 +1460,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
-  function syncLegacyObjectPortalRenders(): void {
+  function syncRuntimeObjectPortalRenders(): void {
     const visiblePathIds = new Set<number>();
 
-    for (const path of getLegacyObjectVisiblePaths()) {
+    for (const path of getRuntimeObjectVisiblePaths()) {
       if (path.depth === 0) {
         continue;
       }
@@ -1458,18 +1472,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       const cellRoot = cellMeshes.get(path.destinationCellId);
 
       if (!cellRoot || cellRoot.children.length === 0) {
-        removeLegacyObjectPortalRenderEntry(path.pathId);
+        releaseRuntimeObjectPortalRenderEntry(path.pathId);
         continue;
       }
 
       const sourceChildren = [...cellRoot.children];
-      const existing = legacyObjectPortalRenderEntries.get(path.pathId);
+      const existing = runtimeObjectPortalRenderEntries.get(path.pathId);
       const entry =
         existing &&
         existing.destinationCellId === path.destinationCellId &&
         sameObjectList(existing.sourceChildren, sourceChildren)
           ? existing
-          : rebuildLegacyObjectPortalRenderEntry(path, sourceChildren);
+          : rebuildRuntimeObjectPortalRenderEntry(path, sourceChildren);
 
       entry.root.matrix.copy(path.rootFromDestinationMatrix);
       entry.root.matrixWorldNeedsUpdate = true;
@@ -1477,27 +1491,36 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
       for (let index = 0; index < sourceChildren.length; index += 1) {
         syncObject3DTreeState(sourceChildren[index], entry.cloneChildren[index]);
-        stampPortalClipAttributes(entry.cloneChildren[index], path.pathId, clipIndex);
       }
+      stampRuntimeObjectPortalEntry(entry, path.pathId, clipIndex);
     }
 
-    for (const pathId of [...legacyObjectPortalRenderEntries.keys()]) {
+    for (const pathId of [...runtimeObjectPortalRenderEntries.keys()]) {
       if (!visiblePathIds.has(pathId)) {
-        removeLegacyObjectPortalRenderEntry(pathId);
+        releaseRuntimeObjectPortalRenderEntry(pathId);
       }
     }
   }
 
-  function rebuildLegacyObjectPortalRenderEntry(
+  function rebuildRuntimeObjectPortalRenderEntry(
     path: VisiblePortalPath,
     sourceChildren: readonly THREE.Object3D[],
-  ): LegacyObjectPortalRenderEntry {
-    removeLegacyObjectPortalRenderEntry(path.pathId);
+  ): RuntimeObjectPortalRenderEntry {
+    const clipIndex = portalClipData.clipIndexByPathId.get(path.pathId) ?? -1;
+    releaseRuntimeObjectPortalRenderEntry(path.pathId);
+    const retained = takeRetainedRuntimeObjectPortalRenderEntry(path.destinationCellId, sourceChildren);
+
+    if (retained) {
+      retained.root.name = `runtime-object-portal-render:${path.pathId}:${path.destinationCellId}`;
+      stampRuntimeObjectPortalEntry(retained, path.pathId, clipIndex);
+      runtimeObjectPortalRenderRoot.add(retained.root);
+      runtimeObjectPortalRenderEntries.set(path.pathId, retained);
+      return retained;
+    }
 
     const root = new THREE.Group();
-    root.name = `legacy-object-portal-render:${path.pathId}:${path.destinationCellId}`;
+    root.name = `runtime-object-portal-render:${path.pathId}:${path.destinationCellId}`;
     root.matrixAutoUpdate = false;
-    const clipIndex = portalClipData.clipIndexByPathId.get(path.pathId) ?? -1;
     const cloneChildren = sourceChildren.map((child) => {
       const copy = cloneObject3DWithFreshMeshResources(
         child,
@@ -1517,15 +1540,68 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       destinationCellId: path.destinationCellId,
       sourceChildren: [...sourceChildren],
       cloneChildren,
+      portalPathId: path.pathId,
+      clipIndex,
     };
 
-    legacyObjectPortalRenderRoot.add(root);
-    legacyObjectPortalRenderEntries.set(path.pathId, entry);
+    runtimeObjectPortalRenderRoot.add(root);
+    runtimeObjectPortalRenderEntries.set(path.pathId, entry);
     return entry;
   }
 
-  function removeLegacyObjectPortalRenderEntry(pathId: number): void {
-    const entry = legacyObjectPortalRenderEntries.get(pathId);
+  function takeRetainedRuntimeObjectPortalRenderEntry(
+    destinationCellId: string,
+    sourceChildren: readonly THREE.Object3D[],
+  ): RuntimeObjectPortalRenderEntry | undefined {
+    const index = retainedRuntimeObjectPortalRenderEntries.findIndex((entry) =>
+      entry.destinationCellId === destinationCellId && sameObjectList(entry.sourceChildren, sourceChildren)
+    );
+
+    if (index < 0) {
+      return undefined;
+    }
+
+    return retainedRuntimeObjectPortalRenderEntries.splice(index, 1)[0];
+  }
+
+  function stampRuntimeObjectPortalEntry(
+    entry: RuntimeObjectPortalRenderEntry,
+    portalPathId: number,
+    clipIndex: number,
+  ): void {
+    if (entry.portalPathId === portalPathId && entry.clipIndex === clipIndex) {
+      return;
+    }
+
+    entry.portalPathId = portalPathId;
+    entry.clipIndex = clipIndex;
+
+    for (let index = 0; index < entry.cloneChildren.length; index += 1) {
+      stampPortalClipAttributes(entry.cloneChildren[index], portalPathId, clipIndex);
+    }
+  }
+
+  function releaseRuntimeObjectPortalRenderEntry(pathId: number): void {
+    const entry = runtimeObjectPortalRenderEntries.get(pathId);
+
+    if (!entry) {
+      return;
+    }
+
+    entry.root.removeFromParent();
+    runtimeObjectPortalRenderEntries.delete(pathId);
+    retainedRuntimeObjectPortalRenderEntries.push(entry);
+
+    while (retainedRuntimeObjectPortalRenderEntries.length > maxRetainedRuntimeObjectPortalRenderEntries) {
+      const stale = retainedRuntimeObjectPortalRenderEntries.shift();
+      if (stale) {
+        disposeObject3D(stale.root);
+      }
+    }
+  }
+
+  function disposeRuntimeObjectPortalRenderEntry(pathId: number): void {
+    const entry = runtimeObjectPortalRenderEntries.get(pathId);
 
     if (!entry) {
       return;
@@ -1533,10 +1609,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     entry.root.removeFromParent();
     disposeObject3D(entry.root);
-    legacyObjectPortalRenderEntries.delete(pathId);
+    runtimeObjectPortalRenderEntries.delete(pathId);
   }
 
-  function getLegacyObjectVisiblePaths(): readonly VisiblePortalPath[] {
+  function disposeRetainedRuntimeObjectPortalRenderEntries(): void {
+    while (retainedRuntimeObjectPortalRenderEntries.length > 0) {
+      const entry = retainedRuntimeObjectPortalRenderEntries.pop()!;
+      entry.root.removeFromParent();
+      disposeObject3D(entry.root);
+    }
+  }
+
+  function getRuntimeObjectVisiblePaths(): readonly VisiblePortalPath[] {
     if (portalEyeRenderStates.length <= 1) {
       return latestVisibleResult?.paths ?? [];
     }
@@ -1889,9 +1973,31 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     desktopToolIndicator.setTool(menuState.selectedTool, menuState.placeFlagOptions.flagType);
   }
 
-  function syncPlacedFlagViews(): void {
-    placedFlagRenderer.sync();
-    syncLegacyObjectPortalRenders();
+  function syncPlacedFlagRuntime(flag: RuntimeWorldObject): void {
+    if (flag.kind !== "placed-flag") {
+      return;
+    }
+
+    let runtime = placedFlagRuntimes.get(flag.id);
+    if (!runtime) {
+      runtime = createPlacedFlagRuntime(flag, options.assets);
+      placedFlagRuntimes.set(flag.id, runtime);
+    }
+
+    runtime.syncFromObject(flag);
+    runtime.syncParent(cellMeshes);
+    syncRuntimeObjectPortalRenders();
+  }
+
+  function removePlacedFlagRuntime(flagId: string): void {
+    const runtime = placedFlagRuntimes.get(flagId);
+
+    if (!runtime) {
+      return;
+    }
+
+    runtime.dispose();
+    placedFlagRuntimes.delete(flagId);
   }
 
   function tryPlaceFlagFromDesktopAim(): void {
@@ -1910,8 +2016,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       id: `placed-flag:${Date.now()}:${placedFlagIdCounter++}`,
     });
 
-    if (result.placed) {
-      syncPlacedFlagViews();
+    if (result.placed && result.object) {
+      syncPlacedFlagRuntime(result.object);
     }
   }
 
@@ -2054,9 +2160,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     for (const object of runtimeObjectRegistry.getAll()) {
       if (object.kind === "placed-flag") {
         runtimeObjectRegistry.remove(object.id);
+        removePlacedFlagRuntime(object.id);
       }
     }
-    syncPlacedFlagViews();
+    syncRuntimeObjectPortalRenders();
   }
 
   function getCameraWorldPosition(): { readonly x: number; readonly y: number; readonly z: number } {

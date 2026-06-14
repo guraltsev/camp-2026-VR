@@ -2,9 +2,8 @@ import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { identityRigidTransform3 } from "../../src/math/rigidTransform3";
 import type { PreparedWorldAssets } from "../../src/render/three/preloadWorldAssets";
-import { createPlacedFlagRenderer } from "../../src/render/three/placedFlagRenderer";
+import { createPlacedFlagRuntime } from "../../src/render/three/placedFlagRenderer";
 import { createPlacedFlagObject } from "../../src/world-objects/placedFlags";
-import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
 
 describe("placedFlagRenderer", () => {
   afterEach(() => {
@@ -14,25 +13,21 @@ describe("placedFlagRenderer", () => {
   it("places sign text on front and back planes centered on the sign board mesh", () => {
     const canvas = installCanvasDocumentShim();
     const cellRoot = new THREE.Group();
-    const registry = createRuntimeObjectRegistry([
-      createPlacedFlagObject({
-        id: "flag-a",
-        cellId: "room-a",
-        localPose: identityRigidTransform3,
-        flagType: "WoodenSign1",
-        message: "Hello",
-      }),
-    ]);
-    const renderer = createPlacedFlagRenderer({
-      registry,
-      assets: createPreparedAssets(),
-      cellRoots: new Map([["room-a", cellRoot]]),
-    });
+    const runtime = createPlacedFlagRuntime(createPlacedFlagObject({
+      id: "flag-a",
+      cellId: "room-a",
+      localPose: identityRigidTransform3,
+      flagType: "WoodenSign1",
+      message: "Hello",
+    }), createPreparedAssets());
 
-    renderer.sync();
+    runtime.syncParent(new Map([["room-a", cellRoot]]));
 
     const frontTextPlane = cellRoot.getObjectByName("placed-flag-text-plane:flag-a:front");
     const backTextPlane = cellRoot.getObjectByName("placed-flag-text-plane:flag-a:back");
+    expect(runtime.root.parent).toBe(cellRoot);
+    expect(runtime.cellId).toBe("room-a");
+    expect(runtime.flagId).toBe("flag-a");
     expect(frontTextPlane).toBeDefined();
     expect(backTextPlane).toBeDefined();
     expect(frontTextPlane?.position.x).toBeCloseTo(-0.159);
@@ -49,24 +44,41 @@ describe("placedFlagRenderer", () => {
     expect(canvas.height).toBe(256);
   });
 
+  it("reparents when the runtime object changes cells", () => {
+    installCanvasDocumentShim();
+    const roomA = new THREE.Group();
+    const roomB = new THREE.Group();
+    const runtime = createPlacedFlagRuntime(createPlacedFlagObject({
+      id: "flag-a",
+      cellId: "room-a",
+      localPose: identityRigidTransform3,
+      flagType: "WoodenSign1",
+      message: "Hello",
+    }), createPreparedAssets());
+
+    runtime.syncParent(new Map([["room-a", roomA], ["room-b", roomB]]));
+    runtime.syncFromObject(createPlacedFlagObject({
+      id: "flag-a",
+      cellId: "room-b",
+      localPose: identityRigidTransform3,
+      flagType: "WoodenSign1",
+      message: "Hello",
+    }));
+    runtime.syncParent(new Map([["room-a", roomA], ["room-b", roomB]]));
+
+    expect(runtime.root.parent).toBe(roomB);
+    expect(runtime.cellId).toBe("room-b");
+  });
+
   it("wraps and centers text in the calibrated writing area", () => {
     const canvas = installCanvasDocumentShim();
-    const registry = createRuntimeObjectRegistry([
-      createPlacedFlagObject({
-        id: "flag-a",
-        cellId: "room-a",
-        localPose: identityRigidTransform3,
-        flagType: "WoodenSign1",
-        message: "ABCDEFGHIJKLMNO",
-      }),
-    ]);
-    const renderer = createPlacedFlagRenderer({
-      registry,
-      assets: createPreparedAssets(),
-      cellRoots: new Map([["room-a", new THREE.Group()]]),
-    });
-
-    renderer.sync();
+    createPlacedFlagRuntime(createPlacedFlagObject({
+      id: "flag-a",
+      cellId: "room-a",
+      localPose: identityRigidTransform3,
+      flagType: "WoodenSign1",
+      message: "ABCDEFGHIJKLMNO",
+    }), createPreparedAssets());
 
     expect(canvas.context.fillStyle).toBe("#f8fafc");
     expect(canvas.context.textAlign).toBe("center");

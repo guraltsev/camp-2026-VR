@@ -1,12 +1,15 @@
 import * as THREE from "three";
 import type { PlacedFlagObject } from "../../world-objects/placedFlags";
 import { placedFlagAssetPaths } from "../../world-objects/placedFlags";
-import type { RuntimeObjectRegistry } from "../../world-objects/runtimeObjectRegistry";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { applyWorldRigidTransform } from "./worldAxes";
 
-export interface PlacedFlagRenderer {
-  sync(): void;
+export interface PlacedFlagRuntime {
+  readonly root: THREE.Object3D;
+  readonly cellId: string;
+  readonly flagId: string;
+  syncFromObject(flag: PlacedFlagObject): void;
+  syncParent(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
   dispose(): void;
 }
 
@@ -64,102 +67,84 @@ const FALLBACK_TEXT_LAYOUT: FlagTextLayout = {
   height: 0.4,
 };
 
-export function createPlacedFlagRenderer(options: {
-  readonly registry: RuntimeObjectRegistry;
-  readonly assets: PreparedWorldAssets;
-  readonly cellRoots: ReadonlyMap<string, THREE.Object3D>;
-}): PlacedFlagRenderer {
-  const renderedById = new Map<string, RenderedFlag>();
-
-  function createRenderedFlag(flag: PlacedFlagObject): RenderedFlag {
-    const root = new THREE.Group();
-    root.name = `placed-flag:${flag.id}`;
-
-    const prepared = options.assets.instantiateGltf(placedFlagAssetPaths[flag.flagType]);
-    if (!prepared) {
-      throw new Error(`Placed flag asset was not preloaded: ${placedFlagAssetPaths[flag.flagType]}`);
-    }
-
-    prepared.scene.name = `asset:${flag.id}`;
-    prepared.scene.scale.setScalar(SIGN_MODEL_SCALE);
-    prepared.scene.rotation.y = Math.PI;
-    root.add(prepared.scene);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = 512;
-    canvas.height = 256;
-    const textTexture = new THREE.CanvasTexture(canvas);
-    textTexture.colorSpace = THREE.SRGBColorSpace;
-    textTexture.name = `placed-flag-text:${flag.id}`;
-    const textLayout = resolveFlagTextLayout(prepared.scene, flag.flagType);
-    root.add(
-      createSignTextPlane(flag.id, "front", textTexture, textLayout, textLayout.frontZ, Math.PI),
-      createSignTextPlane(flag.id, "back", textTexture, textLayout, textLayout.backZ, 0),
-    );
-
-    const rendered: RenderedFlag = {
-      root,
-      textTexture,
-      cellId: flag.cellId,
-      flagType: flag.flagType,
-      message: "",
-      fontColor: "",
-    };
-    redrawText(rendered, flag);
-    return rendered;
-  }
-
-  function syncRenderedFlag(flag: PlacedFlagObject, rendered: RenderedFlag): void {
-    if (rendered.flagType !== flag.flagType) {
-      rendered.root.removeFromParent();
-      disposeRenderedFlag(rendered);
-      renderedById.set(flag.id, createRenderedFlag(flag));
-      syncRenderedFlag(flag, renderedById.get(flag.id)!);
-      return;
-    }
-
-    const parent = options.cellRoots.get(flag.cellId);
-    if (parent && rendered.root.parent !== parent) {
-      parent.add(rendered.root);
-    }
-
-    rendered.cellId = flag.cellId;
-    applyWorldRigidTransform(rendered.root, flag.localPose);
-    if (rendered.message !== flag.message || rendered.fontColor !== flag.fontColor) {
-      redrawText(rendered, flag);
-    }
-  }
+export function createPlacedFlagRuntime(flag: PlacedFlagObject, assets: PreparedWorldAssets): PlacedFlagRuntime {
+  const rendered = createRenderedFlag(flag, assets);
 
   return {
-    sync() {
-      const flags = options.registry.getAll().filter((object): object is PlacedFlagObject => object.kind === "placed-flag");
-      const liveIds = new Set(flags.map((flag) => flag.id));
-
-      for (const [id, rendered] of [...renderedById]) {
-        if (!liveIds.has(id)) {
-          rendered.root.removeFromParent();
-          disposeRenderedFlag(rendered);
-          renderedById.delete(id);
-        }
+    root: rendered.root,
+    flagId: flag.id,
+    get cellId() {
+      return rendered.cellId;
+    },
+    syncFromObject(nextFlag) {
+      if (nextFlag.id !== flag.id) {
+        throw new Error(`Cannot sync placed flag runtime "${flag.id}" from "${nextFlag.id}".`);
       }
 
-      for (const flag of flags) {
-        let rendered = renderedById.get(flag.id);
-        if (!rendered) {
-          rendered = createRenderedFlag(flag);
-          renderedById.set(flag.id, rendered);
-        }
-        syncRenderedFlag(flag, rendered);
+      syncRenderedFlag(nextFlag, rendered);
+    },
+    syncParent(cellRoots) {
+      const parent = cellRoots.get(rendered.cellId);
+      if (parent && rendered.root.parent !== parent) {
+        parent.add(rendered.root);
       }
     },
     dispose() {
-      for (const rendered of renderedById.values()) {
-        rendered.root.removeFromParent();
-        disposeRenderedFlag(rendered);
-      }
-      renderedById.clear();
+      rendered.root.removeFromParent();
+      disposeRenderedFlag(rendered);
     },
   };
+}
+
+function createRenderedFlag(flag: PlacedFlagObject, assets: PreparedWorldAssets): RenderedFlag {
+  const root = new THREE.Group();
+  root.name = `placed-flag:${flag.id}`;
+
+  const prepared = assets.instantiateGltf(placedFlagAssetPaths[flag.flagType]);
+  if (!prepared) {
+    throw new Error(`Placed flag asset was not preloaded: ${placedFlagAssetPaths[flag.flagType]}`);
+  }
+
+  prepared.scene.name = `asset:${flag.id}`;
+  prepared.scene.scale.setScalar(SIGN_MODEL_SCALE);
+  prepared.scene.rotation.y = Math.PI;
+  root.add(prepared.scene);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 256;
+  const textTexture = new THREE.CanvasTexture(canvas);
+  textTexture.colorSpace = THREE.SRGBColorSpace;
+  textTexture.name = `placed-flag-text:${flag.id}`;
+  const textLayout = resolveFlagTextLayout(prepared.scene, flag.flagType);
+  root.add(
+    createSignTextPlane(flag.id, "front", textTexture, textLayout, textLayout.frontZ, Math.PI),
+    createSignTextPlane(flag.id, "back", textTexture, textLayout, textLayout.backZ, 0),
+  );
+
+  const rendered: RenderedFlag = {
+    root,
+    textTexture,
+    cellId: flag.cellId,
+    flagType: flag.flagType,
+    message: "",
+    fontColor: "",
+  };
+  redrawText(rendered, flag);
+  syncRenderedFlag(flag, rendered);
+  return rendered;
+}
+
+function syncRenderedFlag(flag: PlacedFlagObject, rendered: RenderedFlag): void {
+  if (rendered.flagType !== flag.flagType) {
+    throw new Error(`Cannot change placed flag runtime type from "${rendered.flagType}" to "${flag.flagType}".`);
+  }
+
+  rendered.cellId = flag.cellId;
+  applyWorldRigidTransform(rendered.root, flag.localPose);
+  if (rendered.message !== flag.message || rendered.fontColor !== flag.fontColor) {
+    redrawText(rendered, flag);
+  }
 }
 
 function redrawText(rendered: RenderedFlag, flag: PlacedFlagObject): void {
