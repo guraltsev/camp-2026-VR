@@ -242,6 +242,24 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     const tools = document.createElement("div");
     tools.className = "desktop-tool-palette-tool-grid";
 
+    const aimButton = document.createElement("button");
+    aimButton.type = "button";
+    aimButton.className = "desktop-tool-tile";
+    aimButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "aim");
+    aimButton.ariaLabel = "Aim";
+    aimButton.ariaPressed = String(mainContent.selectedTool === "aim");
+    aimButton.addEventListener("click", () => {
+      options.onToolSelected(mainContent.selectedTool === "aim" ? "none" : "aim");
+    });
+
+    const aimIcon = document.createElement("span");
+    aimIcon.className = "desktop-tool-tile-icon desktop-tool-aim-icon";
+    aimIcon.setAttribute("aria-hidden", "true");
+    const aimLabel = document.createElement("span");
+    aimLabel.className = "desktop-tool-tile-label";
+    aimLabel.textContent = "aim";
+    aimButton.append(aimIcon, aimLabel);
+
     const flagTile = document.createElement("div");
     flagTile.className = "desktop-tool-tile-wrap";
 
@@ -272,7 +290,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     });
 
     flagTile.append(flagButton, optionsButton);
-    tools.append(flagTile);
+    tools.append(aimButton, flagTile);
     return tools;
   }
 

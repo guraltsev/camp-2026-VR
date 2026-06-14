@@ -16,11 +16,13 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   icon.className = "desktop-tool-indicator-icon";
   icon.setAttribute("aria-hidden", "true");
 
+  const aimCross = document.createElement("span");
+  aimCross.className = "desktop-tool-indicator-aim-cross";
   const board = document.createElement("span");
   board.className = "desktop-tool-indicator-board";
   const post = document.createElement("span");
   post.className = "desktop-tool-indicator-post";
-  icon.append(board, post);
+  icon.append(aimCross, board, post);
 
   const label = document.createElement("span");
   label.className = "desktop-tool-indicator-label";
@@ -32,10 +34,16 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
     root,
     setTool(toolId, flagType) {
       root.hidden = toolId === "none";
+      root.classList.toggle("desktop-tool-indicator-aim", toolId === "aim");
+      root.classList.toggle("desktop-tool-indicator-place-flag", toolId === "place-flag");
       root.classList.toggle("desktop-tool-indicator-WoodenSign1", flagType === "WoodenSign1");
       root.classList.toggle("desktop-tool-indicator-WoodenSign2", flagType === "WoodenSign2");
-      label.textContent = toolId === "place-flag" ? "Flags" : "";
-      root.ariaLabel = toolId === "place-flag" ? "Selected tool: flags" : "No selected tool";
+      label.textContent = toolId === "place-flag" ? "Flags" : toolId === "aim" ? "Aim" : "";
+      root.ariaLabel = toolId === "place-flag"
+        ? "Selected tool: flags"
+        : toolId === "aim"
+          ? "Selected tool: aim"
+          : "No selected tool";
     },
     dispose() {
       root.remove();

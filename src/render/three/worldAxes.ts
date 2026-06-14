@@ -16,6 +16,18 @@ export function worldPointToThree(point: Vec3): THREE.Vector3 {
   return new THREE.Vector3(point.x, point.z, -point.y);
 }
 
+export function threePointToWorld(point: THREE.Vector3): Vec3 {
+  return {
+    x: point.x,
+    y: -point.z,
+    z: point.y,
+  };
+}
+
+export function threeDirectionToWorld(direction: THREE.Vector3): Vec3 {
+  return threePointToWorld(direction);
+}
+
 export function worldYawRadiansToThree(yawRadians: number): number {
   return yawRadians;
 }

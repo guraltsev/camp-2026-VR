@@ -22,7 +22,7 @@ export interface PaletteHeaderAction {
 
 export interface MainPaletteContent {
   readonly kind: "main";
-  readonly selectedTool: "none" | "place-flag";
+  readonly selectedTool: "none" | "aim" | "place-flag";
   readonly placeFlagType: PlacedFlagType;
 }
 

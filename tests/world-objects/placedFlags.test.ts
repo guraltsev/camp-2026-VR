@@ -6,6 +6,7 @@ import {
   createPlacedFlagObject,
   defaultPlacedFlagMessage,
   isPlacedFlagType,
+  placeFlagAtFloorPoint,
   placeFlagFromAim,
   placedFlagToDynamicObjectState,
   sanitizePlacedFlagMessage,
@@ -93,6 +94,27 @@ describe("placedFlags", () => {
     expect(sign2Result.object?.message).toBe("B4");
   });
 
+  it("places flags at a resolved floor point in the resolved cell", () => {
+    const world = compileCellComplex(twoRoomWorld());
+    const registry = createRuntimeObjectRegistry();
+
+    const result = placeFlagAtFloorPoint({
+      world,
+      registry,
+      cellId: "room-b",
+      eyePosition: { x: 0, y: -2, z: 1.6 },
+      floorPoint: { x: 1, y: 0.5, z: 0 },
+      flagType: "WoodenSign1",
+      id: "flag-room-b",
+    });
+
+    expect(result.placed).toBe(true);
+    expect(result.object?.cellId).toBe("room-b");
+    expect(result.object?.localPose.translation).toEqual({ x: 1, y: 0.5, z: 0 });
+    expect(registry.getObjectsInCell("room-b").map((object) => object.id)).toEqual(["flag-room-b"]);
+    expect(registry.getObjectsInCell("room-a")).toEqual([]);
+  });
+
   it("defaults font color to white", () => {
     const flag = createPlacedFlagObject({
       id: "flag-a",
@@ -145,6 +167,35 @@ function singleRoomWorld(): CellComplexSpec {
     cells: [
       {
         id: "room",
+        heightMeters: 3,
+        baseVertices: [
+          { x: -5, y: -5 },
+          { x: 5, y: -5 },
+          { x: 5, y: 5 },
+          { x: -5, y: 5 },
+        ],
+        portals: [],
+      },
+    ],
+  };
+}
+
+function twoRoomWorld(): CellComplexSpec {
+  return {
+    cells: [
+      {
+        id: "room-a",
+        heightMeters: 3,
+        baseVertices: [
+          { x: -5, y: -5 },
+          { x: 5, y: -5 },
+          { x: 5, y: 5 },
+          { x: -5, y: 5 },
+        ],
+        portals: [],
+      },
+      {
+        id: "room-b",
         heightMeters: 3,
         baseVertices: [
           { x: -5, y: -5 },

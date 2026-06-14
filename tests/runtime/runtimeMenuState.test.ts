@@ -6,6 +6,14 @@ import {
 } from "../../src/runtime/runtimeMenuState";
 
 describe("runtimeMenuState", () => {
+  it("selects the aim tool by default", () => {
+    const state = createRuntimeMenuState({
+      selectedWorldId: "cube",
+    });
+
+    expect(state.selectedTool).toBe("aim");
+  });
+
   it("selects the place-flag tool when a flag type is selected", () => {
     const state = showRuntimeMenuPlaceFlagOptions(createRuntimeMenuState({
       selectedWorldId: "cube",

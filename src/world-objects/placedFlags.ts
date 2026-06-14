@@ -45,6 +45,16 @@ export interface PlaceFlagFromAimRequest {
   readonly id: string;
 }
 
+export interface PlaceFlagAtFloorPointRequest {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly cellId: string;
+  readonly eyePosition: Vec3;
+  readonly floorPoint: Vec3;
+  readonly flagType: PlacedFlagType;
+  readonly id: string;
+}
+
 export interface PlaceFlagResult {
   readonly placed: boolean;
   readonly object?: PlacedFlagObject;
@@ -149,6 +159,28 @@ export function placeFlagFromAim(request: PlaceFlagFromAimRequest): PlaceFlagRes
   const floorPoint = {
     x: request.eyePosition.x + request.forward.x * distance,
     y: request.eyePosition.y + request.forward.y * distance,
+    z: 0,
+  };
+  return placeFlagAtFloorPoint({
+    world: request.world,
+    registry: request.registry,
+    cellId: request.cellId,
+    eyePosition: request.eyePosition,
+    floorPoint,
+    flagType: request.flagType,
+    id: request.id,
+  });
+}
+
+export function placeFlagAtFloorPoint(request: PlaceFlagAtFloorPointRequest): PlaceFlagResult {
+  const cell = request.world.cellsById.get(request.cellId);
+  if (!cell) {
+    return { placed: false, reason: "missing-cell" };
+  }
+
+  const floorPoint = {
+    x: request.floorPoint.x,
+    y: request.floorPoint.y,
     z: 0,
   };
   const yawRadians = Math.atan2(request.eyePosition.x - floorPoint.x, request.eyePosition.y - floorPoint.y);

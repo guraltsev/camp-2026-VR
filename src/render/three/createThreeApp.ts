@@ -54,7 +54,7 @@ import {
   type SimpleGeoCreatureRuntime,
 } from "../../world-objects/simpleGeoCreature";
 import {
-  placeFlagFromAim,
+  placeFlagAtFloorPoint,
   updatePlacedFlagFontColor,
   updatePlacedFlagMessage,
 } from "../../world-objects/placedFlags";
@@ -67,6 +67,8 @@ import { getDynamicObjectCollisionBounds } from "../../movement/collision";
 import { createDesktopFlagEditor } from "../dom/desktopFlagEditor";
 import { createDesktopToolIndicator } from "../dom/desktopToolIndicator";
 import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
+import { createAimCrossMarker } from "./aimCrossMarker";
+import { resolveAimTarget } from "./aimTarget";
 import { createPlacedFlagRenderer } from "./placedFlagRenderer";
 import {
   buildCellRenderArchetypes,
@@ -395,6 +397,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       });
     },
   });
+  const aimCrossMarker = createAimCrossMarker(scene);
   const floatingObjectTooltip = createFloatingObjectTooltip(document.body);
   const xrEntryUi = createXrEntryUi(container, enterVr);
   const clipPolygonOverlay = createPortalClipPolygonOverlay(container);
@@ -707,6 +710,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameAfterPortalMs = performance.now();
     const frameBeforeUiMs = frameAfterPortalMs;
 
+    updateAimCrossMarker(xrActive);
     syncXrDebugState(frame.source, moveResult);
     if (xrActive && xrFrame && xrReferenceSpace) {
       vrPaletteController.update({
@@ -841,6 +845,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       desktopToolPalette.dispose();
       desktopToolIndicator.dispose();
       desktopFlagEditor.dispose();
+      aimCrossMarker.dispose();
       floatingObjectTooltip.dispose();
       controls.dispose();
       placedFlagRenderer.dispose();
@@ -1890,12 +1895,17 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function tryPlaceFlagFromDesktopAim(): void {
-    const result = placeFlagFromAim({
+    const target = resolveCurrentAimTarget();
+    if (target?.kind !== "floor") {
+      return;
+    }
+
+    const result = placeFlagAtFloorPoint({
       world: appState.world,
       registry: runtimeObjectRegistry,
-      cellId: playerPose.cellId,
-      eyePosition: getDesktopEyePosition(),
-      forward: getPlayerForwardVector(),
+      cellId: target.cellId,
+      eyePosition: target.localEyePosition,
+      floorPoint: target.localPoint,
       flagType: menuState.placeFlagOptions.flagType,
       id: `placed-flag:${Date.now()}:${placedFlagIdCounter++}`,
     });
@@ -1932,6 +1942,29 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       text,
       xPixels: screenPosition?.x,
       yPixels: screenPosition?.y,
+    });
+  }
+
+  function updateAimCrossMarker(xrActive: boolean): void {
+    if (
+      xrActive ||
+      (menuState.selectedTool !== "aim" && menuState.selectedTool !== "place-flag") ||
+      menuState.isOpen ||
+      desktopFlagEditor.isOpen()
+    ) {
+      aimCrossMarker.update(undefined);
+      return;
+    }
+
+    aimCrossMarker.update(resolveCurrentAimTarget());
+  }
+
+  function resolveCurrentAimTarget() {
+    return resolveAimTarget({
+      world: appState.world,
+      registry: runtimeObjectRegistry,
+      camera,
+      visiblePortalPaths: latestVisibleResult?.paths ?? [],
     });
   }
 
@@ -2024,22 +2057,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
     syncPlacedFlagViews();
-  }
-
-  function getDesktopEyePosition(): { readonly x: number; readonly y: number; readonly z: number } {
-    return {
-      x: playerPose.position.x,
-      y: playerPose.position.y,
-      z: playerPose.position.z + DEFAULT_PLAYER_EYE_HEIGHT_METERS,
-    };
-  }
-
-  function getPlayerForwardVector(): { readonly x: number; readonly y: number; readonly z: number } {
-    return {
-      x: -Math.sin(playerPose.yawRadians) * Math.cos(playerPose.pitchRadians),
-      y: Math.cos(playerPose.yawRadians) * Math.cos(playerPose.pitchRadians),
-      z: Math.sin(playerPose.pitchRadians),
-    };
   }
 
   function getCameraWorldPosition(): { readonly x: number; readonly y: number; readonly z: number } {

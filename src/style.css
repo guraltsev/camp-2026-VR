@@ -428,6 +428,33 @@ body {
   display: block;
 }
 
+.desktop-tool-aim-icon {
+  display: grid;
+  place-items: center;
+}
+
+.desktop-tool-aim-icon::before,
+.desktop-tool-aim-icon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  background: #ef1b1b;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 18%), 0 0 12px rgb(239 27 27 / 42%);
+  transform: translate(-50%, -50%);
+}
+
+.desktop-tool-aim-icon::before {
+  width: 52px;
+  height: 6px;
+}
+
+.desktop-tool-aim-icon::after {
+  width: 6px;
+  height: 52px;
+}
+
 .desktop-tool-flag-board {
   position: absolute;
   left: 9px;
@@ -601,6 +628,47 @@ body {
   display: block;
   width: 2rem;
   height: 2rem;
+}
+
+.desktop-tool-indicator-aim-cross {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+.desktop-tool-indicator-aim-cross::before,
+.desktop-tool-indicator-aim-cross::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  background: #ef1b1b;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 20%), 0 0 8px rgb(239 27 27 / 38%);
+  transform: translate(-50%, -50%);
+}
+
+.desktop-tool-indicator-aim-cross::before {
+  width: 1.75rem;
+  height: 0.22rem;
+}
+
+.desktop-tool-indicator-aim-cross::after {
+  width: 0.22rem;
+  height: 1.75rem;
+}
+
+.desktop-tool-indicator-aim .desktop-tool-indicator-aim-cross {
+  display: block;
+}
+
+.desktop-tool-indicator-aim .desktop-tool-indicator-board,
+.desktop-tool-indicator-aim .desktop-tool-indicator-post {
+  display: none;
+}
+
+.desktop-tool-indicator-place-flag .desktop-tool-indicator-aim-cross {
+  display: none;
 }
 
 .desktop-tool-indicator-board {
