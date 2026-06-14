@@ -4,6 +4,9 @@ export interface RuntimeInputFrame {
   readonly localDisplacement: Vec3;
   readonly yawDeltaRadians: number;
   readonly pitchDeltaRadians: number;
+  readonly palettePointerDeltaPixels?: { readonly x: number; readonly y: number };
+  readonly paletteSelectPressed?: boolean;
+  readonly paletteSelectRequested?: boolean;
   readonly resetRequested: boolean;
   readonly primaryActionRequested: boolean;
   readonly interactRequested: boolean;

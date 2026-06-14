@@ -88,9 +88,10 @@ import {
   type CellRenderArchetype,
 } from "./cellRenderArchetypes";
 import { createDebugOverlay } from "./debugOverlay";
-import { createDesktopToolPalette } from "../dom/desktopToolPalette";
 import { createDesktopControls } from "./desktopControls";
-import { createDesktopPaletteInput } from "./desktopPaletteInput";
+import { createDesktopScenePaletteInput, reduceDesktopScenePaletteToggle } from "./desktopScenePaletteInput";
+import { resolveDesktopScenePalettePlacement } from "./desktopScenePalettePlacement";
+import { createScenePaletteController } from "./scenePaletteController";
 import { buildForbiddenZoneWireframe } from "./debugCollisionWireframes";
 import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
 import { createPortalInstanceDebugRenderer, type PortalInstanceDebugRenderer } from "./portalInstanceDebug";
@@ -167,7 +168,8 @@ import { createXrControls } from "./xrControls";
 import { createXrEntryUi } from "./xrEntryUi";
 import { resolveXrPortalEyeRenderRoot, type XrPortalEyeRenderRoot } from "./xrPortalEye";
 import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose } from "./xrPlayerRig";
-import { createVrPaletteController } from "./vrPaletteController";
+import { resolveVrPalettePlacement } from "./vrPalettePlacement";
+import { createXrScenePaletteInput } from "./xrScenePaletteInput";
 import {
   createXrSessionState,
   detectXrSessionState,
@@ -270,6 +272,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     debugOverlayEnabled: options.debugOverlayEnabled,
     debugOverlayItems: options.debugOverlayItems,
   });
+  let previousDesktopPalettePlacement: ReturnType<typeof resolveDesktopScenePalettePlacement> | undefined;
+  let previousXrPalettePosition: THREE.Vector3 | undefined;
+  let previousXrPaletteQuaternion: THREE.Quaternion | undefined;
   const debugOverlay = createDebugOverlay(container);
   const commandDispatcher = createAppCommandDispatcher({
     get currentUrl() {
@@ -285,97 +290,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       applyMenuDebugState(setRuntimeMenuDebugOverlayEnabled(menuState, enabled));
     },
   });
-  const desktopToolPalette = createDesktopToolPalette(document.body, {
-    onLeftAction(actionId) {
-      if (actionId === "settings") {
-        menuState = showRuntimeMenuSettings(menuState);
-        syncDesktopPalette();
-      }
-    },
-    onRightAction(actionId) {
-      if (actionId === "back") {
-        menuState = menuState.page === "debug-settings"
-          ? showRuntimeMenuSettings(menuState)
-          : showRuntimeMenuMainPage(menuState);
-        syncDesktopPalette();
-        return;
-      }
-
-      if (actionId === "close") {
-        desktopPaletteInput.close();
-      }
-    },
-    onWorldSelected(worldId) {
-      menuState = setRuntimeMenuSelectedWorldId(menuState, worldId);
-      syncDesktopPalette();
-      dispatchRuntimeCommand({ kind: "change-world", worldId });
-    },
-    onReloadRequested() {
-      dispatchRuntimeCommand({ kind: "reload-world" });
-    },
-    onDebugEnabledChanged(enabled) {
-      applyMenuDebugState(setRuntimeMenuDebugEnabled(menuState, enabled));
-    },
-    onDebugSettingsRequested() {
-      menuState = showRuntimeMenuDebugSettings(menuState);
-      syncDesktopPalette();
-    },
-    onConsoleLogLevelSelected(level) {
-      applyMenuDebugState(setRuntimeMenuConsoleLogLevel(menuState, level));
-    },
-    onDebugOverlayToggled(enabled) {
-      applyMenuDebugState(setRuntimeMenuDebugOverlayEnabled(menuState, enabled));
-    },
-    onDebugOverlayItemToggled(itemId, enabled) {
-      applyMenuDebugState(toggleRuntimeMenuDebugOverlayItem(menuState, itemId, enabled));
-    },
-    onPortalPanelModeSelected(mode) {
-      applyMenuDebugState(setRuntimeMenuPortalPanelMode(menuState, mode));
-    },
-    onPortalInspectionToggled(enabled) {
-      applyMenuDebugState(setRuntimeMenuPortalInspectionEnabled(menuState, enabled));
-    },
-    onCollisionGeometryWireframesToggled(enabled) {
-      applyMenuDebugState(setRuntimeMenuCollisionGeometryWireframesEnabled(menuState, enabled));
-    },
-    onToolSelected(toolId) {
-      menuState = setRuntimeMenuSelectedTool(menuState, toolId);
-      desktopPaletteInput.close();
-    },
-    onPlaceFlagOptionsRequested() {
-      menuState = showRuntimeMenuPlaceFlagOptions(menuState);
-      syncDesktopPalette();
-    },
-    onPlaceFlagTypeSelected(flagType) {
-      menuState = closeRuntimeMenu(selectRuntimeMenuPlaceFlagToolType(menuState, flagType));
-      syncDesktopPalette();
-      void controls.resume({ requestPointerLock: true }).then((captured) => {
-        desktopToolPalette.setResumePromptVisible(!captured);
-      });
-    },
-    onResumeRequested() {
-      void controls.resume({ requestPointerLock: true }).then((captured) => {
-        desktopToolPalette.setResumePromptVisible(!captured);
-      });
-    },
-  });
   const desktopToolIndicator = createDesktopToolIndicator(document.body);
-  const desktopPaletteInput = createDesktopPaletteInput({
-    canvas: renderer.domElement,
-    paletteRoot: desktopToolPalette.root,
-    controls,
-    onOpen() {
-      menuState = openRuntimeMenu(menuState);
-      syncDesktopPalette();
-    },
-    onClose() {
-      menuState = closeRuntimeMenu(menuState);
-      syncDesktopPalette();
-    },
-    setResumePromptVisible(visible) {
-      desktopToolPalette.setResumePromptVisible(visible);
-    },
-  });
+  const desktopScenePaletteInput = createDesktopScenePaletteInput();
+  const xrScenePaletteInput = createXrScenePaletteInput();
   const runtimeObjectRegistry = createRuntimeObjectRegistry();
   const desktopFlagEditor = createDesktopFlagEditor(document.body, {
     onMessageChanged(flagId, message) {
@@ -411,9 +328,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onClosed() {
       menuState = setRuntimeMenuEditingFlagId(menuState, undefined);
       syncDesktopPalette();
-      void controls.resume({ requestPointerLock: true }).then((captured) => {
-        desktopToolPalette.setResumePromptVisible(!captured);
-      });
+      void controls.requestPointerLock();
     },
   });
   const aimCrossMarker = createAimCrossMarker(scene);
@@ -421,7 +336,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const xrEntryUi = createXrEntryUi(container, enterVr);
   const clipPolygonOverlay = createPortalClipPolygonOverlay(container);
   const sceneLighting = createStylizedSceneLighting(scene);
-  const vrPaletteController = createVrPaletteController({
+  const scenePaletteController = createScenePaletteController({
     scene,
     getCamera: () => camera,
     getIsOpen: () => menuState.isOpen,
@@ -475,6 +390,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onCollisionGeometryWireframesToggled(enabled) {
       applyMenuDebugState(setRuntimeMenuCollisionGeometryWireframesEnabled(menuState, enabled));
+    },
+    onToolSelected(toolId) {
+      menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, toolId));
+      syncDesktopPalette();
+    },
+    onPlaceFlagOptionsRequested() {
+      menuState = showRuntimeMenuPlaceFlagOptions(menuState);
+      syncDesktopPalette();
+    },
+    onPlaceFlagTypeSelected(flagType) {
+      menuState = closeRuntimeMenu(selectRuntimeMenuPlaceFlagToolType(menuState, flagType));
+      syncDesktopPalette();
     },
   });
 
@@ -746,20 +673,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     updateAimCrossMarker(xrActive);
     syncXrDebugState(frame.source, moveResult);
-    if (xrActive && xrFrame && xrReferenceSpace) {
-      vrPaletteController.update({
-        deltaSeconds,
-        xrFrame,
-        referenceSpace: xrReferenceSpace,
-        referenceSpaceToWorldMatrix: xrRig.root.matrixWorld,
-        inputSources: [...(renderer.xr.getSession()?.inputSources ?? [])],
-        definition: createPaletteDefinition(menuState),
-        debugPanelVisible: menuState.debugEnabled && menuState.debugOverlayEnabled,
-        debugOverlayItems: menuState.debugOverlayItems,
-        xrDebugState,
-        frameRateFps: smoothedFrameRateFps,
-      });
-    }
+    updateScenePalette(xrActive, xrFrame, xrReferenceSpace, deltaSeconds, frame);
     portalDebugRuntime.updateVisiblePortalPaths();
     const frameAfterUiMs = performance.now();
     const frameBeforeRenderMs = performance.now();
@@ -862,6 +776,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   window.addEventListener("resize", onResize);
+  renderer.domElement.addEventListener("contextmenu", onDesktopContextMenu);
+  window.addEventListener("mousedown", onDesktopMouseDown);
+  window.addEventListener("keydown", onDesktopPaletteKeyDown);
   applyDesktopCameraPose();
   renderer.setAnimationLoop(renderFrame);
 
@@ -874,9 +791,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     dispose() {
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", onResize);
-      vrPaletteController.dispose();
-      desktopPaletteInput.dispose();
-      desktopToolPalette.dispose();
+      renderer.domElement.removeEventListener("contextmenu", onDesktopContextMenu);
+      window.removeEventListener("mousedown", onDesktopMouseDown);
+      window.removeEventListener("keydown", onDesktopPaletteKeyDown);
+      scenePaletteController.dispose();
+      desktopScenePaletteInput.dispose();
       desktopToolIndicator.dispose();
       desktopFlagEditor.dispose();
       aimCrossMarker.dispose();
@@ -935,7 +854,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       session.addEventListener("end", () => {
         xrSessionState = transitionXrSessionState(xrSessionState, "ended");
         xrRig.reset();
-        vrPaletteController.onSessionEnded();
+        xrScenePaletteInput.reset();
+        scenePaletteController.setVisible(false);
         xrEntryUi.update(xrSessionState);
         syncXrDebugState("desktop");
       });
@@ -951,7 +871,110 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
+  function updateScenePalette(
+    xrActive: boolean,
+    xrFrame: XRFrame | undefined,
+    xrReferenceSpace: XRReferenceSpace | null,
+    deltaSeconds: number,
+    frame: RuntimeInputFrame,
+  ): void {
+    if (xrActive && xrFrame && xrReferenceSpace) {
+      camera.updateMatrixWorld(true);
+      const headPosition = new THREE.Vector3();
+      const headQuaternion = new THREE.Quaternion();
+      const headScale = new THREE.Vector3();
+      camera.matrixWorld.decompose(headPosition, headQuaternion, headScale);
+      const placement = resolveVrPalettePlacement({
+        head: {
+          position: headPosition,
+          quaternion: headQuaternion,
+        },
+        previousPosition: previousXrPalettePosition,
+        previousQuaternion: previousXrPaletteQuaternion,
+        smoothing: 0.22,
+        freeze: frame.paletteSelectPressed === true,
+      });
+      previousXrPalettePosition = placement.position.clone();
+      previousXrPaletteQuaternion = placement.quaternion.clone();
+      scenePaletteController.update({
+        input: xrScenePaletteInput.update({
+          deltaSeconds,
+          xrFrame,
+          referenceSpace: xrReferenceSpace,
+          referenceSpaceToWorldMatrix: xrRig.root.matrixWorld,
+          inputSources: [...(renderer.xr.getSession()?.inputSources ?? [])],
+        }),
+        definition: createPaletteDefinition(menuState),
+        placement,
+      });
+      return;
+    }
+
+    const placement = resolveDesktopScenePalettePlacement({
+      camera,
+      previousPlacement: previousDesktopPalettePlacement,
+      freeze: menuState.isOpen,
+    });
+    previousDesktopPalettePlacement = placement;
+    scenePaletteController.update({
+      input: desktopScenePaletteInput.update({
+        desktopFrame: {
+          ...frame,
+          palettePointerDeltaPixels: frame.palettePointerDeltaPixels ?? { x: 0, y: 0 },
+          paletteSelectPressed: frame.paletteSelectPressed ?? false,
+          paletteSelectRequested: frame.paletteSelectRequested ?? false,
+        },
+        deltaSeconds,
+        camera,
+        isOpen: menuState.isOpen,
+        placement,
+      }),
+      definition: createPaletteDefinition(menuState),
+      placement,
+    });
+  }
+
+  function onDesktopContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+  }
+
+  function onDesktopMouseDown(event: MouseEvent): void {
+    if (event.button !== 2 || renderer.xr.isPresenting) {
+      return;
+    }
+
+    if (event.target !== renderer.domElement && !controls.isPointerLocked()) {
+      return;
+    }
+
+    event.preventDefault();
+    applyDesktopScenePaletteToggle(reduceDesktopScenePaletteToggle(menuState.isOpen, "secondary-click"));
+  }
+
+  function onDesktopPaletteKeyDown(event: KeyboardEvent): void {
+    if (event.code !== "Escape" || renderer.xr.isPresenting) {
+      return;
+    }
+
+    const action = reduceDesktopScenePaletteToggle(menuState.isOpen, "escape-key");
+    if (action !== "none") {
+      event.preventDefault();
+      applyDesktopScenePaletteToggle(action);
+    }
+  }
+
+  function applyDesktopScenePaletteToggle(action: "open" | "close" | "none"): void {
+    if (action === "open" && !menuState.isOpen) {
+      menuState = openRuntimeMenu(menuState);
+      syncDesktopPalette();
+    } else if (action === "close" && menuState.isOpen) {
+      menuState = closeRuntimeMenu(menuState);
+      syncDesktopPalette();
+    }
+  }
+
   function getDesktopInputFrame(deltaSeconds: number): RuntimeInputFrame {
+    controls.setLookMode(menuState.isOpen ? "palette" : "camera");
     const frame = controls.consumeFrame(deltaSeconds);
 
     return {
@@ -1948,8 +1971,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function syncDesktopPalette(): void {
-    desktopToolPalette.setDefinition(createPaletteDefinition(menuState));
-    desktopToolPalette.setOpen(menuState.isOpen);
+    controls.setLookMode(menuState.isOpen ? "palette" : "camera");
     desktopToolIndicator.setTool(menuState.selectedTool, menuState.placeFlagOptions.flagType);
   }
 

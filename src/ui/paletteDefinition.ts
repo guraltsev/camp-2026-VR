@@ -2,10 +2,10 @@ import { worldCatalog } from "../authoring/worldCatalog";
 import { portalPanelModeDefinitions } from "../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
-  RuntimeDesktopToolId,
   RuntimeMenuConsoleLogLevelId,
   RuntimeMenuPageId,
   RuntimeMenuState,
+  RuntimeToolId,
 } from "../runtime/runtimeMenuState";
 import { placedFlagTypes, type PlacedFlagType } from "../world-objects/placedFlags";
 
@@ -23,7 +23,7 @@ export interface PaletteHeaderAction {
 
 export interface MainPaletteContent {
   readonly kind: "main";
-  readonly selectedTool: RuntimeDesktopToolId;
+  readonly selectedTool: RuntimeToolId;
   readonly placeFlagType: PlacedFlagType;
 }
 

@@ -4,8 +4,10 @@ import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
   RuntimeMenuConsoleLogLevelId,
+  RuntimeToolId,
 } from "../../runtime/runtimeMenuState";
 import type { PaletteDefinition, PaletteHeaderAction } from "../../ui/paletteDefinition";
+import type { PlacedFlagType } from "../../world-objects/placedFlags";
 import { resolveVrPaletteHeaderActions } from "./vrPaletteHeaderActions";
 
 export interface VrPaletteLibraryAdapterOptions {
@@ -21,6 +23,9 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
+  readonly onToolSelected?: (toolId: RuntimeToolId) => void;
+  readonly onPlaceFlagOptionsRequested?: () => void;
+  readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
 }
 
 export interface VrPaletteLibraryAdapter {
@@ -30,6 +35,9 @@ export interface VrPaletteLibraryAdapter {
   update(deltaMs: number): void;
   dispose(): void;
 }
+
+export type ScenePaletteLibraryAdapterOptions = VrPaletteLibraryAdapterOptions;
+export type ScenePaletteLibraryAdapter = VrPaletteLibraryAdapter;
 
 const panelPixelSize = 0.0012;
 const panelWidth = 720;
@@ -96,6 +104,8 @@ export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOp
     },
   };
 }
+
+export const createScenePaletteLibraryAdapter = createVrPaletteLibraryAdapter;
 
 function buildHeader(
   definition: PaletteDefinition,
@@ -179,18 +189,12 @@ function buildContent(
   definition: PaletteDefinition,
   options: VrPaletteLibraryAdapterOptions,
 ): Container {
-  if (definition.content.kind === "main" || definition.content.kind === "place-flag-options") {
-    const content = new Container({
-      width: "100%",
-      minHeight: 300,
-      borderRadius: 24,
-      backgroundColor: sectionColor,
-      borderColor,
-      borderWidth: 2,
-      justifyContent: "center",
-      alignItems: "center",
-    });
-    return content;
+  if (definition.content.kind === "main") {
+    return buildMainContent(definition.content, options);
+  }
+
+  if (definition.content.kind === "place-flag-options") {
+    return buildPlaceFlagOptionsContent(definition.content, options);
   }
 
   if (definition.content.kind === "debug-settings") {
@@ -267,6 +271,111 @@ function buildContent(
 
   settings.add(worldSection, actionsSection, debugSection);
   return settings;
+}
+
+function buildMainContent(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "main" }>,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const panel = new Container({
+    width: "100%",
+    minHeight: 300,
+    flexDirection: "column",
+    gap: 14,
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 2,
+  });
+
+  const row = new Container({
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  });
+  row.add(
+    createToolTile("aim", "Aim", content.selectedTool, options),
+    createToolTile("place-flag", "Flags", content.selectedTool, options),
+    createToolTile("geodesic-cannon", "Light", content.selectedTool, options),
+  );
+
+  const flagOptions = createInteractiveSurface({
+    width: "100%",
+    height: 46,
+    label: `Flag type: ${content.placeFlagType}`,
+    labelFontSize: 16,
+    justifyContent: "flex-start",
+    paddingLeft: 16,
+    backgroundColor: "#1f2937",
+    onClick: () => options.onPlaceFlagOptionsRequested?.(),
+  });
+  flagOptions.userData.xrPaletteItemId = "tool-options:place-flag";
+  flagOptions.userData.scenePaletteItemId = "tool-options:place-flag";
+
+  panel.add(row, flagOptions);
+  return panel;
+}
+
+function buildPlaceFlagOptionsContent(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "place-flag-options" }>,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const panel = new Container({
+    width: "100%",
+    minHeight: 300,
+    flexDirection: "column",
+    gap: 12,
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 2,
+  });
+  panel.add(createSectionLabel("Flag type"));
+
+  const grid = new Container({
+    width: "100%",
+    flexDirection: "row",
+    gap: 12,
+  });
+  for (const option of content.flagTypeOptions) {
+    const tile = createInteractiveSurface({
+      width: "49%",
+      height: 120,
+      label: option.label,
+      labelFontSize: 17,
+      backgroundColor: option.id === content.selectedFlagType ? activeColor : inactiveColor,
+      onClick: () => options.onPlaceFlagTypeSelected?.(option.id as PlacedFlagType),
+    });
+    tile.userData.xrPaletteItemId = `flag-type:${option.id}`;
+    tile.userData.scenePaletteItemId = `flag-type:${option.id}`;
+    grid.add(tile);
+  }
+
+  panel.add(grid);
+  return panel;
+}
+
+function createToolTile(
+  toolId: RuntimeToolId,
+  label: string,
+  selectedTool: RuntimeToolId,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const selected = toolId === selectedTool;
+  const button = createInteractiveSurface({
+    width: "32%",
+    height: 150,
+    label,
+    labelFontSize: 18,
+    backgroundColor: selected ? activeColor : inactiveColor,
+    onClick: () => options.onToolSelected?.(selected ? "none" : toolId),
+  });
+  button.userData.xrPaletteItemId = `tool:${toolId}`;
+  button.userData.scenePaletteItemId = `tool:${toolId}`;
+  return button;
 }
 
 function buildDebugSettingsContent(
@@ -406,6 +515,7 @@ function createOptionGrid(
         onClick: () => onSelected(option.id),
       });
       button.userData.xrPaletteItemId = `${itemPrefix}:${option.id}`;
+      button.userData.scenePaletteItemId = `${itemPrefix}:${option.id}`;
       row.add(button);
     }
 
@@ -438,6 +548,7 @@ function createToggleRow(
     backgroundColor: enabled ? activeColor : inactiveColor,
   });
   button.userData.xrPaletteItemId = itemId;
+  button.userData.scenePaletteItemId = itemId;
   row.add(button);
   return row;
 }
@@ -452,6 +563,7 @@ function createActionButton(label: string, itemId: string, onClick: () => void):
     onClick,
   });
   button.userData.xrPaletteItemId = itemId;
+  button.userData.scenePaletteItemId = itemId;
   return button;
 }
 
@@ -483,6 +595,7 @@ function createInteractiveSurface(options: {
     depthWrite: false,
   });
   button.userData.xrPaletteAction = options.disabled ? undefined : options.onClick;
+  button.userData.scenePaletteAction = options.disabled ? undefined : options.onClick;
   if (options.label) {
     button.add(createButtonText(options.label, options.labelFontSize ?? 15));
   }

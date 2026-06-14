@@ -4,13 +4,19 @@ export interface DesktopInputFrame {
   readonly localDisplacement: Vec3;
   readonly yawDeltaRadians: number;
   readonly pitchDeltaRadians: number;
+  readonly palettePointerDeltaPixels: { readonly x: number; readonly y: number };
+  readonly paletteSelectPressed: boolean;
+  readonly paletteSelectRequested: boolean;
   readonly resetRequested: boolean;
   readonly primaryActionRequested: boolean;
   readonly interactRequested: boolean;
 }
 
+export type DesktopLookMode = "camera" | "palette";
+
 export interface DesktopControls {
   readonly enabled: boolean;
+  setLookMode(mode: DesktopLookMode): void;
   consumeFrame(deltaSeconds: number): DesktopInputFrame;
   pause(): void;
   resume(options?: { readonly requestPointerLock?: boolean }): Promise<boolean>;
@@ -48,9 +54,14 @@ export function createDesktopControls(
   let paused = false;
   let pendingMouseYawDeltaRadians = 0;
   let pendingMousePitchDeltaRadians = 0;
+  let pendingPalettePointerDeltaX = 0;
+  let pendingPalettePointerDeltaY = 0;
   let resetRequested = false;
   let primaryActionRequested = false;
+  let paletteSelectPressed = false;
+  let paletteSelectRequested = false;
   let interactRequested = false;
+  let lookMode: DesktopLookMode = "camera";
 
   function onKeyDown(event: KeyboardEvent): void {
     if (paused) {
@@ -78,33 +89,66 @@ export function createDesktopControls(
     pressedKeys.delete(event.code);
   }
 
-  function onClick(): void {
+  function onClick(event: MouseEvent): void {
+    if (event.button !== 0) {
+      return;
+    }
+
     if (document.pointerLockElement === canvas) {
-      primaryActionRequested = true;
+      if (lookMode === "palette") {
+        event.preventDefault();
+        paletteSelectRequested = true;
+      } else {
+        primaryActionRequested = true;
+      }
       return;
     }
 
     void requestPointerLock();
   }
 
+  function onMouseDown(event: MouseEvent): void {
+    if (document.pointerLockElement === canvas && lookMode === "palette" && event.button === 0) {
+      event.preventDefault();
+      paletteSelectPressed = true;
+    }
+  }
+
+  function onMouseUp(event: MouseEvent): void {
+    if (event.button === 0) {
+      paletteSelectPressed = false;
+    }
+  }
+
   function onMouseMove(event: MouseEvent): void {
     if (document.pointerLockElement === canvas) {
-      pendingMouseYawDeltaRadians -= event.movementX * mouseSensitivity;
-      pendingMousePitchDeltaRadians -= event.movementY * mouseSensitivity;
+      if (lookMode === "palette") {
+        pendingPalettePointerDeltaX += event.movementX;
+        pendingPalettePointerDeltaY += event.movementY;
+      } else {
+        pendingMouseYawDeltaRadians -= event.movementX * mouseSensitivity;
+        pendingMousePitchDeltaRadians -= event.movementY * mouseSensitivity;
+      }
     }
   }
 
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   canvas.addEventListener("click", onClick);
+  window.addEventListener("mousedown", onMouseDown);
+  window.addEventListener("mouseup", onMouseUp);
   document.addEventListener("mousemove", onMouseMove);
 
   function clearPendingInput(): void {
     pressedKeys.clear();
     pendingMouseYawDeltaRadians = 0;
     pendingMousePitchDeltaRadians = 0;
+    pendingPalettePointerDeltaX = 0;
+    pendingPalettePointerDeltaY = 0;
     resetRequested = false;
     primaryActionRequested = false;
+    paletteSelectPressed = false;
+    paletteSelectRequested = false;
     interactRequested = false;
   }
 
@@ -126,6 +170,20 @@ export function createDesktopControls(
     get enabled() {
       return !paused;
     },
+    setLookMode(mode) {
+      if (lookMode === mode) {
+        return;
+      }
+
+      lookMode = mode;
+      pendingMouseYawDeltaRadians = 0;
+      pendingMousePitchDeltaRadians = 0;
+      pendingPalettePointerDeltaX = 0;
+      pendingPalettePointerDeltaY = 0;
+      primaryActionRequested = false;
+      paletteSelectRequested = false;
+      paletteSelectPressed = false;
+    },
     consumeFrame(deltaSeconds: number): DesktopInputFrame {
       if (paused) {
         clearPendingInput();
@@ -133,39 +191,59 @@ export function createDesktopControls(
           localDisplacement: vec3(0, 0, 0),
           yawDeltaRadians: 0,
           pitchDeltaRadians: 0,
+          palettePointerDeltaPixels: { x: 0, y: 0 },
+          paletteSelectPressed: false,
+          paletteSelectRequested: false,
           resetRequested: false,
           primaryActionRequested: false,
           interactRequested: false,
         };
       }
 
-      let yawDeltaRadians = pendingMouseYawDeltaRadians;
-      const pitchDeltaRadians = pendingMousePitchDeltaRadians;
-      yawDeltaRadians += (pressedKeys.has("KeyQ") ? 1 : 0) * turnSpeed * deltaSeconds;
-      yawDeltaRadians -= (pressedKeys.has("KeyE") ? 1 : 0) * turnSpeed * deltaSeconds;
+      let yawDeltaRadians = lookMode === "camera" ? pendingMouseYawDeltaRadians : 0;
+      const pitchDeltaRadians = lookMode === "camera" ? pendingMousePitchDeltaRadians : 0;
+      if (lookMode === "camera") {
+        yawDeltaRadians += (pressedKeys.has("KeyQ") ? 1 : 0) * turnSpeed * deltaSeconds;
+        yawDeltaRadians -= (pressedKeys.has("KeyE") ? 1 : 0) * turnSpeed * deltaSeconds;
+      }
 
-      const forwardInput =
+      const movementEnabled = lookMode === "camera";
+      const forwardInput = movementEnabled ? (
         (pressedKeys.has("KeyW") || pressedKeys.has("ArrowUp") ? 1 : 0) -
-        (pressedKeys.has("KeyS") || pressedKeys.has("ArrowDown") ? 1 : 0);
-      const rightInput =
+        (pressedKeys.has("KeyS") || pressedKeys.has("ArrowDown") ? 1 : 0)
+      ) : 0;
+      const rightInput = movementEnabled ? (
         (pressedKeys.has("KeyD") || pressedKeys.has("ArrowRight") ? 1 : 0) -
-        (pressedKeys.has("KeyA") || pressedKeys.has("ArrowLeft") ? 1 : 0);
+        (pressedKeys.has("KeyA") || pressedKeys.has("ArrowLeft") ? 1 : 0)
+      ) : 0;
       const inputLength = Math.hypot(forwardInput, rightInput) || 1;
       const stepMeters = moveSpeed * deltaSeconds;
       const frameResetRequested = resetRequested;
-      const framePrimaryActionRequested = primaryActionRequested;
+      const framePrimaryActionRequested = lookMode === "camera" ? primaryActionRequested : false;
+      const framePalettePointerDeltaPixels = {
+        x: pendingPalettePointerDeltaX,
+        y: pendingPalettePointerDeltaY,
+      };
+      const framePaletteSelectPressed = lookMode === "palette" && paletteSelectPressed;
+      const framePaletteSelectRequested = lookMode === "palette" && paletteSelectRequested;
       const frameInteractRequested = interactRequested;
 
       pendingMouseYawDeltaRadians = 0;
       pendingMousePitchDeltaRadians = 0;
+      pendingPalettePointerDeltaX = 0;
+      pendingPalettePointerDeltaY = 0;
       resetRequested = false;
       primaryActionRequested = false;
+      paletteSelectRequested = false;
       interactRequested = false;
 
       return {
         localDisplacement: vec3((rightInput / inputLength) * stepMeters, (forwardInput / inputLength) * stepMeters, 0),
         yawDeltaRadians,
         pitchDeltaRadians,
+        palettePointerDeltaPixels: framePalettePointerDeltaPixels,
+        paletteSelectPressed: framePaletteSelectPressed || framePaletteSelectRequested,
+        paletteSelectRequested: framePaletteSelectRequested,
         resetRequested: frameResetRequested,
         primaryActionRequested: framePrimaryActionRequested,
         interactRequested: frameInteractRequested,
@@ -194,6 +272,8 @@ export function createDesktopControls(
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       canvas.removeEventListener("click", onClick);
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mouseup", onMouseUp);
       document.removeEventListener("mousemove", onMouseMove);
     },
   };

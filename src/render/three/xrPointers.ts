@@ -1,17 +1,19 @@
 import * as THREE from "three";
-import { createRayPointer, type Pointer } from "@pmndrs/pointer-events";
+import {
+  chooseActiveScenePointer,
+  createScenePointers,
+} from "./scenePointers";
+import type { ScenePalettePointerState, ScenePalettePointerSource } from "./scenePaletteInput";
 
 export type XrPointerKind = "controller";
 
-export interface XrPointerSourceState {
+export interface XrPointerSourceState extends Omit<ScenePalettePointerState, "kind" | "selectPressed" | "selectStarted" | "selectEnded"> {
   readonly id: string;
   readonly kind: XrPointerKind;
   readonly handedness: "left" | "right";
-  readonly hoveredTargetId?: string;
   readonly pressed: boolean;
   readonly justStarted: boolean;
   readonly justEnded: boolean;
-  readonly dominant: boolean;
 }
 
 export interface UpdateXrPointerSource {
@@ -31,56 +33,30 @@ export interface XrPointers {
 export function createXrPointers(
   getCamera: () => THREE.PerspectiveCamera | THREE.OrthographicCamera,
 ): XrPointers {
-  const entries = new Map<string, PointerEntry>();
+  const pointers = createScenePointers(getCamera);
 
   return {
     update(scene, sources) {
-      const seenIds = new Set<string>();
-      const states: XrPointerSourceState[] = [];
-
-      for (const source of sources) {
-        seenIds.add(source.id);
-        const entry = getOrCreatePointerEntry(entries, source, getCamera);
-        source.object.updateMatrixWorld(true);
-        entry.pointer.move(scene, createPointerEvent(source.id));
-
-        const previousPressed = entry.pressed;
-        if (!previousPressed && source.pressed) {
-          entry.pointer.down(createPointerButtonEvent(source.id));
-        } else if (previousPressed && !source.pressed) {
-          entry.pointer.up(createPointerButtonEvent(source.id));
+      const sourceById = new Map(sources.map((source) => [source.id, source] as const));
+      return pointers.update(scene, sources.map(toScenePointerSource)).map((state): XrPointerSourceState => {
+        const source = sourceById.get(state.id);
+        if (!source) {
+          throw new Error(`Missing XR pointer source for ${state.id}.`);
         }
-        entry.pressed = source.pressed;
-
-        const hoveredTargetId = readHoveredTargetId(entry.pointer);
-        states.push({
+        return {
           id: source.id,
           kind: source.kind,
           handedness: source.handedness,
-          hoveredTargetId,
-          pressed: source.pressed,
-          justStarted: !previousPressed && source.pressed,
-          justEnded: previousPressed && !source.pressed,
-          dominant: source.dominant ?? false,
-        });
-      }
-
-      for (const [id, entry] of entries) {
-        if (seenIds.has(id)) {
-          continue;
-        }
-
-        entry.pointer.exit(createPointerEvent(id));
-        entries.delete(id);
-      }
-
-      return states;
+          hoveredTargetId: state.hoveredTargetId,
+          pressed: state.selectPressed,
+          justStarted: state.selectStarted,
+          justEnded: state.selectEnded,
+          dominant: state.dominant,
+        };
+      });
     },
     dispose() {
-      for (const [id, entry] of entries) {
-        entry.pointer.exit(createPointerEvent(id));
-      }
-      entries.clear();
+      pointers.dispose();
     },
   };
 }
@@ -88,57 +64,24 @@ export function createXrPointers(
 export function chooseActiveXrPointer(
   states: readonly XrPointerSourceState[],
 ): XrPointerSourceState | undefined {
-  return states.find((state) => state.pressed)
-    ?? states.find((state) => state.hoveredTargetId && state.dominant)
-    ?? states.find((state) => state.hoveredTargetId)
-    ?? states.find((state) => state.dominant)
-    ?? states[0];
+  const active = chooseActiveScenePointer(states.map((state): ScenePalettePointerState => ({
+    id: state.id,
+    kind: "xr-controller",
+    hoveredTargetId: state.hoveredTargetId,
+    selectPressed: state.pressed,
+    selectStarted: state.justStarted,
+    selectEnded: state.justEnded,
+    dominant: state.dominant,
+  })));
+  return active ? states.find((state) => state.id === active.id) : undefined;
 }
 
-interface PointerEntry {
-  readonly pointer: Pointer;
-  pressed: boolean;
-}
-
-function getOrCreatePointerEntry(
-  entries: Map<string, PointerEntry>,
-  source: UpdateXrPointerSource,
-  getCamera: () => THREE.PerspectiveCamera | THREE.OrthographicCamera,
-): PointerEntry {
-  const existing = entries.get(source.id);
-  if (existing) {
-    return existing;
-  }
-
-  const pointer = createRayPointer(getCamera, { current: source.object }, { sourceId: source.id }, undefined, "ray");
-  const created: PointerEntry = {
-    pointer,
-    pressed: false,
+function toScenePointerSource(source: UpdateXrPointerSource): ScenePalettePointerSource {
+  return {
+    id: source.id,
+    kind: "xr-controller",
+    object: source.object,
+    selectPressed: source.pressed,
+    dominant: source.dominant,
   };
-  entries.set(source.id, created);
-  return created;
-}
-
-function createPointerEvent(sourceId: string): PointerEvent {
-  return {
-    pointerId: 1,
-    pointerType: "ray",
-    buttons: 0,
-    sourceId,
-  } as unknown as PointerEvent;
-}
-
-function createPointerButtonEvent(sourceId: string): PointerEvent & { readonly button: number } {
-  return {
-    ...createPointerEvent(sourceId),
-    button: 0,
-    buttons: 1,
-  } as unknown as PointerEvent & { readonly button: number };
-}
-
-function readHoveredTargetId(pointer: Pointer): string | undefined {
-  const object = pointer.getIntersection()?.object;
-  return typeof object?.userData?.xrPaletteItemId === "string"
-    ? object.userData.xrPaletteItemId
-    : undefined;
 }

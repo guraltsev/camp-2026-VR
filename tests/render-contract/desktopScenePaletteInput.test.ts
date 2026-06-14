@@ -1,0 +1,109 @@
+import * as THREE from "three";
+import { describe, expect, it } from "vitest";
+import { createDesktopScenePaletteInput, reduceDesktopScenePaletteToggle } from "../../src/render/three/desktopScenePaletteInput";
+
+describe("desktopScenePaletteInput", () => {
+  it("toggles open and closed from secondary click without DOM pointer-lock release actions", () => {
+    expect(reduceDesktopScenePaletteToggle(false, "secondary-click")).toBe("open");
+    expect(reduceDesktopScenePaletteToggle(true, "secondary-click")).toBe("close");
+    expect(reduceDesktopScenePaletteToggle(true, "escape-key")).toBe("close");
+  });
+
+  it("emits a desktop scene pointer while the menu is open", () => {
+    const input = createDesktopScenePaletteInput();
+    const camera = new THREE.PerspectiveCamera();
+    const frame = input.update({
+      desktopFrame: {
+        localDisplacement: { x: 0, y: 0, z: 0 },
+        yawDeltaRadians: 0,
+        pitchDeltaRadians: 0,
+        palettePointerDeltaPixels: { x: 12, y: -8 },
+        paletteSelectPressed: true,
+        paletteSelectRequested: true,
+        resetRequested: false,
+        primaryActionRequested: false,
+        interactRequested: false,
+      },
+      deltaSeconds: 1 / 60,
+      camera,
+      isOpen: true,
+      placement: {
+        position: new THREE.Vector3(0, 0, -1),
+        quaternion: new THREE.Quaternion(),
+      },
+    });
+
+    expect(frame.pointers).toHaveLength(1);
+    expect(frame.pointers[0]?.kind).toBe("desktop-aimer");
+    expect(frame.pointers[0]?.selectPressed).toBe(true);
+    expect(frame.pointers[0]?.dominant).toBe(true);
+  });
+
+  it("orients the desktop pointer local -Z ray toward the palette plane", () => {
+    const input = createDesktopScenePaletteInput();
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 0, 0);
+    camera.lookAt(0, 0, -1);
+    camera.updateMatrixWorld(true);
+
+    const frame = input.update({
+      desktopFrame: {
+        localDisplacement: { x: 0, y: 0, z: 0 },
+        yawDeltaRadians: 0,
+        pitchDeltaRadians: 0,
+        palettePointerDeltaPixels: { x: 0, y: 0 },
+        paletteSelectPressed: false,
+        paletteSelectRequested: false,
+        resetRequested: false,
+        primaryActionRequested: false,
+        interactRequested: false,
+      },
+      deltaSeconds: 1 / 60,
+      camera,
+      isOpen: true,
+      placement: {
+        position: new THREE.Vector3(0, 0, -1),
+        quaternion: new THREE.Quaternion(),
+      },
+    });
+
+    const pointer = frame.pointers[0]?.object;
+    const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(pointer?.quaternion ?? new THREE.Quaternion());
+
+    expect(direction.z).toBeLessThan(-0.99);
+  });
+
+  it("maps positive desktop mouse X toward the rendered panel's right side", () => {
+    const input = createDesktopScenePaletteInput();
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 0, 0);
+    camera.lookAt(0, 0, -1);
+    camera.updateMatrixWorld(true);
+
+    const frame = input.update({
+      desktopFrame: {
+        localDisplacement: { x: 0, y: 0, z: 0 },
+        yawDeltaRadians: 0,
+        pitchDeltaRadians: 0,
+        palettePointerDeltaPixels: { x: 40, y: 0 },
+        paletteSelectPressed: false,
+        paletteSelectRequested: false,
+        resetRequested: false,
+        primaryActionRequested: false,
+        interactRequested: false,
+      },
+      deltaSeconds: 1 / 60,
+      camera,
+      isOpen: true,
+      placement: {
+        position: new THREE.Vector3(0, 0, -1),
+        quaternion: new THREE.Quaternion(),
+      },
+    });
+
+    const pointer = frame.pointers[0]?.object;
+    const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(pointer?.quaternion ?? new THREE.Quaternion());
+
+    expect(direction.x).toBeLessThan(0);
+  });
+});

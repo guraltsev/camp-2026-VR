@@ -7,7 +7,8 @@ import type { PlacedFlagType } from "../world-objects/placedFlags";
 export type RuntimeMenuPageId = "main" | "settings" | "debug-settings" | "place-flag-options";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
-export type RuntimeDesktopToolId = "none" | "aim" | "place-flag" | "geodesic-cannon";
+export type RuntimeToolId = "none" | "aim" | "place-flag" | "geodesic-cannon";
+export type RuntimeDesktopToolId = RuntimeToolId;
 
 const defaultRuntimeDebugOverlayItems = ["fps", "location", "portal-quantities"] as const;
 const portalInspectionDebugOptions = [
@@ -32,7 +33,7 @@ export interface RuntimeMenuState {
   readonly portalPanelMode: PortalPanelModeId;
   readonly portalInspectionEnabled: boolean;
   readonly collisionGeometryWireframesEnabled: boolean;
-  readonly selectedTool: RuntimeDesktopToolId;
+  readonly selectedTool: RuntimeToolId;
   readonly placeFlagOptions: {
     readonly flagType: PlacedFlagType;
   };
@@ -189,7 +190,7 @@ export function setRuntimeMenuCollisionGeometryWireframesEnabled(
   };
 }
 
-export function setRuntimeMenuSelectedTool(state: RuntimeMenuState, selectedTool: RuntimeDesktopToolId): RuntimeMenuState {
+export function setRuntimeMenuSelectedTool(state: RuntimeMenuState, selectedTool: RuntimeToolId): RuntimeMenuState {
   return {
     ...state,
     selectedTool,
