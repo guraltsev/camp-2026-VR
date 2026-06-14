@@ -132,7 +132,7 @@ describe("worldObjectLibrary", () => {
       yawRadians: (74 * Math.PI) / 180,
       speedMetersPerSecond: 2.4,
       oscillationRateHz: 1.6,
-      oscillationMagnitudeMeters: 0.018,
+      oscillationMagnitudeMeters: 0.18,
     });
 
     if (object.kind !== "geo-mouse") {

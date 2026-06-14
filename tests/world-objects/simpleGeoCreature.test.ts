@@ -26,7 +26,7 @@ describe("simple geo creature movement", () => {
       scale: 0.1,
       speed: 0,
       oscillationRate: 1,
-      oscillationMagnitude: 2,
+      oscillationMagnitude: 0.2,
     });
     const runtime = createSimpleGeoCreatureRuntime(mouse, "room", stubAssets());
 
@@ -44,7 +44,7 @@ describe("simple geo creature movement", () => {
       scale: 0.1,
       speed: 0,
       oscillationRate: 1,
-      oscillationMagnitude: 2,
+      oscillationMagnitude: 0.2,
     });
     const runtime = createSimpleGeoCreatureRuntime(mouse, "room-a", stubAssets());
 

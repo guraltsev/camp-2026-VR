@@ -98,7 +98,7 @@ export function createSimpleGeoCreature(
     yawRadians: degreesToRadians(params.turn ?? 0),
     speedMetersPerSecond: params.speed ?? defaultSpeed(kind),
     oscillationRateHz: params.oscillationRate ?? 0,
-    oscillationMagnitudeMeters: (params.oscillationMagnitude ?? 0) / 10,
+    oscillationMagnitudeMeters: params.oscillationMagnitude ?? 0,
     collision: defaultCreatureCollision(kind, authorScale),
   };
 }

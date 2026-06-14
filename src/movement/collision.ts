@@ -73,7 +73,7 @@ export function testCellCollision(candidate: CollisionCandidate): CollisionResul
   }
 
   for (const side of candidate.cell.sides) {
-    if (side.sideIndex === candidate.ignoredPortalSideIndex) {
+    if (side.portal || side.sideIndex === candidate.ignoredPortalSideIndex) {
       continue;
     }
 
