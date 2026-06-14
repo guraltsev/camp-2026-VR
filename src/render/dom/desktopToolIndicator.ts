@@ -36,14 +36,17 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
       root.hidden = toolId === "none";
       root.classList.toggle("desktop-tool-indicator-aim", toolId === "aim");
       root.classList.toggle("desktop-tool-indicator-place-flag", toolId === "place-flag");
+      root.classList.toggle("desktop-tool-indicator-geodesic-cannon", toolId === "geodesic-cannon");
       root.classList.toggle("desktop-tool-indicator-WoodenSign1", flagType === "WoodenSign1");
       root.classList.toggle("desktop-tool-indicator-WoodenSign2", flagType === "WoodenSign2");
-      label.textContent = toolId === "place-flag" ? "Flags" : toolId === "aim" ? "Aim" : "";
+      label.textContent = toolId === "geodesic-cannon" ? "Cannon" : toolId === "place-flag" ? "Flags" : toolId === "aim" ? "Aim" : "";
       root.ariaLabel = toolId === "place-flag"
         ? "Selected tool: flags"
-        : toolId === "aim"
-          ? "Selected tool: aim"
-          : "No selected tool";
+        : toolId === "geodesic-cannon"
+          ? "Selected tool: geodesic cannon"
+          : toolId === "aim"
+            ? "Selected tool: aim"
+            : "No selected tool";
     },
     dispose() {
       root.remove();

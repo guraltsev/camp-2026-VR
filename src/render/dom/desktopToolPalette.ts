@@ -290,7 +290,23 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     });
 
     flagTile.append(flagButton, optionsButton);
-    tools.append(aimButton, flagTile);
+
+    const cannonButton = document.createElement("button");
+    cannonButton.type = "button";
+    cannonButton.className = "desktop-tool-tile";
+    cannonButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "geodesic-cannon");
+    cannonButton.ariaLabel = "Geodesic cannon";
+    cannonButton.ariaPressed = String(mainContent.selectedTool === "geodesic-cannon");
+    cannonButton.addEventListener("click", () => {
+      options.onToolSelected(mainContent.selectedTool === "geodesic-cannon" ? "none" : "geodesic-cannon");
+    });
+
+    const cannonLabel = document.createElement("span");
+    cannonLabel.className = "desktop-tool-tile-label";
+    cannonLabel.textContent = "cannon";
+    cannonButton.append(createCannonTileIcon(), cannonLabel);
+
+    tools.append(aimButton, flagTile, cannonButton);
     return tools;
   }
 
@@ -555,5 +571,16 @@ function createFlagTileIcon(flagType: PlacedFlagType): HTMLElement {
   post.className = "desktop-tool-flag-post";
 
   icon.append(board, post);
+  return icon;
+}
+
+function createCannonTileIcon(): HTMLElement {
+  const icon = document.createElement("span");
+  icon.className = "desktop-tool-tile-icon desktop-tool-cannon-icon";
+  const base = document.createElement("span");
+  base.className = "desktop-tool-cannon-base";
+  const barrel = document.createElement("span");
+  barrel.className = "desktop-tool-cannon-barrel";
+  icon.append(base, barrel);
   return icon;
 }

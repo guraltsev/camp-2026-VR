@@ -512,6 +512,30 @@ body {
   background: #5a3b27;
 }
 
+.desktop-tool-cannon-base {
+  position: absolute;
+  left: 14px;
+  top: 36px;
+  width: 36px;
+  height: 14px;
+  border-radius: 999px 999px 6px 6px;
+  background: linear-gradient(180deg, #475569, #1f2937);
+  box-shadow: inset 0 3px 0 rgb(255 255 255 / 14%);
+}
+
+.desktop-tool-cannon-barrel {
+  position: absolute;
+  left: 24px;
+  top: 22px;
+  width: 34px;
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #34d399, #059669);
+  transform: rotate(-20deg);
+  transform-origin: 4px 50%;
+  box-shadow: 0 0 10px rgb(56 242 255 / 35%);
+}
+
 .desktop-flag-editor {
   position: fixed;
   left: 50%;
@@ -669,6 +693,36 @@ body {
 
 .desktop-tool-indicator-place-flag .desktop-tool-indicator-aim-cross {
   display: none;
+}
+
+.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-aim-cross,
+.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-board,
+.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-post {
+  display: none;
+}
+
+.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-icon::before {
+  content: "";
+  position: absolute;
+  left: 0.35rem;
+  top: 1.18rem;
+  width: 1.25rem;
+  height: 0.42rem;
+  border-radius: 999px 999px 4px 4px;
+  background: linear-gradient(180deg, #64748b, #1f2937);
+}
+
+.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-icon::after {
+  content: "";
+  position: absolute;
+  left: 0.76rem;
+  top: 0.66rem;
+  width: 1.05rem;
+  height: 0.32rem;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #34d399, #059669);
+  transform: rotate(-20deg);
+  transform-origin: 0.1rem 50%;
 }
 
 .desktop-tool-indicator-board {

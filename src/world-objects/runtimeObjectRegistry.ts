@@ -1,10 +1,11 @@
 import type { RigidTransform3 } from "../math/rigidTransform3";
 import type { DynamicObjectState, SimpleCollisionCylinder } from "../movement/dynamicObject";
+import type { GeodesicCannonObject, GeodesicSegmentObject } from "./geodesicCannon";
 import type { PlacedFlagObject } from "./placedFlags";
 
 export interface RuntimeObjectInteraction {
   readonly label: string;
-  readonly action: "edit-flag";
+  readonly action: "edit-flag" | "select-geodesic-cannon";
   readonly rangeMeters?: number;
 }
 
@@ -29,7 +30,11 @@ export interface RuntimeCreatureObject extends RuntimeWorldObjectBase {
   readonly kind: "geodesci-marmot" | "geo-mouse" | "geo-butterfly";
 }
 
-export type RuntimeWorldObject = RuntimeCreatureObject | PlacedFlagObject;
+export type RuntimeWorldObject =
+  | RuntimeCreatureObject
+  | PlacedFlagObject
+  | GeodesicCannonObject
+  | GeodesicSegmentObject;
 
 export interface RuntimeObjectRegistry {
   add(object: RuntimeWorldObject): void;

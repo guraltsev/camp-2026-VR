@@ -59,6 +59,12 @@ import {
   updatePlacedFlagMessage,
 } from "../../world-objects/placedFlags";
 import {
+  extendGeodesic,
+  getGeodesicTail,
+  placeGeodesicCannonAtFloorPoint,
+  shootGeodesic,
+} from "../../world-objects/geodesicCannon";
+import {
   createRuntimeObjectRegistry,
   runtimeObjectToDynamicObjectState,
   type RuntimeWorldObject,
@@ -70,6 +76,10 @@ import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
 import { createAimCrossMarker } from "./aimCrossMarker";
 import { resolveAimTarget } from "./aimTarget";
 import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRenderer";
+import {
+  collectGeodesicRuntimeRenderRecords,
+  createGeodesicRuntimeRenderSources,
+} from "./geodesicCannonRenderer";
 import {
   buildCellRenderArchetypes,
   deriveCellRenderArchetypeCapacities,
@@ -486,12 +496,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const dynamicObjectRuntimes: Array<GeodesciMarmotRuntime | SimpleGeoCreatureRuntime> = [];
   const placedFlagRuntimes = new Map<string, PlacedFlagRuntime>();
   let placedFlagIdCounter = 0;
+  let geodesicCannonIdCounter = 0;
+  let geodesicIdCounter = 0;
+  let activeGeodesicCannonToolState: {
+    readonly selectedCannonId?: string;
+    readonly activeGeodesicId?: string;
+  } = {};
   const runtimeObjectRenderRoot = new THREE.Group();
   runtimeObjectRenderRoot.name = "runtime-object-archetype-renders";
   scene.add(runtimeObjectRenderRoot);
   const runtimeObjectRootsById = new Map<string, THREE.Object3D>();
   const runtimeObjectRenderSourcesByKey = new Map<string, RuntimeObjectRenderSourceMesh>();
   const runtimeObjectRenderArchetypesByKey = new Map<string, RuntimeObjectRenderArchetype>();
+  const geodesicRuntimeRenderSources = createGeodesicRuntimeRenderSources();
   const runtimeObjectRenderDiagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
   const portalInstanceDiagnostics = createPortalInstanceDiagnostics();
   const portalClipData = createPortalClipData({ maxVisiblePaths });
@@ -635,6 +652,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         runtime.reset(cellMeshes);
       }
       removePlacedFlags();
+      removeGeodesicRuntimeObjects();
     } else {
       const yawDeltaRadians = xrActive
         ? xrRig.resolveCameraYawRadians(headLocalYawRadians) - playerPose.yawRadians + frame.yawDeltaRadians
@@ -672,6 +690,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "place-flag") {
       tryPlaceFlagFromDesktopAim();
+    }
+    if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "geodesic-cannon") {
+      tryUseGeodesicCannonToolFromDesktopAim();
     }
 
     if (!xrActive && frame.interactRequested) {
@@ -1401,9 +1422,25 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function syncRuntimeObjectRenderSources(): void {
     const activeKeys = new Set<string>();
+    const hasGeodesicRuntimeObjects = runtimeObjectRegistry.getAll().some(
+      (object) => object.portalRenderable && (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment"),
+    );
+
+    if (hasGeodesicRuntimeObjects) {
+      for (const source of geodesicRuntimeRenderSources) {
+        activeKeys.add(source.archetypeKey);
+        if (!runtimeObjectRenderSourcesByKey.has(source.archetypeKey)) {
+          runtimeObjectRenderSourcesByKey.set(source.archetypeKey, source);
+        }
+      }
+    }
 
     for (const object of runtimeObjectRegistry.getAll()) {
       if (!object.portalRenderable) {
+        continue;
+      }
+
+      if (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment") {
         continue;
       }
 
@@ -1455,6 +1492,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function collectRuntimeObjectRenderRecords(): readonly RuntimeObjectRenderRecord[] {
     return runtimeObjectRegistry.getAll().flatMap((object) => {
+      if (object.portalRenderable && (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment")) {
+        return collectGeodesicRuntimeRenderRecords(object);
+      }
+
       if (!object.portalRenderable || !runtimeObjectRootsById.has(object.id)) {
         return [];
       }
@@ -1953,6 +1994,62 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
+  function tryUseGeodesicCannonToolFromDesktopAim(): void {
+    const activeGeodesicId = activeGeodesicCannonToolState.activeGeodesicId;
+    if (activeGeodesicId) {
+      const tail = getGeodesicTail(runtimeObjectRegistry, activeGeodesicId);
+      if (tail) {
+        const segment = extendGeodesic({
+          world: appState.world,
+          registry: runtimeObjectRegistry,
+          geodesicId: activeGeodesicId,
+        });
+        if (segment) {
+          syncRuntimeObjectPortalInstances();
+        }
+        return;
+      }
+    }
+
+    const target = resolveCurrentAimTarget();
+    if (target?.kind !== "floor") {
+      return;
+    }
+
+    const forward = getCameraForwardVector();
+    let horizontalForward: { readonly x: number; readonly y: number; readonly z: number };
+    try {
+      horizontalForward = normalizeVec3({ x: forward.x, y: forward.y, z: 0 });
+    } catch {
+      return;
+    }
+    const aimYawRadians = Math.atan2(horizontalForward.y, horizontalForward.x);
+    const result = placeGeodesicCannonAtFloorPoint({
+      world: appState.world,
+      registry: runtimeObjectRegistry,
+      cellId: target.cellId,
+      floorPoint: target.localPoint,
+      aimYawRadians,
+      id: `geodesic-cannon:${Date.now()}:${geodesicCannonIdCounter++}`,
+    });
+    if (!result.placed || !result.object) {
+      return;
+    }
+
+    const geodesicId = `geodesic:${Date.now()}:${geodesicIdCounter++}`;
+    shootGeodesic({
+      world: appState.world,
+      registry: runtimeObjectRegistry,
+      cannon: result.object,
+      geodesicId,
+    });
+    activeGeodesicCannonToolState = {
+      selectedCannonId: result.object.id,
+      activeGeodesicId: geodesicId,
+    };
+    syncRuntimeObjectPortalInstances();
+  }
+
   function tryOpenFocusedFlagEditor(): void {
     const focused = findFocusedRuntimeObject();
     if (!focused || focused.object.kind !== "placed-flag" || focused.object.interactable?.action !== "edit-flag") {
@@ -1986,7 +2083,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function updateAimCrossMarker(xrActive: boolean): void {
     if (
       xrActive ||
-      (menuState.selectedTool !== "aim" && menuState.selectedTool !== "place-flag") ||
+      (menuState.selectedTool !== "aim" && menuState.selectedTool !== "place-flag" && menuState.selectedTool !== "geodesic-cannon") ||
       menuState.isOpen ||
       desktopFlagEditor.isOpen()
     ) {
@@ -2095,6 +2192,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         removePlacedFlagRuntime(object.id);
       }
     }
+    syncRuntimeObjectPortalInstances();
+  }
+
+  function removeGeodesicRuntimeObjects(): void {
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment") {
+        runtimeObjectRegistry.remove(object.id);
+      }
+    }
+    activeGeodesicCannonToolState = {};
     syncRuntimeObjectPortalInstances();
   }
 

@@ -7,7 +7,7 @@ import type { PlacedFlagType } from "../world-objects/placedFlags";
 export type RuntimeMenuPageId = "main" | "settings" | "debug-settings" | "place-flag-options";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
-export type RuntimeDesktopToolId = "none" | "aim" | "place-flag";
+export type RuntimeDesktopToolId = "none" | "aim" | "place-flag" | "geodesic-cannon";
 
 const defaultRuntimeDebugOverlayItems = ["fps", "location", "portal-quantities"] as const;
 const portalInspectionDebugOptions = [
