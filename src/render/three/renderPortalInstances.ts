@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import type { PortalRenderPath } from "../../cell-complex/portalPaths";
 import type { CellRenderArchetype } from "./cellRenderArchetypes";
+import type {
+  RuntimeObjectRenderArchetype,
+  RuntimeObjectRenderArchetypeDiagnostics,
+} from "./runtimeObjectRenderArchetypes";
+import type { RuntimeObjectRenderRecord } from "./runtimeObjectRenderRecords";
 import type { VisiblePortalPath, VisiblePortalPathDebugSummary } from "./visiblePortalPaths";
 
 export interface PortalInstanceRenderDebugState {
@@ -152,6 +157,51 @@ export function updateCellRenderArchetypeInstances(
 
     if (paths.length > archetype.capacity) {
       diagnostics.recordCapacityOverflow(archetype, paths.length);
+    }
+  }
+}
+
+export function updateRuntimeObjectRenderArchetypeInstances(
+  archetypes: readonly RuntimeObjectRenderArchetype[],
+  recordsByArchetypeKey: ReadonlyMap<string, readonly RuntimeObjectRenderRecord[]>,
+  visiblePathsByDestinationCell: ReadonlyMap<string, readonly VisiblePortalPath[]>,
+  diagnostics: RuntimeObjectRenderArchetypeDiagnostics,
+  clipIndexByPathId: ReadonlyMap<number, number> = new Map(),
+): void {
+  const composedMatrix = new THREE.Matrix4();
+
+  for (const archetype of archetypes) {
+    const records = recordsByArchetypeKey.get(archetype.archetypeKey) ?? [];
+    let requestedCount = 0;
+    let count = 0;
+
+    for (const record of records) {
+      const paths = visiblePathsByDestinationCell.get(record.cellId) ?? [];
+      requestedCount += paths.length;
+
+      for (const path of paths) {
+        if (count >= archetype.capacity) {
+          continue;
+        }
+
+        composedMatrix.multiplyMatrices(path.rootFromDestinationMatrix, record.localMatrix);
+        archetype.mesh.setMatrixAt(count, composedMatrix);
+        archetype.portalPathIdAttribute.setX(count, path.pathId);
+        archetype.portalClipIndexAttribute.setX(
+          count,
+          path.depth === 0 ? unclippedPortalClipIndex : clipIndexByPathId.get(path.pathId) ?? -1,
+        );
+        count += 1;
+      }
+    }
+
+    archetype.mesh.count = count;
+    archetype.mesh.instanceMatrix.needsUpdate = true;
+    archetype.portalPathIdAttribute.needsUpdate = true;
+    archetype.portalClipIndexAttribute.needsUpdate = true;
+
+    if (requestedCount > archetype.capacity) {
+      diagnostics.recordCapacityOverflow(archetype, requestedCount);
     }
   }
 }

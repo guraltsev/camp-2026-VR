@@ -181,7 +181,7 @@ Ensure these runtime tool assets are preloaded even when no authored world objec
 
 Each runtime object adapter should own a root `THREE.Object3D` and parent it under the current cell root. When an object changes cells, the adapter should reparent it to the new cell root.
 
-This is important because the runtime-object portal rendering path clones children of visible destination cell roots. Placed flags and migrated creature render roots should participate in portal rendering by living under the correct cell root, not by adding a separate side system.
+Runtime roots may remain parented under the current cell for local-only helpers, but portal visibility is handled by runtime object archetype records. Placed flags and migrated creature render roots should publish renderer records from the shared runtime object registry, not by adding a separate side system.
 
 For sign text, render a small canvas texture on a plane slightly in front of the sign board. Updating a sign message or font color should redraw the canvas texture and mark it dirty.
 
@@ -280,7 +280,7 @@ Add a Three.js runtime adapter for placed flags, matching the marmot and simple 
 - update pose/text/color when registry state changes,
 - dispose geometries/materials/textures cleanly.
 
-Runtime object roots should be parented under cell roots so runtime-object portal rendering includes them.
+Runtime object roots may be parented under cell roots for local helpers, while portal rendering should consume runtime object archetype records keyed by registry state.
 
 ### 7. Add desktop flag editing
 
@@ -361,7 +361,7 @@ Required render/preload tests:
 - Flag messages are limited to 15 characters.
 - The user can press `F` in desktop mode to edit a focused placed flag.
 - The flag editor supports message and font color changes.
-- Placed flags participate in runtime-object portal rendering by being parented under the correct cell root.
+- Placed flags participate in runtime-object archetype portal rendering from registry-backed render records.
 - Shared palette definitions remain compatible with VR code, but no VR placement or VR editing behavior is implemented.
 - Collision uses runtime object state and existing cylinder bounds helpers, not renderer mesh bounds.
 - Existing movement, portal, desktop controls, and VR tests continue to pass.

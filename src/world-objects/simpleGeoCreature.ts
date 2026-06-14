@@ -34,6 +34,7 @@ export interface SimpleGeoCreatureAuthoringParams {
 
 export interface SimpleGeoCreatureRuntime {
   readonly root: THREE.Object3D;
+  readonly objectId: string;
   readonly cellId: string;
   update(world: CompiledCellComplex, deltaSeconds: number): void;
   syncParent(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
@@ -149,6 +150,7 @@ export function createSimpleGeoCreatureRuntime(
 
   return {
     root,
+    objectId: objectSpec.id,
     get cellId() {
       return state.cellId;
     },

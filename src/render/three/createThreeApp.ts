@@ -94,8 +94,21 @@ import {
   buildVisiblePathsByDestinationCell,
   groupVisiblePortalPathsByDestinationCell,
   updateCellRenderArchetypeInstances,
+  updateRuntimeObjectRenderArchetypeInstances,
   type PortalInstanceRenderDebugState,
 } from "./renderPortalInstances";
+import {
+  buildRuntimeObjectRenderArchetype,
+  createRuntimeObjectRenderArchetypeDiagnostics,
+  disposeRuntimeObjectRenderArchetypes,
+  groupRuntimeObjectRenderRecordsByArchetype,
+  type RuntimeObjectRenderArchetype,
+} from "./runtimeObjectRenderArchetypes";
+import {
+  collectRuntimeObjectRenderSourceMeshes,
+  type RuntimeObjectRenderRecord,
+  type RuntimeObjectRenderSourceMesh,
+} from "./runtimeObjectRenderRecords";
 import {
   createRenderQualityState,
   getPortalViewportPixels,
@@ -119,11 +132,9 @@ import type {
 import { createPortalClipData } from "./portalClipData";
 import {
   createPortalClipMaterialState,
-  patchPortalClipMaterial,
   updatePortalClipMaterialTextureEye,
   updatePortalClipMaterialViewport,
   updatePortalClipMaterialViewportFromRenderer,
-  type PortalClipMaterialState,
 } from "./portalClipMaterial";
 import {
   createStylizedSceneLighting,
@@ -176,15 +187,6 @@ export interface ThreeAppOptions {
   readonly assets: PreparedWorldAssets;
 }
 
-interface RuntimeObjectPortalRenderEntry {
-  readonly root: THREE.Group;
-  readonly destinationCellId: string;
-  readonly sourceChildren: readonly THREE.Object3D[];
-  readonly cloneChildren: readonly THREE.Object3D[];
-  portalPathId: number;
-  clipIndex: number;
-}
-
 interface PortalEyeRenderState {
   readonly camera: THREE.Camera;
   readonly result: ComputeVisiblePortalPathsResult;
@@ -196,7 +198,6 @@ const renderCameraNearMeters = 0.001;
 const renderCameraFarMeters = 250;
 const underCellInfinityFloorSizeMeters = 1_000;
 const underCellInfinityFloorWorldZMeters = -1;
-const maxRetainedRuntimeObjectPortalRenderEntries = 64;
 
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const scene = new THREE.Scene();
@@ -393,7 +394,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
       runtimeObjectRegistry.remove(flagId);
       removePlacedFlagRuntime(flagId);
-      syncRuntimeObjectPortalRenders();
+      syncRuntimeObjectPortalInstances();
     },
     onClosed() {
       menuState = setRuntimeMenuEditingFlagId(menuState, undefined);
@@ -485,13 +486,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const dynamicObjectRuntimes: Array<GeodesciMarmotRuntime | SimpleGeoCreatureRuntime> = [];
   const placedFlagRuntimes = new Map<string, PlacedFlagRuntime>();
   let placedFlagIdCounter = 0;
-  const runtimeObjectPortalRenderRoot = new THREE.Group();
-  runtimeObjectPortalRenderRoot.name = "runtime-object-portal-renders";
-  scene.add(runtimeObjectPortalRenderRoot);
-  const runtimeObjectPortalRenderEntries = new Map<number, RuntimeObjectPortalRenderEntry>();
-  // Shared by all runtime-object adapters. Retaining entries avoids deep-cloning heavy runtime roots
-  // whenever portal visibility churns but the destination cell's runtime children are unchanged.
-  const retainedRuntimeObjectPortalRenderEntries: RuntimeObjectPortalRenderEntry[] = [];
+  const runtimeObjectRenderRoot = new THREE.Group();
+  runtimeObjectRenderRoot.name = "runtime-object-archetype-renders";
+  scene.add(runtimeObjectRenderRoot);
+  const runtimeObjectRootsById = new Map<string, THREE.Object3D>();
+  const runtimeObjectRenderSourcesByKey = new Map<string, RuntimeObjectRenderSourceMesh>();
+  const runtimeObjectRenderArchetypesByKey = new Map<string, RuntimeObjectRenderArchetype>();
+  const runtimeObjectRenderDiagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
   const portalInstanceDiagnostics = createPortalInstanceDiagnostics();
   const portalClipData = createPortalClipData({ maxVisiblePaths });
   const portalClipMaterialState = createPortalClipMaterialState(
@@ -535,6 +536,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         const runtime = createGeodesciMarmotRuntime(objectSpec, cell.id, options.assets, runtimeObjectRegistry);
         runtime.syncParent(cellMeshes);
         dynamicObjectRuntimes.push(runtime);
+        runtimeObjectRootsById.set(runtime.objectId, runtime.root);
         syncDynamicObjectDebugWireframes();
         continue;
       }
@@ -543,11 +545,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         const runtime = createSimpleGeoCreatureRuntime(objectSpec, cell.id, options.assets, runtimeObjectRegistry);
         runtime.syncParent(cellMeshes);
         dynamicObjectRuntimes.push(runtime);
+        runtimeObjectRootsById.set(runtime.objectId, runtime.root);
         syncDynamicObjectDebugWireframes();
       }
     }
   }
-  syncRuntimeObjectPortalRenders();
+  syncRuntimeObjectPortalInstances();
   disableFrustumCulling(scene);
   disableShadows(scene);
 
@@ -713,7 +716,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         renderFromRootMatrix: new THREE.Matrix4(),
       });
     }
-    syncRuntimeObjectPortalRenders();
+    syncRuntimeObjectPortalInstances();
     const frameAfterPortalMs = performance.now();
     const frameBeforeUiMs = frameAfterPortalMs;
 
@@ -787,7 +790,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtime.syncParent(cellMeshes);
     }
     syncDynamicObjectDebugWireframes();
-    syncRuntimeObjectPortalRenders();
+    syncRuntimeObjectPortalInstances();
     applyDesktopCameraPose();
     renderer.render(scene, camera);
   }
@@ -870,11 +873,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       disposeCellRenderArchetypes(cellRenderArchetypes);
       portalInstanceDebugRenderer?.dispose();
       portalClipData.dispose();
-      for (const pathId of [...runtimeObjectPortalRenderEntries.keys()]) {
-        disposeRuntimeObjectPortalRenderEntry(pathId);
+      for (const archetype of runtimeObjectRenderArchetypesByKey.values()) {
+        runtimeObjectRenderRoot.remove(archetype.mesh);
       }
-      disposeRetainedRuntimeObjectPortalRenderEntries();
-      runtimeObjectPortalRenderRoot.removeFromParent();
+      disposeRuntimeObjectRenderArchetypes(runtimeObjectRenderArchetypesByKey.values());
+      runtimeObjectRenderArchetypesByKey.clear();
+      runtimeObjectRenderRoot.removeFromParent();
       portalDebugRuntime.dispose();
       debugOverlay.dispose();
       xrEntryUi.dispose();
@@ -1014,10 +1018,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     disposeCellRenderArchetypes(cellRenderArchetypes);
     cellRenderArchetypes = [];
-    for (const pathId of [...runtimeObjectPortalRenderEntries.keys()]) {
-      disposeRuntimeObjectPortalRenderEntry(pathId);
-    }
-    disposeRetainedRuntimeObjectPortalRenderEntries();
     for (const runtime of dynamicObjectRuntimes) {
       runtime.root.removeFromParent();
     }
@@ -1302,7 +1302,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       visiblePathById,
     );
     updatePortalVisiblePathInstances(visiblePathsByDestinationCell);
-    syncRuntimeObjectPortalClipIndexes(visiblePaths, portalClipData.clipIndexByPathId);
+    syncRuntimeObjectPortalInstances(visiblePaths);
   }
 
   function applyPortalVisiblePaths(
@@ -1313,7 +1313,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalClipData.update(visiblePaths);
     }
     updatePortalVisiblePathInstances(groupVisiblePortalPathsByDestinationCell(visiblePaths));
-    syncRuntimeObjectPortalClipIndexes(visiblePaths, portalClipData.clipIndexByPathId);
+    syncRuntimeObjectPortalInstances(visiblePaths);
   }
 
   function updatePortalVisiblePathInstances(
@@ -1382,17 +1382,102 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return portalEyeRenderStates[0];
   }
 
-  function syncRuntimeObjectPortalClipIndexes(
-    visiblePaths: readonly VisiblePortalPath[],
-    clipIndexByPathId: ReadonlyMap<number, number>,
+  function syncRuntimeObjectPortalInstances(
+    visiblePaths: readonly VisiblePortalPath[] = getRuntimeObjectVisiblePaths(),
   ): void {
-    const visiblePathIds = new Set(visiblePaths.map((path) => path.pathId));
+    syncRuntimeObjectRenderSources();
+    const records = collectRuntimeObjectRenderRecords();
+    const recordsByArchetypeKey = groupRuntimeObjectRenderRecordsByArchetype(records);
+    const visiblePathsByDestinationCell = groupVisiblePortalPathsByDestinationCell(visiblePaths);
+    runtimeObjectRenderDiagnostics.reset();
+    updateRuntimeObjectRenderArchetypeInstances(
+      [...runtimeObjectRenderArchetypesByKey.values()],
+      recordsByArchetypeKey,
+      visiblePathsByDestinationCell,
+      runtimeObjectRenderDiagnostics,
+      portalClipData.clipIndexByPathId,
+    );
+  }
 
-    for (const [pathId, entry] of runtimeObjectPortalRenderEntries) {
-      const clipIndex = visiblePathIds.has(pathId) ? clipIndexByPathId.get(pathId) ?? -1 : -1;
+  function syncRuntimeObjectRenderSources(): void {
+    const activeKeys = new Set<string>();
 
-      stampRuntimeObjectPortalEntry(entry, pathId, clipIndex);
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (!object.portalRenderable) {
+        continue;
+      }
+
+      const root = runtimeObjectRootsById.get(object.id);
+      if (!root) {
+        continue;
+      }
+
+      const prefix = runtimeObjectArchetypeKeyPrefix(object);
+      for (const source of collectRuntimeObjectRenderSourceMeshes(object.id, root, prefix)) {
+        activeKeys.add(source.archetypeKey);
+        if (!runtimeObjectRenderSourcesByKey.has(source.archetypeKey)) {
+          runtimeObjectRenderSourcesByKey.set(source.archetypeKey, source);
+        }
+      }
     }
+
+    for (const [key, archetype] of [...runtimeObjectRenderArchetypesByKey]) {
+      if (activeKeys.has(key)) {
+        continue;
+      }
+
+      runtimeObjectRenderRoot.remove(archetype.mesh);
+      disposeRuntimeObjectRenderArchetypes([archetype]);
+      runtimeObjectRenderArchetypesByKey.delete(key);
+      runtimeObjectRenderSourcesByKey.delete(key);
+    }
+
+    const capacity = Math.max(1, maxVisiblePaths);
+    for (const key of activeKeys) {
+      if (runtimeObjectRenderArchetypesByKey.has(key)) {
+        continue;
+      }
+
+      const source = runtimeObjectRenderSourcesByKey.get(key);
+      if (!source) {
+        continue;
+      }
+
+      const archetype = buildRuntimeObjectRenderArchetype(source, capacity, portalClipMaterialState);
+      archetype.mesh.onBeforeRender = (renderer, _scene, renderCamera) => {
+        activatePortalRenderStateForCamera(renderCamera, renderer);
+        updatePortalClipMaterialViewportFromRenderer(portalClipMaterialState, renderer);
+      };
+      runtimeObjectRenderArchetypesByKey.set(key, archetype);
+      runtimeObjectRenderRoot.add(archetype.mesh);
+    }
+  }
+
+  function collectRuntimeObjectRenderRecords(): readonly RuntimeObjectRenderRecord[] {
+    return runtimeObjectRegistry.getAll().flatMap((object) => {
+      if (!object.portalRenderable || !runtimeObjectRootsById.has(object.id)) {
+        return [];
+      }
+
+      const localMatrix = rigidTransformToThreeMatrix(object.localPose);
+      const prefix = runtimeObjectArchetypeKeyPrefix(object);
+      return [...runtimeObjectRenderSourcesByKey.keys()]
+        .filter((key) => key.startsWith(`${prefix}:mesh:`))
+        .map((archetypeKey) => ({
+          objectId: object.id,
+          cellId: object.cellId,
+          archetypeKey,
+          localMatrix,
+        }));
+    });
+  }
+
+  function runtimeObjectArchetypeKeyPrefix(object: RuntimeWorldObject): string {
+    if (object.kind === "placed-flag") {
+      return `placed-flag:${object.flagType}:${object.id}`;
+    }
+
+    return `${object.kind}:${object.id}`;
   }
 
   function buildUnionVisiblePathById(
@@ -1458,166 +1543,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         },
       };
     });
-  }
-
-  function syncRuntimeObjectPortalRenders(): void {
-    const visiblePathIds = new Set<number>();
-
-    for (const path of getRuntimeObjectVisiblePaths()) {
-      if (path.depth === 0) {
-        continue;
-      }
-
-      visiblePathIds.add(path.pathId);
-      const cellRoot = cellMeshes.get(path.destinationCellId);
-
-      if (!cellRoot || cellRoot.children.length === 0) {
-        releaseRuntimeObjectPortalRenderEntry(path.pathId);
-        continue;
-      }
-
-      const sourceChildren = [...cellRoot.children];
-      const existing = runtimeObjectPortalRenderEntries.get(path.pathId);
-      const entry =
-        existing &&
-        existing.destinationCellId === path.destinationCellId &&
-        sameObjectList(existing.sourceChildren, sourceChildren)
-          ? existing
-          : rebuildRuntimeObjectPortalRenderEntry(path, sourceChildren);
-
-      entry.root.matrix.copy(path.rootFromDestinationMatrix);
-      entry.root.matrixWorldNeedsUpdate = true;
-      const clipIndex = portalClipData.clipIndexByPathId.get(path.pathId) ?? -1;
-
-      for (let index = 0; index < sourceChildren.length; index += 1) {
-        syncObject3DTreeState(sourceChildren[index], entry.cloneChildren[index]);
-      }
-      stampRuntimeObjectPortalEntry(entry, path.pathId, clipIndex);
-    }
-
-    for (const pathId of [...runtimeObjectPortalRenderEntries.keys()]) {
-      if (!visiblePathIds.has(pathId)) {
-        releaseRuntimeObjectPortalRenderEntry(pathId);
-      }
-    }
-  }
-
-  function rebuildRuntimeObjectPortalRenderEntry(
-    path: VisiblePortalPath,
-    sourceChildren: readonly THREE.Object3D[],
-  ): RuntimeObjectPortalRenderEntry {
-    const clipIndex = portalClipData.clipIndexByPathId.get(path.pathId) ?? -1;
-    releaseRuntimeObjectPortalRenderEntry(path.pathId);
-    const retained = takeRetainedRuntimeObjectPortalRenderEntry(path.destinationCellId, sourceChildren);
-
-    if (retained) {
-      retained.root.name = `runtime-object-portal-render:${path.pathId}:${path.destinationCellId}`;
-      stampRuntimeObjectPortalEntry(retained, path.pathId, clipIndex);
-      runtimeObjectPortalRenderRoot.add(retained.root);
-      runtimeObjectPortalRenderEntries.set(path.pathId, retained);
-      return retained;
-    }
-
-    const root = new THREE.Group();
-    root.name = `runtime-object-portal-render:${path.pathId}:${path.destinationCellId}`;
-    root.matrixAutoUpdate = false;
-    const cloneChildren = sourceChildren.map((child) => {
-      const copy = cloneObject3DWithFreshMeshResources(
-        child,
-        path.pathId,
-        clipIndex,
-        portalClipMaterialState,
-        (renderer, renderCamera) => {
-          activatePortalRenderStateForCamera(renderCamera, renderer);
-          updatePortalClipMaterialViewportFromRenderer(portalClipMaterialState, renderer);
-        },
-      );
-      root.add(copy);
-      return copy;
-    });
-    const entry = {
-      root,
-      destinationCellId: path.destinationCellId,
-      sourceChildren: [...sourceChildren],
-      cloneChildren,
-      portalPathId: path.pathId,
-      clipIndex,
-    };
-
-    runtimeObjectPortalRenderRoot.add(root);
-    runtimeObjectPortalRenderEntries.set(path.pathId, entry);
-    return entry;
-  }
-
-  function takeRetainedRuntimeObjectPortalRenderEntry(
-    destinationCellId: string,
-    sourceChildren: readonly THREE.Object3D[],
-  ): RuntimeObjectPortalRenderEntry | undefined {
-    const index = retainedRuntimeObjectPortalRenderEntries.findIndex((entry) =>
-      entry.destinationCellId === destinationCellId && sameObjectList(entry.sourceChildren, sourceChildren)
-    );
-
-    if (index < 0) {
-      return undefined;
-    }
-
-    return retainedRuntimeObjectPortalRenderEntries.splice(index, 1)[0];
-  }
-
-  function stampRuntimeObjectPortalEntry(
-    entry: RuntimeObjectPortalRenderEntry,
-    portalPathId: number,
-    clipIndex: number,
-  ): void {
-    if (entry.portalPathId === portalPathId && entry.clipIndex === clipIndex) {
-      return;
-    }
-
-    entry.portalPathId = portalPathId;
-    entry.clipIndex = clipIndex;
-
-    for (let index = 0; index < entry.cloneChildren.length; index += 1) {
-      stampPortalClipAttributes(entry.cloneChildren[index], portalPathId, clipIndex);
-    }
-  }
-
-  function releaseRuntimeObjectPortalRenderEntry(pathId: number): void {
-    const entry = runtimeObjectPortalRenderEntries.get(pathId);
-
-    if (!entry) {
-      return;
-    }
-
-    entry.root.removeFromParent();
-    runtimeObjectPortalRenderEntries.delete(pathId);
-    retainedRuntimeObjectPortalRenderEntries.push(entry);
-
-    while (retainedRuntimeObjectPortalRenderEntries.length > maxRetainedRuntimeObjectPortalRenderEntries) {
-      const stale = retainedRuntimeObjectPortalRenderEntries.shift();
-      if (stale) {
-        disposeObject3D(stale.root);
-      }
-    }
-  }
-
-  function disposeRuntimeObjectPortalRenderEntry(pathId: number): void {
-    const entry = runtimeObjectPortalRenderEntries.get(pathId);
-
-    if (!entry) {
-      return;
-    }
-
-    entry.root.removeFromParent();
-    disposeObject3D(entry.root);
-    runtimeObjectPortalRenderEntries.delete(pathId);
-  }
-
-  function disposeRetainedRuntimeObjectPortalRenderEntries(): void {
-    while (retainedRuntimeObjectPortalRenderEntries.length > 0) {
-      const entry = retainedRuntimeObjectPortalRenderEntries.pop()!;
-      entry.root.removeFromParent();
-      disposeObject3D(entry.root);
-    }
   }
 
   function getRuntimeObjectVisiblePaths(): readonly VisiblePortalPath[] {
@@ -1982,11 +1907,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     if (!runtime) {
       runtime = createPlacedFlagRuntime(flag, options.assets);
       placedFlagRuntimes.set(flag.id, runtime);
+      runtimeObjectRootsById.set(flag.id, runtime.root);
     }
 
     runtime.syncFromObject(flag);
     runtime.syncParent(cellMeshes);
-    syncRuntimeObjectPortalRenders();
+    syncRuntimeObjectPortalInstances();
   }
 
   function removePlacedFlagRuntime(flagId: string): void {
@@ -1998,6 +1924,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     runtime.dispose();
     placedFlagRuntimes.delete(flagId);
+    runtimeObjectRootsById.delete(flagId);
+    for (const [key, source] of [...runtimeObjectRenderSourcesByKey]) {
+      if (source.objectId === flagId) {
+        runtimeObjectRenderSourcesByKey.delete(key);
+      }
+    }
   }
 
   function tryPlaceFlagFromDesktopAim(): void {
@@ -2163,7 +2095,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         removePlacedFlagRuntime(object.id);
       }
     }
-    syncRuntimeObjectPortalRenders();
+    syncRuntimeObjectPortalInstances();
   }
 
   function getCameraWorldPosition(): { readonly x: number; readonly y: number; readonly z: number } {
@@ -2814,107 +2746,4 @@ function createInitialXrDebugState(xrSessionState: XrSessionState, playerPose: P
     lastMovementBlocked: false,
     sharedRenderRootCellId: undefined,
   };
-}
-
-function cloneObject3DWithFreshMeshResources(
-  object: THREE.Object3D,
-  portalPathId: number,
-  portalClipIndex: number,
-  portalClipMaterialState: PortalClipMaterialState,
-  onBeforePortalObjectRender?: (renderer: THREE.WebGLRenderer, camera: THREE.Camera) => void,
-): THREE.Object3D {
-  const clone = object.clone(true);
-
-  clone.traverse((child) => {
-    if (!(child instanceof THREE.Mesh || child instanceof THREE.Line)) {
-      return;
-    }
-
-    child.geometry = child.geometry.clone();
-    child.material = patchPortalClipMaterial(cloneMaterial(child.material), portalClipMaterialState);
-    child.onBeforeRender = (renderer, _scene, renderCamera) => {
-      if (onBeforePortalObjectRender) {
-        onBeforePortalObjectRender(renderer, renderCamera);
-      } else {
-        updatePortalClipMaterialViewportFromRenderer(portalClipMaterialState, renderer);
-      }
-    };
-    setGeometryPortalClipAttributes(child.geometry, portalPathId, portalClipIndex);
-  });
-
-  return clone;
-}
-
-function cloneMaterial(material: THREE.Material | THREE.Material[]): THREE.Material | THREE.Material[] {
-  if (Array.isArray(material)) {
-    return material.map((entry) => entry.clone());
-  }
-
-  return material.clone();
-}
-
-function sameObjectList(left: readonly THREE.Object3D[], right: readonly THREE.Object3D[]): boolean {
-  return left.length === right.length && left.every((entry, index) => entry === right[index]);
-}
-
-function syncObject3DTreeState(source: THREE.Object3D, clone: THREE.Object3D): void {
-  source.updateMatrix();
-  clone.name = source.name;
-  clone.visible = source.visible;
-  clone.position.copy(source.position);
-  clone.quaternion.copy(source.quaternion);
-  clone.scale.copy(source.scale);
-  clone.matrix.copy(source.matrix);
-  clone.matrixAutoUpdate = source.matrixAutoUpdate;
-  clone.matrixWorldNeedsUpdate = true;
-
-  const count = Math.min(source.children.length, clone.children.length);
-  for (let index = 0; index < count; index += 1) {
-    syncObject3DTreeState(source.children[index], clone.children[index]);
-  }
-}
-
-function stampPortalClipAttributes(object: THREE.Object3D, portalPathId: number, portalClipIndex: number): void {
-  object.traverse((child) => {
-    if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
-      setGeometryPortalClipAttributes(child.geometry, portalPathId, portalClipIndex);
-    }
-  });
-}
-
-function setGeometryPortalClipAttributes(
-  geometry: THREE.BufferGeometry,
-  portalPathId: number,
-  portalClipIndex: number,
-): void {
-  const vertexCount = geometry.getAttribute("position")?.count ?? 0;
-  const portalPathIds = getOrCreateScalarBufferAttribute(geometry, "portalPathId", vertexCount);
-  const portalClipIndexes = getOrCreateScalarBufferAttribute(geometry, "portalClipIndex", vertexCount);
-
-  fillScalarBufferAttribute(portalPathIds, portalPathId);
-  fillScalarBufferAttribute(portalClipIndexes, portalClipIndex);
-}
-
-function getOrCreateScalarBufferAttribute(
-  geometry: THREE.BufferGeometry,
-  name: string,
-  count: number,
-): THREE.BufferAttribute {
-  const existing = geometry.getAttribute(name);
-
-  if (existing instanceof THREE.BufferAttribute && existing.count === count && existing.itemSize === 1) {
-    return existing;
-  }
-
-  const attribute = new THREE.BufferAttribute(new Float32Array(count), 1);
-  attribute.setUsage(THREE.DynamicDrawUsage);
-  geometry.setAttribute(name, attribute);
-  return attribute;
-}
-
-function fillScalarBufferAttribute(attribute: THREE.BufferAttribute, value: number): void {
-  const values = attribute.array as Float32Array;
-
-  values.fill(value);
-  attribute.needsUpdate = true;
 }
