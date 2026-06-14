@@ -206,6 +206,10 @@ export function setRuntimeMenuPlaceFlagType(state: RuntimeMenuState, flagType: P
   };
 }
 
+export function selectRuntimeMenuPlaceFlagToolType(state: RuntimeMenuState, flagType: PlacedFlagType): RuntimeMenuState {
+  return setRuntimeMenuSelectedTool(setRuntimeMenuPlaceFlagType(state, flagType), "place-flag");
+}
+
 export function setRuntimeMenuEditingFlagId(state: RuntimeMenuState, editingFlagId: string | undefined): RuntimeMenuState {
   return {
     ...state,

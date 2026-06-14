@@ -27,6 +27,10 @@ export interface DesktopPaletteInput {
 export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): DesktopPaletteInput {
   let menuOpen = false;
 
+  function syncResumePromptWithPointerLock(): void {
+    options.setResumePromptVisible(!menuOpen && !options.controls.isPointerLocked());
+  }
+
   function applyAction(
     action: DesktopPaletteInputAction,
     actionOptions: {
@@ -37,7 +41,7 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
     if (action === "open" && !menuOpen) {
       menuOpen = true;
       options.controls.pause();
-      options.setResumePromptVisible(false);
+      syncResumePromptWithPointerLock();
       options.onOpen();
       return;
     }
@@ -47,7 +51,7 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
         menuOpen = false;
         options.onClose();
         options.controls.pause();
-        options.setResumePromptVisible(true);
+        syncResumePromptWithPointerLock();
         return;
       }
 
@@ -58,7 +62,7 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
         if (!captured) {
           options.controls.pause();
         }
-        options.setResumePromptVisible(requestPointerLockOnClose ? !captured : true);
+        syncResumePromptWithPointerLock();
       });
     }
   }
@@ -104,15 +108,14 @@ export function createDesktopPaletteInput(options: DesktopPaletteInputOptions): 
   }
 
   function onPointerLockChange(): void {
-    if (options.controls.isPointerLocked()) {
-      options.setResumePromptVisible(false);
-    }
+    syncResumePromptWithPointerLock();
   }
 
   options.canvas.addEventListener("contextmenu", onCanvasContextMenu);
   window.addEventListener("keydown", onWindowKeyDown);
   window.addEventListener("mousedown", onWindowMouseDown);
   document.addEventListener("pointerlockchange", onPointerLockChange);
+  syncResumePromptWithPointerLock();
 
   return {
     isOpen: () => menuOpen,

@@ -14,8 +14,9 @@ export const placedFlagAssetPaths: Record<PlacedFlagType, string> = {
   WoodenSign2: "WoodenSign2/WoodenSign2.glb",
 };
 
-export const placedFlagFontColors = ["#111827", "#f8fafc", "#ef4444", "#2563eb", "#16a34a"] as const;
-export const placedFlagMaxMessageLength = 15;
+export const defaultPlacedFlagFontColor = "#f8fafc";
+export const placedFlagFontColors = [defaultPlacedFlagFontColor, "#111827", "#ef4444", "#2563eb", "#16a34a"] as const;
+export const placedFlagMaxMessageLength = 20;
 
 export interface PlacedFlagObject extends RuntimeWorldObjectBase {
   readonly kind: "placed-flag";
@@ -72,7 +73,24 @@ export function sanitizePlacedFlagMessage(message: string): string {
 }
 
 export function sanitizePlacedFlagFontColor(color: string): string {
-  return (placedFlagFontColors as readonly string[]).includes(color) ? color : placedFlagFontColors[0];
+  return (placedFlagFontColors as readonly string[]).includes(color) ? color : defaultPlacedFlagFontColor;
+}
+
+export function defaultPlacedFlagMessage(
+  flagType: PlacedFlagType,
+  existingObjects: readonly PlacedFlagObject[] = [],
+): string {
+  const prefix = flagType === "WoodenSign1" ? "A" : "B";
+  let maxNumber = 0;
+
+  for (const object of existingObjects) {
+    const match = new RegExp(`^${prefix}(\\d+)$`).exec(object.message);
+    if (match) {
+      maxNumber = Math.max(maxNumber, Number(match[1]));
+    }
+  }
+
+  return `${prefix}${maxNumber + 1}`;
 }
 
 export function createPlacedFlagObject(options: CreatePlacedFlagOptions): PlacedFlagObject {
@@ -91,8 +109,8 @@ export function createPlacedFlagObject(options: CreatePlacedFlagOptions): Placed
     },
     interactable: defaultFlagInteraction,
     flagType: options.flagType,
-    message: sanitizePlacedFlagMessage(options.message ?? ""),
-    fontColor: sanitizePlacedFlagFontColor(options.fontColor ?? placedFlagFontColors[0]),
+    message: sanitizePlacedFlagMessage(options.message ?? defaultPlacedFlagMessage(options.flagType)),
+    fontColor: sanitizePlacedFlagFontColor(options.fontColor ?? defaultPlacedFlagFontColor),
   };
 }
 
@@ -140,7 +158,10 @@ export function placeFlagFromAim(request: PlaceFlagFromAimRequest): PlaceFlagRes
     cellId: request.cellId,
     localPose: yawRigidTransform3(yawRadians, floorPoint),
     flagType: request.flagType,
-    message: "Hello",
+    message: defaultPlacedFlagMessage(
+      request.flagType,
+      request.registry.getAll().filter((object): object is PlacedFlagObject => object.kind === "placed-flag"),
+    ),
   });
   const candidateState = placedFlagToDynamicObjectState(candidate);
   const collision = testCellCollision({ cell, object: candidateState });

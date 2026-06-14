@@ -24,6 +24,7 @@ import {
   openRuntimeMenu,
   type RuntimeDebugOverlayItemId,
   serializeRuntimeDebugOverlayItems,
+  selectRuntimeMenuPlaceFlagToolType,
   setRuntimeMenuConsoleLogLevel,
   setRuntimeMenuDebugEnabled,
   setRuntimeMenuDebugOverlayEnabled,
@@ -32,7 +33,6 @@ import {
   setRuntimeMenuPortalInspectionEnabled,
   setRuntimeMenuPortalPanelMode,
   setRuntimeMenuEditingFlagId,
-  setRuntimeMenuPlaceFlagType,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuMainPage,
   showRuntimeMenuPlaceFlagOptions,
@@ -65,6 +65,7 @@ import {
 } from "../../world-objects/runtimeObjectRegistry";
 import { getDynamicObjectCollisionBounds } from "../../movement/collision";
 import { createDesktopFlagEditor } from "../dom/desktopFlagEditor";
+import { createDesktopToolIndicator } from "../dom/desktopToolIndicator";
 import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
 import { createPlacedFlagRenderer } from "./placedFlagRenderer";
 import {
@@ -320,15 +321,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onToolSelected(toolId) {
       menuState = setRuntimeMenuSelectedTool(menuState, toolId);
-      syncDesktopPalette();
+      desktopPaletteInput.close();
     },
     onPlaceFlagOptionsRequested() {
       menuState = showRuntimeMenuPlaceFlagOptions(menuState);
       syncDesktopPalette();
     },
     onPlaceFlagTypeSelected(flagType) {
-      menuState = setRuntimeMenuPlaceFlagType(menuState, flagType);
+      menuState = closeRuntimeMenu(selectRuntimeMenuPlaceFlagToolType(menuState, flagType));
       syncDesktopPalette();
+      void controls.resume({ requestPointerLock: true }).then((captured) => {
+        desktopToolPalette.setResumePromptVisible(!captured);
+      });
     },
     onResumeRequested() {
       void controls.resume({ requestPointerLock: true }).then((captured) => {
@@ -336,6 +340,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       });
     },
   });
+  const desktopToolIndicator = createDesktopToolIndicator(document.body);
   const desktopPaletteInput = createDesktopPaletteInput({
     canvas: renderer.domElement,
     paletteRoot: desktopToolPalette.root,
@@ -370,6 +375,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
 
       runtimeObjectRegistry.update(updatePlacedFlagFontColor(flag, fontColor));
+      syncPlacedFlagViews();
+    },
+    onDeleteRequested(flagId) {
+      const flag = runtimeObjectRegistry.get(flagId);
+      if (flag?.kind !== "placed-flag") {
+        return;
+      }
+
+      runtimeObjectRegistry.remove(flagId);
       syncPlacedFlagViews();
     },
     onClosed() {
@@ -824,6 +838,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       vrPaletteController.dispose();
       desktopPaletteInput.dispose();
       desktopToolPalette.dispose();
+      desktopToolIndicator.dispose();
       desktopFlagEditor.dispose();
       floatingObjectTooltip.dispose();
       controls.dispose();
@@ -1849,6 +1864,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function syncDesktopPalette(): void {
     desktopToolPalette.setDefinition(createPaletteDefinition(menuState));
     desktopToolPalette.setOpen(menuState.isOpen);
+    desktopToolIndicator.setTool(menuState.selectedTool, menuState.placeFlagOptions.flagType);
   }
 
   function syncPlacedFlagViews(): void {
