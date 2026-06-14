@@ -33,7 +33,9 @@ import {
   setRuntimeMenuPortalInspectionEnabled,
   setRuntimeMenuPortalPanelMode,
   setRuntimeMenuEditingFlagId,
+  setRuntimeMenuEditingSignMessage,
   showRuntimeMenuDebugSettings,
+  showRuntimeMenuEditSign,
   showRuntimeMenuMainPage,
   showRuntimeMenuPlaceFlagOptions,
   showRuntimeMenuSettings,
@@ -402,6 +404,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onPlaceFlagTypeSelected(flagType) {
       menuState = closeRuntimeMenu(selectRuntimeMenuPlaceFlagToolType(menuState, flagType));
       syncDesktopPalette();
+    },
+    onSignKeyboardCharacter(character) {
+      appendEditingSignCharacter(character);
+    },
+    onSignKeyboardBackspace() {
+      backspaceEditingSignMessage();
+    },
+    onSignDeleteRequested() {
+      deleteEditingSign();
     },
   });
 
@@ -948,6 +959,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     event.preventDefault();
+    if (!menuState.isOpen && tryOpenFocusedFlagEditor()) {
+      return;
+    }
+
     applyDesktopScenePaletteToggle(reduceDesktopScenePaletteToggle(menuState.isOpen, "secondary-click"));
   }
 
@@ -976,7 +991,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function applyRuntimeMenuRightAction(): void {
-    if (menuState.page === "main") {
+    if (menuState.page === "main" || menuState.page === "edit-sign") {
       menuState = closeRuntimeMenu(menuState);
     } else if (menuState.page === "debug-settings") {
       menuState = showRuntimeMenuSettings(menuState);
@@ -2022,6 +2037,59 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
+  function appendEditingSignCharacter(character: string): void {
+    if (!/^[A-Z0-9]$/.test(character) && character !== "\n" && character !== " ") {
+      return;
+    }
+
+    const editState = menuState.editSignOptions;
+    if (!editState) {
+      return;
+    }
+
+    setEditingSignMessage(editState.flagId, `${editState.message}${character}`);
+  }
+
+  function backspaceEditingSignMessage(): void {
+    const editState = menuState.editSignOptions;
+    if (!editState) {
+      return;
+    }
+
+    setEditingSignMessage(editState.flagId, [...editState.message].slice(0, -1).join(""));
+  }
+
+  function deleteEditingSign(): void {
+    const editState = menuState.editSignOptions;
+    if (!editState) {
+      return;
+    }
+
+    const flag = runtimeObjectRegistry.get(editState.flagId);
+    if (flag?.kind === "placed-flag") {
+      runtimeObjectRegistry.remove(editState.flagId);
+      removePlacedFlagRuntime(editState.flagId);
+      syncRuntimeObjectPortalInstances();
+    }
+    menuState = closeRuntimeMenu(menuState);
+    syncDesktopPalette();
+  }
+
+  function setEditingSignMessage(flagId: string, message: string): void {
+    const flag = runtimeObjectRegistry.get(flagId);
+    if (flag?.kind !== "placed-flag") {
+      menuState = closeRuntimeMenu(menuState);
+      syncDesktopPalette();
+      return;
+    }
+
+    const nextFlag = updatePlacedFlagMessage(flag, message);
+    runtimeObjectRegistry.update(nextFlag);
+    syncPlacedFlagRuntime(nextFlag);
+    menuState = setRuntimeMenuEditingSignMessage(menuState, nextFlag.message);
+    syncDesktopPalette();
+  }
+
   function tryPlaceFlagFromDesktopAim(): void {
     const target = resolveCurrentAimTarget();
     if (target?.kind !== "floor") {
@@ -2101,16 +2169,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncRuntimeObjectPortalInstances();
   }
 
-  function tryOpenFocusedFlagEditor(): void {
+  function tryOpenFocusedFlagEditor(): boolean {
     const focused = findFocusedRuntimeObject();
     if (!focused || focused.object.kind !== "placed-flag" || focused.object.interactable?.action !== "edit-flag") {
-      return;
+      return false;
     }
 
-    controls.pause();
-    menuState = setRuntimeMenuEditingFlagId(menuState, focused.object.id);
+    menuState = showRuntimeMenuEditSign(menuState, {
+      flagId: focused.object.id,
+      message: focused.object.message,
+    });
     syncDesktopPalette();
-    desktopFlagEditor.open(focused.object);
+    return true;
   }
 
   function updateFloatingObjectTooltip(xrActive: boolean): void {

@@ -90,6 +90,19 @@ describe("placedFlagRenderer", () => {
     expect(canvas.context.fillText.mock.calls[1][2]).toBeCloseTo(176);
     expect(canvas.context.fillText.mock.calls.map((call) => call[3])).toEqual([512, 512]);
   });
+
+  it("preserves explicit sign editor newlines as separate rendered lines", () => {
+    const canvas = installCanvasDocumentShim();
+    createPlacedFlagRuntime(createPlacedFlagObject({
+      id: "flag-a",
+      cellId: "room-a",
+      localPose: identityRigidTransform3,
+      flagType: "WoodenSign1",
+      message: "A\nB",
+    }), createPreparedAssets());
+
+    expect(canvas.context.fillText.mock.calls.map((call) => call[0])).toEqual(["A", "B"]);
+  });
 });
 
 function createPreparedAssets(): PreparedWorldAssets {

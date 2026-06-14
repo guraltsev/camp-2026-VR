@@ -4,7 +4,7 @@ import type { DebugLevelId } from "../glue/debugLevels";
 import type { PortalPanelModeId } from "../glue/portalPanelMode";
 import type { PlacedFlagType } from "../world-objects/placedFlags";
 
-export type RuntimeMenuPageId = "main" | "settings" | "debug-settings" | "place-flag-options";
+export type RuntimeMenuPageId = "main" | "settings" | "debug-settings" | "place-flag-options" | "edit-sign";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
 export type RuntimeToolId = "none" | "aim" | "place-flag" | "geodesic-cannon";
@@ -36,6 +36,10 @@ export interface RuntimeMenuState {
   readonly selectedTool: RuntimeToolId;
   readonly placeFlagOptions: {
     readonly flagType: PlacedFlagType;
+  };
+  readonly editSignOptions?: {
+    readonly flagId: string;
+    readonly message: string;
   };
   readonly editingFlagId?: string;
 }
@@ -84,6 +88,8 @@ export function closeRuntimeMenu(state: RuntimeMenuState): RuntimeMenuState {
     ...state,
     isOpen: false,
     page: "main",
+    editSignOptions: undefined,
+    editingFlagId: undefined,
   };
 }
 
@@ -112,6 +118,41 @@ export function showRuntimeMenuMainPage(state: RuntimeMenuState): RuntimeMenuSta
   return {
     ...state,
     page: "main",
+    editSignOptions: undefined,
+    editingFlagId: undefined,
+  };
+}
+
+export function showRuntimeMenuEditSign(
+  state: RuntimeMenuState,
+  options: {
+    readonly flagId: string;
+    readonly message: string;
+  },
+): RuntimeMenuState {
+  return {
+    ...state,
+    isOpen: true,
+    page: "edit-sign",
+    editingFlagId: options.flagId,
+    editSignOptions: {
+      flagId: options.flagId,
+      message: options.message,
+    },
+  };
+}
+
+export function setRuntimeMenuEditingSignMessage(state: RuntimeMenuState, message: string): RuntimeMenuState {
+  if (!state.editSignOptions) {
+    return state;
+  }
+
+  return {
+    ...state,
+    editSignOptions: {
+      ...state.editSignOptions,
+      message,
+    },
   };
 }
 

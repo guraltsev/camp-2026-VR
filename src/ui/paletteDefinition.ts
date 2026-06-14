@@ -7,7 +7,7 @@ import type {
   RuntimeMenuState,
   RuntimeToolId,
 } from "../runtime/runtimeMenuState";
-import { placedFlagTypes, type PlacedFlagType } from "../world-objects/placedFlags";
+import { placedFlagMaxMessageLength, placedFlagTypes, type PlacedFlagType } from "../world-objects/placedFlags";
 
 export interface PaletteSelectOption {
   readonly id: string;
@@ -56,11 +56,23 @@ export interface PlaceFlagOptionsPaletteContent {
   readonly flagTypeOptions: readonly PaletteSelectOption[];
 }
 
+export interface EditSignPaletteContent {
+  readonly kind: "edit-sign";
+  readonly flagId: string;
+  readonly message: string;
+  readonly maxLength: number;
+}
+
 export interface PaletteDefinition {
   readonly pageId: RuntimeMenuPageId;
   readonly leftAction: PaletteHeaderAction;
   readonly rightAction: PaletteHeaderAction;
-  readonly content: MainPaletteContent | SettingsPaletteContent | DebugSettingsPaletteContent | PlaceFlagOptionsPaletteContent;
+  readonly content:
+    | MainPaletteContent
+    | SettingsPaletteContent
+    | DebugSettingsPaletteContent
+    | PlaceFlagOptionsPaletteContent
+    | EditSignPaletteContent;
 }
 
 export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinition {
@@ -126,6 +138,20 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
           id,
           label: id,
         })),
+      },
+    };
+  }
+
+  if (state.page === "edit-sign" && state.editSignOptions) {
+    return {
+      pageId: "edit-sign",
+      leftAction: createHeaderAction("none"),
+      rightAction: createHeaderAction("close"),
+      content: {
+        kind: "edit-sign",
+        flagId: state.editSignOptions.flagId,
+        message: state.editSignOptions.message,
+        maxLength: placedFlagMaxMessageLength,
       },
     };
   }

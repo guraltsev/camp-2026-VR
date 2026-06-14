@@ -1,5 +1,5 @@
 import { Component, Container, Image, Text } from "@pmndrs/uikit";
-import { ArrowLeft, Crosshair, Flashlight, Settings, X } from "@pmndrs/uikit-lucide";
+import { ArrowLeft, Crosshair, Flashlight, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -26,6 +26,9 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onToolSelected?: (toolId: RuntimeToolId) => void;
   readonly onPlaceFlagOptionsRequested?: () => void;
   readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
+  readonly onSignKeyboardCharacter?: (character: string) => void;
+  readonly onSignKeyboardBackspace?: () => void;
+  readonly onSignDeleteRequested?: () => void;
 }
 
 export interface VrPaletteLibraryAdapter {
@@ -60,6 +63,12 @@ const signTypeLabels: Record<PlacedFlagType, string> = {
   WoodenSign1: "Wooden Sign 1",
   WoodenSign2: "Wooden Sign 2",
 };
+const signKeyboardRows = [
+  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+  ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+  ["Z", "X", "C", "V", "B", "N", "M"],
+] as const;
 
 export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOptions): VrPaletteLibraryAdapter {
   let renderedChildren: Container[] = [];
@@ -203,6 +212,10 @@ function buildContent(
 
   if (definition.content.kind === "place-flag-options") {
     return buildPlaceSignOptionsContent(definition.content, options);
+  }
+
+  if (definition.content.kind === "edit-sign") {
+    return buildEditSignContent(definition.content, options);
   }
 
   if (definition.content.kind === "debug-settings") {
@@ -354,6 +367,170 @@ function buildPlaceSignOptionsContent(
 
   panel.add(grid);
   return panel;
+}
+
+function buildEditSignContent(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "edit-sign" }>,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const panel = new Container({
+    width: "100%",
+    minHeight: 382,
+    flexDirection: "column",
+    gap: 10,
+    padding: 14,
+    borderRadius: 24,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 2,
+  });
+
+  const preview = new Container({
+    width: "100%",
+    height: 96,
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: 4,
+    padding: 10,
+    borderRadius: 14,
+    backgroundColor: "#020617",
+    borderColor,
+    borderWidth: 1,
+  });
+  preview.add(
+    createSectionLabel(`Sign text ${content.message.length}/${content.maxLength}`),
+    createSignPreviewLines(content.message),
+  );
+  panel.add(preview);
+
+  for (const row of signKeyboardRows) {
+    panel.add(createKeyboardRow(row, options));
+  }
+
+  const backspaceRow = new Container({
+    width: "100%",
+    height: 42,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  });
+  const enter = createInteractiveSurface({
+    width: 132,
+    height: 42,
+    label: "Enter",
+    labelFontSize: 15,
+    backgroundColor: actionColor,
+    onClick: () => options.onSignKeyboardCharacter?.("\n"),
+  });
+  enter.userData.xrPaletteItemId = "sign-key:Enter";
+  enter.userData.scenePaletteItemId = "sign-key:Enter";
+  const space = createInteractiveSurface({
+    width: 156,
+    height: 42,
+    label: "Space",
+    labelFontSize: 15,
+    backgroundColor: inactiveColor,
+    onClick: () => options.onSignKeyboardCharacter?.(" "),
+  });
+  space.userData.xrPaletteItemId = "sign-key:Space";
+  space.userData.scenePaletteItemId = "sign-key:Space";
+  const trash = createInteractiveSurface({
+    width: 132,
+    height: 42,
+    label: "",
+    labelFontSize: 15,
+    backgroundColor: "#7f1d1d",
+    onClick: () => options.onSignDeleteRequested?.(),
+  });
+  trash.userData.xrPaletteItemId = "sign-action:trash";
+  trash.userData.scenePaletteItemId = "sign-action:trash";
+  trash.add(new Trash2({
+    width: 24,
+    height: 24,
+    color: textColor,
+    fill: textColor,
+  }));
+  const backspace = createInteractiveSurface({
+    width: 156,
+    height: 42,
+    label: "Backspace",
+    labelFontSize: 15,
+    backgroundColor: "#991b1b",
+    onClick: () => options.onSignKeyboardBackspace?.(),
+  });
+  backspace.userData.xrPaletteItemId = "sign-key:Backspace";
+  backspace.userData.scenePaletteItemId = "sign-key:Backspace";
+  backspaceRow.add(enter, space, backspace, trash);
+  panel.add(backspaceRow);
+
+  return panel;
+}
+
+function createSignPreviewLines(message: string): Container {
+  const allLines = message.split("\n");
+  const cursorLineIndex = allLines.length - 1;
+  const firstVisibleLine = Math.max(0, cursorLineIndex - 2);
+  const lines = allLines.slice(firstVisibleLine, firstVisibleLine + 3);
+  while (lines.length < 3) {
+    lines.push("");
+  }
+
+  const block = new Container({
+    width: "100%",
+    height: 62,
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: 2,
+  });
+
+  for (let index = 0; index < 3; index += 1) {
+    const sourceLineIndex = firstVisibleLine + index;
+    const line = lines[index] ?? "";
+    const displayLine = sourceLineIndex === cursorLineIndex ? `${line}|` : line;
+    const text = new Text({
+      text: displayLine || " ",
+      fontSize: 18,
+      fontWeight: "bold",
+      color: textColor,
+      fill: textColor,
+      flexShrink: 1,
+      wordBreak: "break-word",
+    });
+    text.userData.scenePaletteSignPreviewLine = index;
+    text.userData.scenePaletteSignPreviewText = displayLine;
+    block.add(text);
+  }
+
+  return block;
+}
+
+function createKeyboardRow(
+  keys: readonly string[],
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const row = new Container({
+    width: "100%",
+    height: 38,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+  });
+
+  for (const key of keys) {
+    const button = createInteractiveSurface({
+      width: 48,
+      height: 38,
+      label: key,
+      labelFontSize: 16,
+      backgroundColor: inactiveColor,
+      onClick: () => options.onSignKeyboardCharacter?.(key),
+    });
+    button.userData.xrPaletteItemId = `sign-key:${key}`;
+    button.userData.scenePaletteItemId = `sign-key:${key}`;
+    row.add(button);
+  }
+
+  return row;
 }
 
 function createToolTile(

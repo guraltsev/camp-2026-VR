@@ -25,6 +25,10 @@ describe("placedFlags", () => {
     expect(sanitizePlacedFlagMessage("1234567890123456789012345")).toBe("12345678901234567890");
   });
 
+  it("preserves sign editor newlines while normalizing other whitespace", () => {
+    expect(sanitizePlacedFlagMessage("A\tB\r\nC\nD")).toBe("A B\nC\nD");
+  });
+
   it("defaults flag text by type and the next existing matching number", () => {
     const a1 = createPlacedFlagObject({
       id: "flag-a1",

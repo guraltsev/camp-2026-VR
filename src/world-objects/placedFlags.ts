@@ -78,7 +78,9 @@ export function isPlacedFlagType(value: string): value is PlacedFlagType {
 }
 
 export function sanitizePlacedFlagMessage(message: string): string {
-  return [...message.replace(/\s+/g, " ").trim()].slice(0, placedFlagMaxMessageLength).join("");
+  return [...message.replace(/\r\n?/g, "\n").replace(/[^\S\n]+/g, " ")]
+    .slice(0, placedFlagMaxMessageLength)
+    .join("");
 }
 
 export function sanitizePlacedFlagFontColor(color: string): string {

@@ -180,7 +180,7 @@ function fitTextToCanvas(
   maxWidth: number,
   maxHeight: number,
 ): { readonly lines: readonly string[]; readonly lineHeight: number; readonly fontSize: number } {
-  const text = message.trim();
+  const text = message;
   if (text.length === 0) {
     return {
       lines: [""],
@@ -209,25 +209,26 @@ function fitTextToCanvas(
 }
 
 function wrapTextToWidth(context: CanvasRenderingContext2D, text: string, maxWidth: number): readonly string[] {
-  const characters = [...text];
   const lines: string[] = [];
-  let line = "";
 
-  for (const character of characters) {
-    const candidate = `${line}${character}`;
-    if (line && measureTextWidth(context, candidate) > maxWidth) {
+  for (const explicitLine of text.split("\n")) {
+    let line = "";
+    for (const character of explicitLine) {
+      const candidate = `${line}${character}`;
+      if (line && measureTextWidth(context, candidate) > maxWidth) {
+        lines.push(line);
+        line = character.trimStart();
+      } else {
+        line = candidate;
+      }
+    }
+
+    if (line || explicitLine.length === 0) {
       lines.push(line);
-      line = character.trimStart();
-    } else {
-      line = candidate;
     }
   }
 
-  if (line || lines.length === 0) {
-    lines.push(line);
-  }
-
-  return lines;
+  return lines.length > 0 ? lines : [""];
 }
 
 function measureTextWidth(context: CanvasRenderingContext2D, text: string): number {

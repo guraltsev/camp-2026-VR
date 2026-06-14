@@ -537,8 +537,12 @@ The sign-edit menu should include an on-screen keyboard:
 
 - number row,
 - QWERTY letter rows,
-- no `Ctrl`, `Alt`, function keys, arrow keys, or browser-style modifier shortcuts,
+- `Space` inserts a space,
+- `Enter` inserts a newline,
+- no `Shift`, no upper/lower case toggle, no `Ctrl`, `Alt`, function keys, arrow keys, or browser-style modifier shortcuts,
 - `Backspace` deletes the last character,
+- a visible cursor shows where the next character will be inserted,
+- a trash button removes the entire sign object,
 - keep existing sign message sanitization and maximum length rules,
 - keep color selection available for sign text if it remains part of the sign feature.
 
@@ -721,9 +725,11 @@ Add sign editing to the common object interaction path:
 - focusing a sign and pressing `A / X` in VR opens the sign-edit menu,
 - the menu edits the placed sign registry object, not a renderer instance,
 - all portal-visible sign instances update from the same sign text texture/material path,
-- the on-screen keyboard supports numbers, QWERTY letters, and backspace,
+- the on-screen keyboard supports numbers, QWERTY letters, Space, Enter, and backspace,
 - backspace removes the last character,
-- no arrow keys or modifier keys are shown.
+- the editor shows a visible end-of-text cursor,
+- a trash button deletes the entire sign object,
+- no Shift, case-toggle, arrow, or modifier keys are shown.
 
 ### 9. Verify desktop and XR behavior
 
@@ -766,7 +772,11 @@ Required tests:
 - focusing a sign exposes `RMouse / F: edit sign` on desktop.
 - focusing a sign exposes `A / X: edit sign` in VR.
 - sign keyboard number and QWERTY keys append characters up to the existing sign limit.
+- sign keyboard Space inserts a space.
+- sign keyboard Enter inserts a newline.
 - sign keyboard backspace removes the last character.
+- sign editor preview shows a cursor at the current insertion point.
+- sign editor trash button removes the whole sign object.
 - desktop and XR code paths both consume the same `PaletteDefinition`.
 
 Regression tests:
@@ -792,7 +802,7 @@ Regression tests:
 - The main palette exposes `aim`, `place-flag`, and `geodesic-cannon` through the in-scene UI.
 - The place flag options page works through the in-scene UI.
 - Placed signs can be edited through an in-game sign-edit menu.
-- The in-game sign editor includes number keys, QWERTY keys, and backspace, with no arrow or modifier keys.
+- The in-game sign editor includes number keys, QWERTY keys, Space, Enter, backspace, and a trash-sign button, with no Shift, case-toggle, arrow, or modifier keys.
 - Complex object interaction tooltips use `RMouse / F` on desktop and `A / X` in VR.
 - Menu panels are not runtime registry objects.
 - Menu panels are not cell-local or portal-rendered.

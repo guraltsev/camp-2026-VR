@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createRuntimeMenuState, showRuntimeMenuPlaceFlagOptions } from "../../src/runtime/runtimeMenuState";
+import { createRuntimeMenuState, showRuntimeMenuEditSign, showRuntimeMenuPlaceFlagOptions } from "../../src/runtime/runtimeMenuState";
 import { createScenePaletteLibraryAdapter } from "../../src/render/three/scenePaletteLibraryAdapter";
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 
@@ -36,6 +36,38 @@ describe("scenePaletteLibraryAdapter", () => {
 
     adapter.dispose();
   });
+
+  it("renders sign editing with fixed number, QWERTY, space, enter, backspace, cursor, and trash controls", () => {
+    const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
+    const definition = createPaletteDefinition(showRuntimeMenuEditSign(
+      createRuntimeMenuState({ selectedWorldId: "cube" }),
+      { flagId: "sign-a", message: "A\nB" },
+    ));
+    adapter.setDefinition(definition);
+
+    const itemIds = collectPaletteItemIds(adapter.root);
+    const previewLines = collectSignPreviewLines(adapter.root);
+
+    expect(definition.rightAction.id).toBe("close");
+    expect(previewLines).toEqual(["A", "B|", ""]);
+    expect(itemIds).toContain("sign-key:1");
+    expect(itemIds).toContain("sign-key:0");
+    expect(itemIds).toContain("sign-key:Q");
+    expect(itemIds).toContain("sign-key:M");
+    expect(itemIds).toContain("sign-key:Enter");
+    expect(itemIds).toContain("sign-key:Space");
+    expect(itemIds).toContain("sign-key:Backspace");
+    expect(itemIds).toContain("sign-action:trash");
+    expect(itemIds).not.toContain("sign-key:Erase");
+    expect(itemIds).not.toContain("sign-key:Shift");
+    expect(itemIds).not.toContain("sign-key:CapsLock");
+    expect(itemIds).not.toContain("sign-key:Ctrl");
+    expect(itemIds).not.toContain("sign-key:Alt");
+    expect(itemIds).not.toContain("sign-key:ArrowLeft");
+    expect(itemIds).not.toContain("sign-key:ArrowRight");
+
+    adapter.dispose();
+  });
 });
 
 function collectPaletteItemIds(root: { readonly children: readonly any[]; readonly userData?: Record<string, unknown> }): string[] {
@@ -67,6 +99,26 @@ function collectPaletteImageSources(root: { readonly children: readonly any[]; r
   return sources;
 }
 
+function collectSignPreviewLines(root: { readonly children: readonly any[]; readonly userData?: Record<string, unknown> }): string[] {
+  const lines: { readonly index: number; readonly text: string }[] = [];
+  const visit = (node: { readonly children?: readonly any[]; readonly userData?: Record<string, unknown> }) => {
+    if (
+      typeof node.userData?.scenePaletteSignPreviewLine === "number" &&
+      typeof node.userData?.scenePaletteSignPreviewText === "string"
+    ) {
+      lines.push({
+        index: node.userData.scenePaletteSignPreviewLine,
+        text: node.userData.scenePaletteSignPreviewText,
+      });
+    }
+    for (const child of node.children ?? []) {
+      visit(child);
+    }
+  };
+  visit(root);
+  return lines.sort((left, right) => left.index - right.index).map((line) => line.text);
+}
+
 function createNoopOptions(): Parameters<typeof createScenePaletteLibraryAdapter>[0] {
   return {
     onLeftAction: () => undefined,
@@ -84,5 +136,8 @@ function createNoopOptions(): Parameters<typeof createScenePaletteLibraryAdapter
     onToolSelected: () => undefined,
     onPlaceFlagOptionsRequested: () => undefined,
     onPlaceFlagTypeSelected: () => undefined,
+    onSignKeyboardCharacter: () => undefined,
+    onSignKeyboardBackspace: () => undefined,
+    onSignDeleteRequested: () => undefined,
   };
 }
