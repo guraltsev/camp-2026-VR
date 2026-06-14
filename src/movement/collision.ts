@@ -1,8 +1,8 @@
 import type { CompiledPrismCell, CompiledPrismSide } from "../cell-complex/prismCells";
-import type { SingularityCollisionBox } from "../cell-complex/forbiddenZones";
+import type { SingularityCollisionCylinder } from "../cell-complex/forbiddenZones";
 import { transformDirection3 } from "../math/rigidTransform3";
 import type { Vec3 } from "../math/vec3";
-import type { DynamicObjectState, SimpleCollisionBox } from "./dynamicObject";
+import type { DynamicObjectState, SimpleCollisionCylinder } from "./dynamicObject";
 
 export type BlockingReason = "wall" | "floor" | "ceiling" | "forbidden-zone";
 
@@ -19,11 +19,10 @@ export interface CollisionCandidate {
   readonly ignoredPortalSideIndex?: number;
 }
 
-export interface SimpleBoxBounds {
+export interface SimpleCylinderBounds {
   readonly center: Vec3;
-  readonly halfX: number;
-  readonly halfY: number;
-  readonly halfZ: number;
+  readonly radius: number;
+  readonly halfHeight: number;
 }
 
 export interface BoundaryCrossing {
@@ -42,18 +41,18 @@ export function testCellCollision(candidate: CollisionCandidate): CollisionResul
     return { blocked: false };
   }
 
-  const { center, halfZ } = bounds;
+  const { center, halfHeight } = bounds;
 
-  if (center.z - halfZ < 0) {
+  if (center.z - halfHeight < 0) {
     return { blocked: true, reason: "floor" };
   }
 
-  if (center.z + halfZ > candidate.cell.heightMeters) {
+  if (center.z + halfHeight > candidate.cell.heightMeters) {
     return { blocked: true, reason: "ceiling" };
   }
 
-  for (const exclusionBox of candidate.cell.singularityColumns) {
-    if (simpleBoxIntersectsSingularityBox(bounds, exclusionBox)) {
+  for (const exclusionCylinder of candidate.cell.singularityColumns) {
+    if (simpleCylinderIntersectsSingularityCylinder(bounds, exclusionCylinder)) {
       return { blocked: true, reason: "forbidden-zone" };
     }
   }
@@ -63,8 +62,8 @@ export function testCellCollision(candidate: CollisionCandidate): CollisionResul
     : undefined;
 
   if (previousBounds) {
-    for (const exclusionBox of candidate.cell.singularityColumns) {
-      if (simpleBoxIntersectsSingularityBox(getSweptSimpleBoxBounds(previousBounds, bounds), exclusionBox)) {
+    for (const exclusionCylinder of candidate.cell.singularityColumns) {
+      if (sweptCylinderIntersectsSingularityCylinder(previousBounds, bounds, exclusionCylinder)) {
         return { blocked: true, reason: "forbidden-zone" };
       }
     }
@@ -76,9 +75,8 @@ export function testCellCollision(candidate: CollisionCandidate): CollisionResul
     }
 
     const distance = signedDistanceToSide(side, center);
-    const support = getSideSupport(side, bounds);
 
-    if (distance < support) {
+    if (distance < bounds.radius) {
       return { blocked: true, reason: "wall", sideIndex: side.sideIndex };
     }
   }
@@ -88,8 +86,8 @@ export function testCellCollision(candidate: CollisionCandidate): CollisionResul
 
 export function getCollisionBounds(
   position: Vec3,
-  collision?: SimpleCollisionBox,
-): SimpleBoxBounds | undefined {
+  collision?: SimpleCollisionCylinder,
+): SimpleCylinderBounds | undefined {
   if (!collision) {
     return undefined;
   }
@@ -102,87 +100,89 @@ export function getCollisionBounds(
       y: position.y + offset.y,
       z: position.z + offset.z,
     },
-    halfX: collision.dx / 2,
-    halfY: collision.dy / 2,
-    halfZ: collision.dz / 2,
+    radius: collision.radius,
+    halfHeight: collision.height / 2,
   };
 }
 
-export function getDynamicObjectCollisionBounds(object: DynamicObjectState): SimpleBoxBounds | undefined {
+export function getDynamicObjectCollisionBounds(object: DynamicObjectState): SimpleCylinderBounds | undefined {
   const collision = object.collision;
 
   if (!collision) {
     return undefined;
   }
 
-  const rotation = object.localPose.rotation;
   const rotatedOffset = transformDirection3(
     object.localPose,
     collision.offset ?? zeroOffset,
   );
-  const center = {
-    x: object.localPose.translation.x + rotatedOffset.x,
-    y: object.localPose.translation.y + rotatedOffset.y,
-    z: object.localPose.translation.z + rotatedOffset.z,
-  };
-  const halfDx = collision.dx / 2;
-  const halfDy = collision.dy / 2;
-  const halfDz = collision.dz / 2;
-
-  return {
-    center,
-    halfX: Math.abs(rotation.m00) * halfDx + Math.abs(rotation.m01) * halfDy + Math.abs(rotation.m02) * halfDz,
-    halfY: Math.abs(rotation.m10) * halfDx + Math.abs(rotation.m11) * halfDy + Math.abs(rotation.m12) * halfDz,
-    halfZ: Math.abs(rotation.m20) * halfDx + Math.abs(rotation.m21) * halfDy + Math.abs(rotation.m22) * halfDz,
-  };
-}
-
-export function simpleBoxIntersectsSimpleBox(a: SimpleBoxBounds, b: SimpleBoxBounds): boolean {
-  return (
-    Math.abs(a.center.x - b.center.x) < a.halfX + b.halfX &&
-    Math.abs(a.center.y - b.center.y) < a.halfY + b.halfY &&
-    Math.abs(a.center.z - b.center.z) < a.halfZ + b.halfZ
-  );
-}
-
-function simpleBoxIntersectsSingularityBox(
-  box: SimpleBoxBounds,
-  exclusionBox: SingularityCollisionBox,
-): boolean {
-  return simpleBoxIntersectsSimpleBox(box, {
-    center: exclusionBox.center,
-    halfX: exclusionBox.halfX,
-    halfY: exclusionBox.halfY,
-    halfZ: exclusionBox.halfZ,
-  });
-}
-
-function getSweptSimpleBoxBounds(start: SimpleBoxBounds, end: SimpleBoxBounds): SimpleBoxBounds {
-  const minX = Math.min(start.center.x - start.halfX, end.center.x - end.halfX);
-  const maxX = Math.max(start.center.x + start.halfX, end.center.x + end.halfX);
-  const minY = Math.min(start.center.y - start.halfY, end.center.y - end.halfY);
-  const maxY = Math.max(start.center.y + start.halfY, end.center.y + end.halfY);
-  const minZ = Math.min(start.center.z - start.halfZ, end.center.z - end.halfZ);
-  const maxZ = Math.max(start.center.z + start.halfZ, end.center.z + end.halfZ);
 
   return {
     center: {
-      x: (minX + maxX) / 2,
-      y: (minY + maxY) / 2,
-      z: (minZ + maxZ) / 2,
+      x: object.localPose.translation.x + rotatedOffset.x,
+      y: object.localPose.translation.y + rotatedOffset.y,
+      z: object.localPose.translation.z + rotatedOffset.z,
     },
-    halfX: (maxX - minX) / 2,
-    halfY: (maxY - minY) / 2,
-    halfZ: (maxZ - minZ) / 2,
+    radius: collision.radius,
+    halfHeight: collision.height / 2,
   };
+}
+
+export function simpleCylinderIntersectsSimpleCylinder(
+  a: SimpleCylinderBounds,
+  b: SimpleCylinderBounds,
+): boolean {
+  const radius = a.radius + b.radius;
+
+  return (
+    horizontalDistanceSquared(a.center, b.center) < radius * radius &&
+    Math.abs(a.center.z - b.center.z) < a.halfHeight + b.halfHeight
+  );
+}
+
+function simpleCylinderIntersectsSingularityCylinder(
+  cylinder: SimpleCylinderBounds,
+  exclusionCylinder: SingularityCollisionCylinder,
+): boolean {
+  return simpleCylinderIntersectsSimpleCylinder(cylinder, {
+    center: exclusionCylinder.center,
+    radius: exclusionCylinder.radius,
+    halfHeight: exclusionCylinder.height / 2,
+  });
+}
+
+function sweptCylinderIntersectsSingularityCylinder(
+  start: SimpleCylinderBounds,
+  end: SimpleCylinderBounds,
+  exclusionCylinder: SingularityCollisionCylinder,
+): boolean {
+  const combinedRadius = Math.max(start.radius, end.radius) + exclusionCylinder.radius;
+  const sweptMinZ = Math.min(start.center.z - start.halfHeight, end.center.z - end.halfHeight);
+  const sweptMaxZ = Math.max(start.center.z + start.halfHeight, end.center.z + end.halfHeight);
+  const exclusionHalfHeight = exclusionCylinder.height / 2;
+  const exclusionMinZ = exclusionCylinder.center.z - exclusionHalfHeight;
+  const exclusionMaxZ = exclusionCylinder.center.z + exclusionHalfHeight;
+
+  return (
+    sweptMinZ < exclusionMaxZ &&
+    sweptMaxZ > exclusionMinZ &&
+    distanceSquaredPointToSegment2(
+      exclusionCylinder.center.x,
+      exclusionCylinder.center.y,
+      start.center.x,
+      start.center.y,
+      end.center.x,
+      end.center.y,
+    ) < combinedRadius * combinedRadius
+  );
 }
 
 export function signedDistanceToSide(side: CompiledPrismSide, point: Vec3): number {
   return (point.x - side.start.x) * side.inwardNormal.x + (point.y - side.start.y) * side.inwardNormal.y;
 }
 
-export function getSideSupport(side: CompiledPrismSide, bounds: SimpleBoxBounds): number {
-  return Math.abs(side.inwardNormal.x) * bounds.halfX + Math.abs(side.inwardNormal.y) * bounds.halfY;
+export function getSideSupport(_side: CompiledPrismSide, bounds: SimpleCylinderBounds): number {
+  return bounds.radius;
 }
 
 export function projectPointAlongSide(side: CompiledPrismSide, point: Vec3): number {
@@ -223,4 +223,42 @@ export function findBoundaryCrossing(
   }
 
   return crossing;
+}
+
+function horizontalDistanceSquared(a: Vec3, b: Vec3): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+
+  return dx * dx + dy * dy;
+}
+
+function distanceSquaredPointToSegment2(
+  pointX: number,
+  pointY: number,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+): number {
+  const segmentX = endX - startX;
+  const segmentY = endY - startY;
+  const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+
+  if (segmentLengthSquared === 0) {
+    const dx = pointX - startX;
+    const dy = pointY - startY;
+
+    return dx * dx + dy * dy;
+  }
+
+  const t = Math.max(
+    0,
+    Math.min(1, ((pointX - startX) * segmentX + (pointY - startY) * segmentY) / segmentLengthSquared),
+  );
+  const closestX = startX + segmentX * t;
+  const closestY = startY + segmentY * t;
+  const dx = pointX - closestX;
+  const dy = pointY - closestY;
+
+  return dx * dx + dy * dy;
 }

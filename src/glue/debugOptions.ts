@@ -37,7 +37,7 @@ export const debugOptionDefinitions = [
   {
     id: "object-collision-wireframes",
     label: "Object Collision Wireframes",
-    description: "Render wireframe boxes for object collision shapes.",
+    description: "Render wireframe cylinders for object collision shapes.",
   },
 ] as const;
 

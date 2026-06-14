@@ -78,6 +78,7 @@ import { createDebugOverlay } from "./debugOverlay";
 import { createDesktopToolPalette } from "../dom/desktopToolPalette";
 import { createDesktopControls } from "./desktopControls";
 import { createDesktopPaletteInput } from "./desktopPaletteInput";
+import { buildForbiddenZoneWireframe } from "./debugCollisionWireframes";
 import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
 import { createPortalInstanceDebugRenderer, type PortalInstanceDebugRenderer } from "./portalInstanceDebug";
 import {
@@ -1011,10 +1012,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       cellMeshes.delete(cellId);
     }
 
+    const showForbiddenZoneWireframes = hasActiveDebugOption(
+      debugLevel,
+      debugOptions,
+      "forbidden-zone-wireframes",
+    );
+
     for (const cell of appState.world.cells) {
       const cellMesh = new THREE.Group();
       cellMesh.name = `cell-root:${cell.id}`;
       cellMesh.visible = cell.id === currentlyVisibleCellId;
+      if (showForbiddenZoneWireframes) {
+        cellMesh.add(buildCurrentCellForbiddenZoneWireframes(cell));
+      }
       cellMeshes.set(cell.id, cellMesh);
       scene.add(cellMesh);
     }
@@ -1026,11 +1036,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       assets: options.assets,
       capacitiesByCellId: archetypeCapacitiesByCellId,
       portalClipMaterialState,
-      showForbiddenZoneWireframes: hasActiveDebugOption(
-        debugLevel,
-        debugOptions,
-        "forbidden-zone-wireframes",
-      ),
+      showForbiddenZoneWireframes: false,
     });
     for (const archetype of cellRenderArchetypes) {
       archetype.mesh.onBeforeRender = (renderer, _scene, renderCamera) => {
@@ -1042,6 +1048,17 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     portalInstanceDebugRenderer = createPortalInstanceDebugRenderer(scene, cellRenderArchetypes);
     placedFlagRenderer.sync();
     visibleCellId = currentlyVisibleCellId;
+  }
+
+  function buildCurrentCellForbiddenZoneWireframes(cell: CompiledPrismCell): THREE.Object3D {
+    const group = new THREE.Group();
+    group.name = `forbidden-zone-wireframes:${cell.id}`;
+
+    for (const zone of cell.forbiddenZones) {
+      group.add(buildForbiddenZoneWireframe(cell.id, zone.collision, cell.heightMeters));
+    }
+
+    return group;
   }
 
   function resolvePortalEyeRenderRoot(cullingCamera: THREE.Camera): XrPortalEyeRenderRoot {
@@ -1958,7 +1975,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           tooltipAnchor: {
             x: target.x,
             y: target.y,
-            z: target.z + (bounds?.halfZ ?? 0.35) + 0.25,
+            z: target.z + (bounds?.halfHeight ?? 0.35) + 0.25,
           },
         };
       }

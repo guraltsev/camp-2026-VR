@@ -199,12 +199,17 @@ describe("buildCellMesh", () => {
     });
     expect(
       debugMesh.getObjectByName("forbidden-zone-wireframe:room-a:room-a:vertex-1"),
-    ).toBeInstanceOf(THREE.Mesh);
+    ).toBeInstanceOf(THREE.LineSegments);
     expect(
       (
-        debugMesh.getObjectByName("forbidden-zone-wireframe:room-a:room-a:vertex-1") as THREE.Mesh | undefined
-      )?.geometry,
-    ).toBeInstanceOf(THREE.BoxGeometry);
+        debugMesh.getObjectByName("forbidden-zone-wireframe:room-a:room-a:vertex-1") as THREE.LineSegments | undefined
+      )?.geometry.getAttribute("position").count,
+    ).toBe(104);
+    expect(
+      (
+        debugMesh.getObjectByName("forbidden-zone-wireframe:room-a:room-a:vertex-1") as THREE.LineSegments | undefined
+      )?.scale.y,
+    ).toBeCloseTo(roomA.heightMeters);
   });
 
   it("labels portal side redirects as source side to target face and side", () => {

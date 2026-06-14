@@ -48,9 +48,8 @@ export function createGeodesciMarmot(options: CreateGeodesciMarmotOptions): Geod
     yawRadians: yawFromVelocity(options.velocity),
     velocity: options.velocity,
     collision: {
-      dx: 0.42,
-      dy: 0.72,
-      dz: 0.42,
+      radius: 0.36,
+      height: 0.42,
       offset: defaultCollisionOffset,
     },
   };

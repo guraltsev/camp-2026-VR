@@ -139,9 +139,8 @@ describe("worldObjectLibrary", () => {
       throw new Error("Expected a geo mouse.");
     }
 
-    expect(object.collision.dx).toBeCloseTo(0.672655);
-    expect(object.collision.dy).toBeCloseTo(1.5225);
-    expect(object.collision.dz).toBeCloseTo(1.114935);
+    expect(object.collision.radius).toBeCloseTo(0.76125);
+    expect(object.collision.height).toBeCloseTo(1.114935);
     expect(object.collision.offset?.y).toBeCloseTo(0.3675);
     expect(object.collision.offset?.z).toBeCloseTo(0.567468);
   });
@@ -165,9 +164,8 @@ describe("worldObjectLibrary", () => {
       throw new Error("Expected a geo butterfly.");
     }
 
-    expect(object.collision.dx).toBeCloseTo(1.240799);
-    expect(object.collision.dy).toBeCloseTo(0.873288);
-    expect(object.collision.dz).toBeCloseTo(0.738591);
+    expect(object.collision.radius).toBeCloseTo(0.6204);
+    expect(object.collision.height).toBeCloseTo(0.738591);
     expect(object.collision.offset).toMatchObject({
       x: expect.any(Number),
       y: expect.any(Number),

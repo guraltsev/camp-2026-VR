@@ -35,7 +35,7 @@ describe("planCellRenderArchetypes", () => {
     expect(planned.some((entry) => entry.sourceObjectName?.includes("marmot"))).toBe(false);
   });
 
-  it("includes forbidden-zone wireframes when requested", () => {
+  it("keeps forbidden-zone line wireframes out of instanced archetypes", () => {
     const world = compileCellComplex(createStaticObjectWorld());
     const planned = planCellRenderArchetypes(world, {
       debugLevel: "basic",
@@ -46,9 +46,9 @@ describe("planCellRenderArchetypes", () => {
       showForbiddenZoneWireframes: true,
     });
 
-    expect(planned.some((entry) => entry.kind === "debug-wireframe")).toBe(true);
+    expect(planned.some((entry) => entry.kind === "debug-wireframe")).toBe(false);
     expect(planned.some((entry) => entry.sourceObjectName?.startsWith("forbidden-zone-wireframe:room-a"))).toBe(
-      true,
+      false,
     );
   });
 });
@@ -124,7 +124,7 @@ function createStaticObjectWorld(): CellComplexSpec {
               assetPath: "marmot.gltf",
               position: { x: 0.5, y: 0.5, z: 0 },
               velocity: { x: 0, y: 0 },
-              collision: { dx: 0.2, dy: 0.2, dz: 0.2 },
+              collision: { radius: 0.1, height: 0.2 },
             },
           ],
         },

@@ -290,7 +290,7 @@ export function butterflyVerticalOscillationHeightMagnitudeMeters(objectSpec: Si
   }
 
   return Math.min(
-    objectSpec.collision.dz * butterflyVerticalMagnitudeFractionOfHeight,
+    objectSpec.collision.height * butterflyVerticalMagnitudeFractionOfHeight,
     butterflyVerticalMagnitudeMaxMeters,
   );
 }
@@ -342,30 +342,34 @@ function defaultCreatureCollision(
   authorScale: number,
 ): SimpleGeoCreatureObjectSpec["collision"] {
   if (kind === "geo-butterfly") {
-    const dz = butterflyAssetBounds.heightMetersAtAuthorScale * authorScale;
+    const height = butterflyAssetBounds.heightMetersAtAuthorScale * authorScale;
 
     return {
-      dx: butterflyAssetBounds.widthMetersAtAuthorScale * authorScale,
-      dy: butterflyAssetBounds.lengthMetersAtAuthorScale * authorScale,
-      dz,
+      radius: Math.max(
+        butterflyAssetBounds.widthMetersAtAuthorScale,
+        butterflyAssetBounds.lengthMetersAtAuthorScale,
+      ) * authorScale / 2,
+      height,
       offset: {
         x: butterflyAssetBounds.centerXMetersAtAuthorScale * authorScale,
         y: butterflyAssetBounds.centerYMetersAtAuthorScale * authorScale,
-        z: Math.max(creatureModelLiftMeters(kind, authorScale), dz / 2 + collisionFloorClearanceMeters),
+        z: Math.max(creatureModelLiftMeters(kind, authorScale), height / 2 + collisionFloorClearanceMeters),
       },
     };
   }
 
-  const dz = mouseAssetBounds.heightMetersAtAuthorScale * authorScale;
+  const height = mouseAssetBounds.heightMetersAtAuthorScale * authorScale;
 
   return {
-    dx: mouseAssetBounds.widthMetersAtAuthorScale * authorScale,
-    dy: mouseBodyCollision.lengthMetersAtAuthorScale * authorScale,
-    dz,
+    radius: Math.max(
+      mouseAssetBounds.widthMetersAtAuthorScale,
+      mouseBodyCollision.lengthMetersAtAuthorScale,
+    ) * authorScale / 2,
+    height,
     offset: {
       x: 0,
       y: mouseBodyCollision.centerYMetersAtAuthorScale * authorScale,
-      z: Math.max(creatureModelLiftMeters(kind, authorScale), dz / 2 + collisionFloorClearanceMeters),
+      z: Math.max(creatureModelLiftMeters(kind, authorScale), height / 2 + collisionFloorClearanceMeters),
     },
   };
 }

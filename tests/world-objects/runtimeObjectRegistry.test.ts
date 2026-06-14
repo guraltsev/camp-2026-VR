@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { identityRigidTransform3 } from "../../src/math/rigidTransform3";
-import { simpleCollisionBox } from "../../src/movement/dynamicObject";
+import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
 import { createRuntimeObjectRegistry, type RuntimeCreatureObject } from "../../src/world-objects/runtimeObjectRegistry";
 
 function creature(id: string, cellId: string, extra: Partial<RuntimeCreatureObject> = {}): RuntimeCreatureObject {
@@ -45,7 +45,7 @@ describe("runtimeObjectRegistry", () => {
   });
 
   it("filters collidable and interactable objects", () => {
-    const collidable = creature("mouse-a", "cell-a", { collision: simpleCollisionBox(1, 1, 1) });
+    const collidable = creature("mouse-a", "cell-a", { collision: simpleCollisionCylinder(0.5, 1) });
     const interactable = creature("mouse-b", "cell-a", {
       interactable: { label: "Edit", action: "edit-flag" },
     });

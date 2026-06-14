@@ -3,7 +3,7 @@ import { addVec3, type Vec3 } from "../math/vec3";
 import { DEFAULT_PLAYER_HEIGHT_METERS, DEFAULT_PLAYER_RADIUS_METERS, type PlayerBody } from "./playerBody";
 import type { PlayerPose } from "./playerPose";
 import { playerPoseFromDynamicObject, playerPoseToDynamicObject } from "./playerPose";
-import { simpleCollisionBox } from "./dynamicObject";
+import { simpleCollisionCylinder } from "./dynamicObject";
 import { moveDynamicObject } from "./moveDynamicObject";
 import type { BlockingReason } from "./collision";
 
@@ -48,7 +48,7 @@ export function movePlayer(request: MoveRequest): MoveResult {
       world: request.world,
       object: playerPoseToDynamicObject(
         rotatedPose,
-        simpleCollisionBox(body.radiusMeters * 2, body.heightMeters, body.radiusMeters * 2, {
+        simpleCollisionCylinder(body.radiusMeters, body.heightMeters, {
           x: 0,
           y: 0,
           z: body.heightMeters / 2,

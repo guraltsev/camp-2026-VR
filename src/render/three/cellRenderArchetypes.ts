@@ -274,7 +274,7 @@ function cloneMaterial(
 
 function disposeObject3D(object: THREE.Object3D): void {
   object.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) {
+    if (!(child instanceof THREE.Mesh || child instanceof THREE.Line)) {
       return;
     }
 

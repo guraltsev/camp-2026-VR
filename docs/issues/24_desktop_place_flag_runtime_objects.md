@@ -6,7 +6,7 @@ Add a desktop-only place-flag tool backed by a general runtime object registry.
 
 Placed flags should be live world objects, not renderer-only decorations. Existing authored creatures such as marmots, mice, and butterflies should also be represented as runtime objects so that collision, portal cloning, interaction, reset behavior, and future object-object logic have one authoritative object system.
 
-Depends on: [23_rotation_aware_conservative_collision_boxes.md](./23_rotation_aware_conservative_collision_boxes.md).
+Depends on: [23_cylindrical_collision_shapes.md](./23_cylindrical_collision_shapes.md).
 
 ## Scope
 
@@ -58,7 +58,7 @@ interface RuntimeWorldObjectBase {
   readonly id: string;
   readonly cellId: string;
   readonly localPose: RigidTransform3;
-  readonly collision?: SimpleCollisionBox;
+  readonly collision?: SimpleCollisionCylinder;
   readonly portalRenderable: boolean;
   readonly interactable?: RuntimeObjectInteraction;
 }
@@ -138,7 +138,7 @@ Initial placement behavior:
 - reject the candidate if its collision bounds intersect walls, floor, ceiling, forbidden zones, or collidable runtime objects in the same cell,
 - insert the object into the runtime registry if placement succeeds.
 
-Collision should use the rotation-aware simple-box bounds from issue 23. Do not derive collision from rendered mesh bounds.
+Collision should use the cylinder bounds from issue 23. Do not derive collision from rendered mesh bounds.
 
 ### Desktop interaction
 
@@ -363,7 +363,7 @@ Required render/preload tests:
 - The flag editor supports message and font color changes.
 - Placed flags participate in existing portal cloning by being parented under the correct cell root.
 - Shared palette definitions remain compatible with VR code, but no VR placement or VR editing behavior is implemented.
-- Collision uses runtime object state and existing simple-box bounds helpers, not renderer mesh bounds.
+- Collision uses runtime object state and existing cylinder bounds helpers, not renderer mesh bounds.
 - Existing movement, portal, desktop controls, and VR tests continue to pass.
 
 ## Notes for LLM Devs

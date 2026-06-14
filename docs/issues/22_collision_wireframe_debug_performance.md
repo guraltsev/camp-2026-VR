@@ -19,7 +19,7 @@ Likely causes:
 - one debug helper can therefore be drawn many times across portal paths rather than only once in the active view,
 - `THREE.MeshBasicMaterial` with `wireframe: true` on cylinder meshes emits many line edges,
 - transparent materials with `depthWrite: false` can increase sorting and overdraw cost,
-- object collision box helpers are attached to dynamic object roots and may be cloned or rendered through portal object paths.
+- object collision cylinder helpers are attached to dynamic object roots and may be cloned or rendered through portal object paths.
 
 The result is that the debug toggle is not simply drawing a few local lines. It can amplify debug geometry through the same machinery used for portal-rendered world geometry.
 
@@ -29,10 +29,10 @@ Replace the expensive collision debug rendering path with a lightweight renderer
 
 - keep collision debug helpers out of the cell archetype collection path,
 - keep collision debug helpers out of legacy object portal clone rendering unless explicitly needed,
-- render forbidden zones and object boxes as simple `THREE.LineSegments` or equivalent line helpers,
+- render forbidden zones and object cylinders as simple `THREE.LineSegments` or equivalent line helpers,
 - prefer current-cell-only rendering for the first fix,
 - keep the existing debug option ids and palette toggle,
-- preserve the visual distinction between forbidden zones and object collision boxes.
+- preserve the visual distinction between forbidden zones and object collision cylinders.
 
 ## Non-Goals
 
@@ -58,7 +58,7 @@ Expected responsibilities:
 
 - own one root group in the main scene,
 - rebuild or update forbidden-zone line geometry when the active cell changes,
-- update dynamic object box helpers each frame or when object poses change,
+- update dynamic object cylinder helpers each frame or when object poses change,
 - hide all helpers when `object-collision-wireframes` and `forbidden-zone-wireframes` are inactive,
 - dispose geometries and materials cleanly.
 
@@ -66,7 +66,7 @@ Expected responsibilities:
 
 Forbidden zones should be represented with cheap line circles and vertical segments rather than transparent wireframe cylinder meshes.
 
-Object collision boxes should use box edge line segments rather than mesh wireframes.
+Object collision cylinders should use cheap circle and vertical edge line segments rather than mesh wireframes.
 
 The renderer should avoid per-frame geometry allocation where practical.
 
@@ -89,7 +89,7 @@ Add or update render-contract tests to verify:
 
 - Enabling collision geometry wireframes no longer causes a major frame-rate collapse in ordinary desktop worlds.
 - Forbidden zones are still visually inspectable when their debug option is active.
-- Dynamic object collision boxes are still visually inspectable when their debug option is active.
+- Dynamic object collision cylinders are still visually inspectable when their debug option is active.
 - Collision debug helpers do not enter portal archetype rendering by default.
 - The existing palette toggle and URL debug options continue to work.
 - Tests cover the render-contract boundary that keeps these helpers out of expensive portal render paths.

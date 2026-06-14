@@ -7,15 +7,14 @@ export interface DynamicObjectState {
   readonly collision?: DynamicObjectCollisionShape;
 }
 
-export type DynamicObjectCollisionShape = SimpleCollisionBox;
+export type DynamicObjectCollisionShape = SimpleCollisionCylinder;
 
-export interface SimpleCollisionBox {
-  readonly dx: number;
-  readonly dy: number;
-  readonly dz: number;
+export interface SimpleCollisionCylinder {
+  readonly radius: number;
+  readonly height: number;
   readonly offset?: Vec3;
 }
 
-export function simpleCollisionBox(dx: number, dy: number, dz: number, offset?: Vec3): SimpleCollisionBox {
-  return { dx, dy, dz, offset };
+export function simpleCollisionCylinder(radius: number, height: number, offset?: Vec3): SimpleCollisionCylinder {
+  return { radius, height, offset };
 }

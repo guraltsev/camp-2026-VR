@@ -65,7 +65,7 @@ function buildForbiddenZoneWireframes(cell: CompiledPrismCell): THREE.Object3D {
   group.name = `forbidden-zone-wireframes:${cell.id}`;
 
   for (const zone of cell.forbiddenZones) {
-    group.add(buildForbiddenZoneWireframe(cell.id, zone.collision));
+    group.add(buildForbiddenZoneWireframe(cell.id, zone.collision, cell.heightMeters));
   }
 
   return group;

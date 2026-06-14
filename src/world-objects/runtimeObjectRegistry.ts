@@ -1,5 +1,5 @@
 import type { RigidTransform3 } from "../math/rigidTransform3";
-import type { DynamicObjectState, SimpleCollisionBox } from "../movement/dynamicObject";
+import type { DynamicObjectState, SimpleCollisionCylinder } from "../movement/dynamicObject";
 import type { PlacedFlagObject } from "./placedFlags";
 
 export interface RuntimeObjectInteraction {
@@ -19,7 +19,7 @@ export interface RuntimeWorldObjectBase {
   readonly id: string;
   readonly cellId: string;
   readonly localPose: RigidTransform3;
-  readonly collision?: SimpleCollisionBox;
+  readonly collision?: SimpleCollisionCylinder;
   readonly portalRenderable: boolean;
   readonly tooltip?: RuntimeObjectTooltip;
   readonly interactable?: RuntimeObjectInteraction;

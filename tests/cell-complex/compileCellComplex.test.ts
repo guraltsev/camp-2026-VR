@@ -66,10 +66,9 @@ describe("compileCellComplex", () => {
       "room-a:vertex-1",
       "room-a:vertex-2",
     ]);
-    expect(roomA?.singularityColumns[0]?.kind).toBe("invisible-box");
-    expect(roomA?.singularityColumns[0]?.halfX).toBeCloseTo(0.15);
-    expect(roomA?.singularityColumns[0]?.halfY).toBeCloseTo(0.15);
-    expect(roomA?.singularityColumns[0]?.halfZ).toBeGreaterThan(roomA?.heightMeters ?? 0);
+    expect(roomA?.singularityColumns[0]?.kind).toBe("invisible-cylinder");
+    expect(roomA?.singularityColumns[0]?.radius).toBeCloseTo(0.15);
+    expect(roomA?.singularityColumns[0]?.height).toBe(Infinity);
   });
 
   it("derives expected wraparound translations for the torus example", () => {

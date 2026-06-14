@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getCollisionBounds, getDynamicObjectCollisionBounds, simpleBoxIntersectsSimpleBox } from "../../src/movement/collision";
-import { simpleCollisionBox, type DynamicObjectState } from "../../src/movement/dynamicObject";
+import { getCollisionBounds, getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder } from "../../src/movement/collision";
+import { simpleCollisionCylinder, type DynamicObjectState } from "../../src/movement/dynamicObject";
 import { identityMat3, yawRigidTransform3, type Mat3 } from "../../src/math/rigidTransform3";
 
 describe("collision bounds", () => {
   it("preserves identity-rotation bounds from the position-based helper", () => {
-    const collision = simpleCollisionBox(0.4, 0.6, 0.8, { x: 0.1, y: -0.2, z: 0.3 });
+    const collision = simpleCollisionCylinder(0.4, 0.8, { x: 0.1, y: -0.2, z: 0.3 });
     const object = dynamicObject({ x: 1, y: 2, z: 3 }, identityMat3, collision);
 
     expect(getDynamicObjectCollisionBounds(object)).toEqual(getCollisionBounds(object.localPose.translation, collision));
@@ -15,9 +15,9 @@ describe("collision bounds", () => {
     expect(getDynamicObjectCollisionBounds(dynamicObject({ x: 1, y: 2, z: 3 }, identityMat3, undefined))).toBeUndefined();
   });
 
-  it("keeps zero-offset boxes centered on object translation", () => {
+  it("keeps zero-offset cylinders centered on object translation", () => {
     const bounds = getDynamicObjectCollisionBounds(
-      dynamicObject({ x: 1, y: 2, z: 3 }, yawRigidTransform3(Math.PI / 3).rotation, simpleCollisionBox(0.4, 0.6, 0.8)),
+      dynamicObject({ x: 1, y: 2, z: 3 }, yawRigidTransform3(Math.PI / 3).rotation, simpleCollisionCylinder(0.4, 0.8)),
     );
 
     expect(bounds?.center).toEqual({ x: 1, y: 2, z: 3 });
@@ -28,7 +28,7 @@ describe("collision bounds", () => {
       dynamicObject(
         { x: 1, y: 2, z: 3 },
         yawRigidTransform3(Math.PI / 2).rotation,
-        simpleCollisionBox(0.2, 0.2, 0.2, { x: 0.4, y: 0, z: 0.1 }),
+        simpleCollisionCylinder(0.1, 0.2, { x: 0.4, y: 0, z: 0.1 }),
       ),
     );
 
@@ -37,50 +37,22 @@ describe("collision bounds", () => {
     expect(bounds?.center.z).toBeCloseTo(3.1);
   });
 
-  it("swaps horizontal extents for a rectangular 90-degree yaw", () => {
+  it("does not expand the cylinder footprint when the object rotates", () => {
     const bounds = getDynamicObjectCollisionBounds(
-      dynamicObject({ x: 0, y: 0, z: 0 }, yawRigidTransform3(Math.PI / 2).rotation, simpleCollisionBox(0.8, 0.2, 0.4)),
+      dynamicObject({ x: 0, y: 0, z: 0 }, yawRigidTransform3(Math.PI / 4).rotation, simpleCollisionCylinder(0.8, 0.4)),
     );
 
-    expect(bounds?.halfX).toBeCloseTo(0.1);
-    expect(bounds?.halfY).toBeCloseTo(0.4);
-    expect(bounds?.halfZ).toBeCloseTo(0.2);
-  });
-
-  it("expands a 45-degree yawed rectangle to enclose the rotated local box", () => {
-    const bounds = getDynamicObjectCollisionBounds(
-      dynamicObject({ x: 0, y: 0, z: 0 }, yawRigidTransform3(Math.PI / 4).rotation, simpleCollisionBox(2, 1, 0.4)),
-    );
-    const expectedHalf = Math.SQRT1_2 * 1 + Math.SQRT1_2 * 0.5;
-
-    expect(bounds?.halfX).toBeCloseTo(expectedHalf);
-    expect(bounds?.halfY).toBeCloseTo(expectedHalf);
-    expect(bounds?.halfZ).toBeCloseTo(0.2);
-  });
-
-  it("lets pitch or roll conservatively affect vertical extents", () => {
-    const bounds = getDynamicObjectCollisionBounds(
-      dynamicObject({ x: 0, y: 0, z: 0 }, pitchMat3(Math.PI / 2), simpleCollisionBox(0.2, 0.8, 0.2)),
-    );
-
-    expect(bounds?.halfZ).toBeCloseTo(0.4);
+    expect(bounds?.radius).toBeCloseTo(0.8);
+    expect(bounds?.halfHeight).toBeCloseTo(0.2);
   });
 });
 
-describe("simpleBoxIntersectsSimpleBox", () => {
-  it("uses strict overlap on all axes", () => {
-    expect(simpleBoxIntersectsSimpleBox(box(0, 0, 0, 0.5), box(1.1, 0, 0, 0.5))).toBe(false);
-    expect(simpleBoxIntersectsSimpleBox(box(0, 0, 0, 0.5), box(0.9, 0, 0, 0.5))).toBe(true);
-    expect(simpleBoxIntersectsSimpleBox(box(0, 0, 0, 0.5), box(1, 0, 0, 0.5))).toBe(false);
-  });
-
-  it("can compare rotation-derived conservative boxes", () => {
-    const a = getDynamicObjectCollisionBounds(
-      dynamicObject({ x: 0, y: 0, z: 0 }, yawRigidTransform3(Math.PI / 4).rotation, simpleCollisionBox(1, 1, 1)),
-    );
-    const b = getDynamicObjectCollisionBounds(dynamicObject({ x: 0.9, y: 0, z: 0 }, identityMat3, simpleCollisionBox(0.5, 0.5, 0.5)));
-
-    expect(a && b && simpleBoxIntersectsSimpleBox(a, b)).toBe(true);
+describe("simpleCylinderIntersectsSimpleCylinder", () => {
+  it("uses strict horizontal radius and vertical interval overlap", () => {
+    expect(simpleCylinderIntersectsSimpleCylinder(cylinder(0, 0, 0, 0.5, 0.5), cylinder(1.1, 0, 0, 0.5, 0.5))).toBe(false);
+    expect(simpleCylinderIntersectsSimpleCylinder(cylinder(0, 0, 0, 0.5, 0.5), cylinder(0.9, 0, 0, 0.5, 0.5))).toBe(true);
+    expect(simpleCylinderIntersectsSimpleCylinder(cylinder(0, 0, 0, 0.5, 0.5), cylinder(1, 0, 0, 0.5, 0.5))).toBe(false);
+    expect(simpleCylinderIntersectsSimpleCylinder(cylinder(0, 0, 0, 0.5, 0.5), cylinder(0, 0, 1, 0.5, 0.5))).toBe(false);
   });
 });
 
@@ -96,28 +68,10 @@ function dynamicObject(
   };
 }
 
-function pitchMat3(radians: number): Mat3 {
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
-
-  return {
-    m00: 1,
-    m01: 0,
-    m02: 0,
-    m10: 0,
-    m11: cos,
-    m12: -sin,
-    m20: 0,
-    m21: sin,
-    m22: cos,
-  };
-}
-
-function box(x: number, y: number, z: number, half: number) {
+function cylinder(x: number, y: number, z: number, radius: number, halfHeight: number) {
   return {
     center: { x, y, z },
-    halfX: half,
-    halfY: half,
-    halfZ: half,
+    radius,
+    halfHeight,
   };
 }

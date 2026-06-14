@@ -1,10 +1,10 @@
 import type { AuthoredPortalSpec, CellObjectSpec, CompiledPortal, FloorMaterialSpec, PrismCellSpec } from "./specs";
 import {
-  forbiddenPortalJunctionHalfExtentMeters,
-  forbiddenPortalJunctionHalfHeightMeters,
+  forbiddenPortalJunctionHeightMeters,
+  forbiddenPortalJunctionRadiusMeters,
   type ForbiddenZone,
   type PortalJunction,
-  type SingularityCollisionBox,
+  type SingularityCollisionCylinder,
 } from "./forbiddenZones";
 
 export interface CompiledPrismCellGeometry {
@@ -15,7 +15,7 @@ export interface CompiledPrismCellGeometry {
   readonly baseVertices: readonly { readonly x: number; readonly y: number }[];
   readonly sides: readonly CompiledPrismSide[];
   readonly portalJunctions: readonly PortalJunction[];
-  readonly singularityColumns: readonly SingularityCollisionBox[];
+  readonly singularityColumns: readonly SingularityCollisionCylinder[];
   readonly forbiddenZones: readonly ForbiddenZone[];
   readonly floorColor: string;
   readonly floorMaterial: FloorMaterialSpec;
@@ -57,16 +57,15 @@ export function compilePrismCellGeometry(spec: PrismCellSpec): CompiledPrismCell
   });
   const portalJunctions = compilePortalJunctions(spec);
   const singularityColumns = portalJunctions.map((junction) => ({
-      kind: "invisible-box" as const,
+      kind: "invisible-cylinder" as const,
       junctionId: junction.id,
       center: {
         x: junction.position.x,
         y: junction.position.y,
         z: spec.heightMeters / 2,
       },
-      halfX: forbiddenPortalJunctionHalfExtentMeters,
-      halfY: forbiddenPortalJunctionHalfExtentMeters,
-      halfZ: forbiddenPortalJunctionHalfHeightMeters,
+      radius: forbiddenPortalJunctionRadiusMeters,
+      height: forbiddenPortalJunctionHeightMeters,
   }));
   const forbiddenZones = singularityColumns.map((column) => ({
     junctionId: column.junctionId,

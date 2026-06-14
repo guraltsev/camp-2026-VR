@@ -9,7 +9,7 @@ import {
   AUTONOMOUS_DYNAMIC_OBJECT_PORTAL_CROSSING_MODE,
   moveDynamicObject,
 } from "../../src/movement/moveDynamicObject";
-import { simpleCollisionBox, type DynamicObjectState } from "../../src/movement/dynamicObject";
+import { simpleCollisionCylinder, type DynamicObjectState } from "../../src/movement/dynamicObject";
 
 const squareRoomBase = [
   { x: -1, y: -1 },
@@ -47,7 +47,7 @@ describe("moveDynamicObject", () => {
       "room-a",
       { x: 0.8, y: 0, z: 0.5 },
       yawRigidTransform3(Math.PI / 2).rotation,
-      simpleCollisionBox(0.2, 0.2, 0.2),
+      simpleCollisionCylinder(0.1, 0.2),
     );
 
     const result = moveDynamicObject({ world, object, displacement: { x: 0.4, y: 0, z: 0 } });
@@ -119,7 +119,7 @@ describe("moveDynamicObject", () => {
       "room-a",
       { x: 0.75, y: 0, z: 0.5 },
       identityMat3,
-      simpleCollisionBox(0.2, 0.2, 0.2, { x: 0.3, y: 0, z: 0 }),
+      simpleCollisionCylinder(0.1, 0.2, { x: 0.3, y: 0, z: 0 }),
     );
 
     const result = moveDynamicObject({
@@ -158,13 +158,13 @@ describe("moveDynamicObject", () => {
     expect(result.blockingReason).toBe("forbidden-zone");
   });
 
-  it("uses rotated conservative bounds for forbidden-zone blocking", () => {
+  it("uses cylindrical bounds for forbidden-zone blocking regardless of rotation", () => {
     const world = compileCellComplex(twoRoomsWithPortal());
     const object = dynamicObject(
       "room-a",
       { x: 0.45, y: 0.55, z: 0.5 },
       yawRigidTransform3(Math.PI / 4).rotation,
-      simpleCollisionBox(0.2, 1, 0.2),
+      simpleCollisionCylinder(0.5, 0.2),
     );
 
     const result = moveDynamicObject({ world, object, displacement: { x: 0.1, y: 0, z: 0 } });
@@ -175,7 +175,7 @@ describe("moveDynamicObject", () => {
 
   it("blocks swept movement through forbidden zones even when the final pose is clear", () => {
     const world = compileCellComplex(twoRoomsWithPortal());
-    const object = dynamicObject("room-a", { x: 0.6, y: 0.9, z: 0.5 }, identityMat3, simpleCollisionBox(0.2, 0.2, 0.2));
+    const object = dynamicObject("room-a", { x: 0.6, y: 0.9, z: 0.5 }, identityMat3, simpleCollisionCylinder(0.1, 0.2));
 
     const result = moveDynamicObject({
       world,
@@ -190,13 +190,13 @@ describe("moveDynamicObject", () => {
     expect(result.object).toBe(object);
   });
 
-  it("uses rotated conservative bounds for wall blocking", () => {
+  it("uses cylindrical radius for wall blocking", () => {
     const world = compileCellComplex(singleRoom());
     const object = dynamicObject(
       "room",
       { x: 0.49, y: 0, z: 0.5 },
       yawRigidTransform3(Math.PI / 2).rotation,
-      simpleCollisionBox(0.2, 1, 0.2),
+      simpleCollisionCylinder(0.5, 0.2),
     );
 
     const result = moveDynamicObject({ world, object, displacement: { x: 0.02, y: 0, z: 0 } });
@@ -206,13 +206,13 @@ describe("moveDynamicObject", () => {
     expect(result.object.localPose.translation.x).toBeCloseTo(0.5, 5);
   });
 
-  it("uses rotated conservative bounds for portal reachability", () => {
+  it("uses cylindrical radius for portal reachability", () => {
     const world = compileCellComplex(twoRoomsWithPortal());
     const object = dynamicObject(
       "room-a",
       { x: 0.45, y: 0, z: 0.5 },
       yawRigidTransform3(Math.PI / 2).rotation,
-      simpleCollisionBox(0.2, 1, 0.2),
+      simpleCollisionCylinder(0.5, 0.2),
     );
 
     const result = moveDynamicObject({
@@ -227,13 +227,13 @@ describe("moveDynamicObject", () => {
     expect(result.object.cellId).toBe("room-b");
   });
 
-  it("tests portal-crossed objects against target-cell collision with transformed rotated bounds", () => {
+  it("tests portal-crossed objects against target-cell collision with transformed cylinder bounds", () => {
     const world = compileCellComplex(twoRoomsWithPortal({ targetHeightMeters: 0.75 }));
     const object = dynamicObject(
       "room-a",
       { x: 0.75, y: 0, z: 0.5 },
       pitchMat3(Math.PI / 2),
-      simpleCollisionBox(0.2, 0.8, 0.2),
+      simpleCollisionCylinder(0.1, 0.8),
     );
 
     const result = moveDynamicObject({ world, object, displacement: { x: 0.2, y: 0, z: 0 } });
@@ -248,14 +248,14 @@ describe("moveDynamicObject", () => {
     expect(AUTONOMOUS_DYNAMIC_OBJECT_PORTAL_CROSSING_MODE).toBe("anchor");
   });
 
-  it("defaults SimpleCollisionBox offset to zero and honors explicit offsets", () => {
+  it("defaults SimpleCollisionCylinder offset to zero and honors explicit offsets", () => {
     const world = compileCellComplex(singleRoom());
-    const centered = dynamicObject("room", { x: 0, y: 0, z: 0.11 }, identityMat3, simpleCollisionBox(0.2, 0.2, 0.2));
+    const centered = dynamicObject("room", { x: 0, y: 0, z: 0.11 }, identityMat3, simpleCollisionCylinder(0.1, 0.2));
     const raised = dynamicObject(
       "room",
       { x: 0, y: 0, z: 0.01 },
       identityMat3,
-      simpleCollisionBox(0.2, 0.2, 0.2, { x: 0, y: 0, z: 0.1 }),
+      simpleCollisionCylinder(0.1, 0.2, { x: 0, y: 0, z: 0.1 }),
     );
 
     expect(moveDynamicObject({ world, object: centered, displacement: { x: 0, y: 0, z: -0.02 } }).blocked).toBe(true);
@@ -278,7 +278,7 @@ describe("moveDynamicObject", () => {
     const world = compileCellComplex(tetrahedron);
     const approach = portalApproach(world, "face-a", "side-0");
     const expectedTargetCellId = world.cellsById.get("face-a")?.portalsById.get("side-0")?.targetCellId;
-    const object = dynamicObject("face-a", approach.start, identityMat3, simpleCollisionBox(0.05, 0.05, 1));
+    const object = dynamicObject("face-a", approach.start, identityMat3, simpleCollisionCylinder(0.025, 1));
 
     const result = moveDynamicObject({ world, object, displacement: approach.displacement });
 
@@ -293,7 +293,7 @@ function dynamicObject(
   cellId: string,
   translation: { readonly x: number; readonly y: number; readonly z: number },
   rotation = identityMat3,
-  collision = simpleCollisionBox(0.2, 1, 0.2),
+  collision = simpleCollisionCylinder(0.1, 1),
 ): DynamicObjectState {
   return {
     cellId,

@@ -65,10 +65,9 @@ export interface AssetObjectSpec extends PositionedCellObjectSpec {
   readonly assetPath: string;
 }
 
-export interface SimpleCollisionBoxSpec {
-  readonly dx: number;
-  readonly dy: number;
-  readonly dz: number;
+export interface SimpleCollisionCylinderSpec {
+  readonly radius: number;
+  readonly height: number;
   readonly offset?: { readonly x: number; readonly y: number; readonly z: number };
 }
 
@@ -76,7 +75,7 @@ export interface GeodesciMarmotObjectSpec extends PositionedCellObjectSpec {
   readonly kind: "geodesci-marmot";
   readonly assetPath: string;
   readonly velocity: { readonly x: number; readonly y: number };
-  readonly collision: SimpleCollisionBoxSpec;
+  readonly collision: SimpleCollisionCylinderSpec;
   readonly animationClipName?: string;
 }
 
@@ -86,7 +85,7 @@ export interface SimpleGeoCreatureObjectSpec extends PositionedCellObjectSpec {
   readonly speedMetersPerSecond: number;
   readonly oscillationRateHz: number;
   readonly oscillationMagnitudeMeters: number;
-  readonly collision: SimpleCollisionBoxSpec;
+  readonly collision: SimpleCollisionCylinderSpec;
 }
 
 export type CellObjectSpec = AssetObjectSpec | GeodesciMarmotObjectSpec | SimpleGeoCreatureObjectSpec;

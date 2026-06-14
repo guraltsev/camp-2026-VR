@@ -1,6 +1,6 @@
 import type { CompiledCellComplex } from "../cell-complex/compileCellComplex";
-import { testCellCollision, getDynamicObjectCollisionBounds, simpleBoxIntersectsSimpleBox } from "../movement/collision";
-import type { DynamicObjectState, SimpleCollisionBox } from "../movement/dynamicObject";
+import { testCellCollision, getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder } from "../movement/collision";
+import type { DynamicObjectState, SimpleCollisionCylinder } from "../movement/dynamicObject";
 import { yawRigidTransform3, type RigidTransform3 } from "../math/rigidTransform3";
 import type { Vec3 } from "../math/vec3";
 import type { RuntimeObjectInteraction, RuntimeWorldObjectBase, RuntimeObjectRegistry } from "./runtimeObjectRegistry";
@@ -32,7 +32,7 @@ export interface CreatePlacedFlagOptions {
   readonly flagType: PlacedFlagType;
   readonly message?: string;
   readonly fontColor?: string;
-  readonly collision?: SimpleCollisionBox;
+  readonly collision?: SimpleCollisionCylinder;
 }
 
 export interface PlaceFlagFromAimRequest {
@@ -51,10 +51,9 @@ export interface PlaceFlagResult {
   readonly reason?: "no-floor-hit" | "missing-cell" | "cell-collision" | "runtime-object-collision";
 }
 
-const defaultFlagCollision: SimpleCollisionBox = {
-  dx: 0.95,
-  dy: 0.18,
-  dz: 1.15,
+const defaultFlagCollision: SimpleCollisionCylinder = {
+  radius: 0.475,
+  height: 1.15,
   offset: { x: 0, y: 0, z: 0.575 },
 };
 
@@ -173,7 +172,7 @@ export function placeFlagFromAim(request: PlaceFlagFromAimRequest): PlaceFlagRes
   if (candidateBounds) {
     for (const object of request.registry.getCollidableObjectsInCell(request.cellId)) {
       const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
-      if (bounds && simpleBoxIntersectsSimpleBox(candidateBounds, bounds)) {
+      if (bounds && simpleCylinderIntersectsSimpleCylinder(candidateBounds, bounds)) {
         return { placed: false, reason: "runtime-object-collision" };
       }
     }

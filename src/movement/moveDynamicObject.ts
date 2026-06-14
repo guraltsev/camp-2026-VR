@@ -173,8 +173,8 @@ function isPortalCrossingReachable(
   return (
     sideProjection >= 0 &&
     sideProjection <= side.lengthMeters &&
-    point.z - (bounds?.halfZ ?? 0) >= 0 &&
-    point.z + (bounds?.halfZ ?? 0) <= heightMeters &&
+    point.z - (bounds?.halfHeight ?? 0) >= 0 &&
+    point.z + (bounds?.halfHeight ?? 0) <= heightMeters &&
     getSignedClearanceToSide(side, point, support) < 0
   );
 }
