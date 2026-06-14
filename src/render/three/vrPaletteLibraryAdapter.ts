@@ -1,5 +1,5 @@
-import { Component, Container, Text } from "@pmndrs/uikit";
-import { ArrowLeft, Settings, X } from "@pmndrs/uikit-lucide";
+import { Component, Container, Image, Text } from "@pmndrs/uikit";
+import { ArrowLeft, Crosshair, Flashlight, Settings, X } from "@pmndrs/uikit-lucide";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -52,6 +52,14 @@ const textColor = "#f8fafc";
 const mutedTextColor = "#e2e8f0";
 const scrollbarColor = "#38bdf8";
 const scrollbarBorderColor = "#0f172a";
+const signIconSources: Record<PlacedFlagType, string> = {
+  WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
+  WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
+};
+const signTypeLabels: Record<PlacedFlagType, string> = {
+  WoodenSign1: "Wooden Sign 1",
+  WoodenSign2: "Wooden Sign 2",
+};
 
 export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOptions): VrPaletteLibraryAdapter {
   let renderedChildren: Container[] = [];
@@ -194,7 +202,7 @@ function buildContent(
   }
 
   if (definition.content.kind === "place-flag-options") {
-    return buildPlaceFlagOptionsContent(definition.content, options);
+    return buildPlaceSignOptionsContent(definition.content, options);
   }
 
   if (definition.content.kind === "debug-settings") {
@@ -297,28 +305,15 @@ function buildMainContent(
   });
   row.add(
     createToolTile("aim", "Aim", content.selectedTool, options),
-    createToolTile("place-flag", "Flags", content.selectedTool, options),
+    createToolTile("place-flag", "Sign", content.selectedTool, options, content.placeFlagType),
     createToolTile("geodesic-cannon", "Light", content.selectedTool, options),
   );
 
-  const flagOptions = createInteractiveSurface({
-    width: "100%",
-    height: 46,
-    label: `Flag type: ${content.placeFlagType}`,
-    labelFontSize: 16,
-    justifyContent: "flex-start",
-    paddingLeft: 16,
-    backgroundColor: "#1f2937",
-    onClick: () => options.onPlaceFlagOptionsRequested?.(),
-  });
-  flagOptions.userData.xrPaletteItemId = "tool-options:place-flag";
-  flagOptions.userData.scenePaletteItemId = "tool-options:place-flag";
-
-  panel.add(row, flagOptions);
+  panel.add(row);
   return panel;
 }
 
-function buildPlaceFlagOptionsContent(
+function buildPlaceSignOptionsContent(
   content: Extract<PaletteDefinition["content"], { readonly kind: "place-flag-options" }>,
   options: VrPaletteLibraryAdapterOptions,
 ): Container {
@@ -333,7 +328,7 @@ function buildPlaceFlagOptionsContent(
     borderColor,
     borderWidth: 2,
   });
-  panel.add(createSectionLabel("Flag type"));
+  panel.add(createSectionLabel("Sign type"));
 
   const grid = new Container({
     width: "100%",
@@ -343,14 +338,17 @@ function buildPlaceFlagOptionsContent(
   for (const option of content.flagTypeOptions) {
     const tile = createInteractiveSurface({
       width: "49%",
-      height: 120,
-      label: option.label,
+      height: 150,
+      label: "",
       labelFontSize: 17,
+      flexDirection: "column",
       backgroundColor: option.id === content.selectedFlagType ? activeColor : inactiveColor,
       onClick: () => options.onPlaceFlagTypeSelected?.(option.id as PlacedFlagType),
     });
-    tile.userData.xrPaletteItemId = `flag-type:${option.id}`;
-    tile.userData.scenePaletteItemId = `flag-type:${option.id}`;
+    const signType = option.id as PlacedFlagType;
+    tile.userData.xrPaletteItemId = `sign-type:${option.id}`;
+    tile.userData.scenePaletteItemId = `sign-type:${option.id}`;
+    tile.add(createSignImage(signType, 92), createButtonText(signTypeLabels[signType], 15));
     grid.add(tile);
   }
 
@@ -363,19 +361,98 @@ function createToolTile(
   label: string,
   selectedTool: RuntimeToolId,
   options: VrPaletteLibraryAdapterOptions,
+  signType?: PlacedFlagType,
 ): Container {
   const selected = toolId === selectedTool;
   const button = createInteractiveSurface({
     width: "32%",
     height: 150,
-    label,
+    label: "",
     labelFontSize: 18,
+    positionType: "relative",
+    flexDirection: "column",
     backgroundColor: selected ? activeColor : inactiveColor,
     onClick: () => options.onToolSelected?.(selected ? "none" : toolId),
   });
   button.userData.xrPaletteItemId = `tool:${toolId}`;
   button.userData.scenePaletteItemId = `tool:${toolId}`;
+  button.add(createToolIcon(toolId, signType), createButtonText(label, 16));
+  if (toolId === "place-flag") {
+    button.add(createSignOptionsButton(options));
+  }
   return button;
+}
+
+function createToolIcon(
+  toolId: RuntimeToolId,
+  signType: PlacedFlagType | undefined,
+): Component<any> {
+  if (toolId === "aim") {
+    return new Crosshair(createLucideIconProperties());
+  }
+
+  if (toolId === "place-flag") {
+    return createSignIcon(signType ?? "WoodenSign1");
+  }
+
+  if (toolId === "geodesic-cannon") {
+    return new Flashlight(createLucideIconProperties());
+  }
+
+  return new Container({ width: 64, height: 64, opacity: 0 });
+}
+
+function createSignIcon(signType: PlacedFlagType): Container {
+  const icon = new Container({
+    width: 88,
+    height: 88,
+    alignItems: "center",
+    justifyContent: "center",
+  });
+  icon.add(createSignImage(signType, 82));
+  return icon;
+}
+
+function createSignOptionsButton(options: VrPaletteLibraryAdapterOptions): Container {
+  const optionsButton = createInteractiveSurface({
+    width: 34,
+    height: 24,
+    label: "...",
+    labelFontSize: 13,
+    positionType: "absolute",
+    positionTop: 8,
+    positionRight: 8,
+    zIndexOffset: 8,
+    backgroundColor: "#0f172a",
+    onClick: () => options.onPlaceFlagOptionsRequested?.(),
+  });
+  optionsButton.userData.xrPaletteItemId = "tool-options:place-sign";
+  optionsButton.userData.scenePaletteItemId = "tool-options:place-sign";
+  return optionsButton;
+}
+
+function createLucideIconProperties(): ConstructorParameters<typeof Crosshair>[0] {
+  return {
+    width: 64,
+    height: 64,
+    color: textColor,
+    fill: textColor,
+  };
+}
+
+function createSignImage(signType: PlacedFlagType, size: number): Component<any> {
+  const image = new Image({
+    src: signIconSources[signType],
+    width: size,
+    height: size,
+    objectFit: "fill",
+    keepAspectRatio: true,
+    depthTest: false,
+    depthWrite: false,
+    renderOrder: 1002,
+  });
+  image.userData.scenePaletteIconSrc = signIconSources[signType];
+  return image;
 }
 
 function buildDebugSettingsContent(
@@ -573,6 +650,12 @@ function createInteractiveSurface(options: {
   readonly label: string;
   readonly onClick: () => void;
   readonly disabled?: boolean;
+  readonly flexDirection?: "row" | "column";
+  readonly positionType?: "static" | "relative" | "absolute";
+  readonly positionTop?: number;
+  readonly positionRight?: number;
+  readonly positionBottom?: number;
+  readonly zIndexOffset?: number;
   readonly justifyContent?: "center" | "flex-start";
   readonly paddingLeft?: number;
   readonly backgroundColor: string;
@@ -581,7 +664,14 @@ function createInteractiveSurface(options: {
   const button = new Container({
     width: options.width,
     height: options.height,
+    positionType: options.positionType,
+    positionTop: options.positionTop,
+    positionRight: options.positionRight,
+    positionBottom: options.positionBottom,
+    zIndexOffset: options.zIndexOffset,
     borderRadius: 12,
+    flexDirection: options.flexDirection ?? "row",
+    gap: options.label ? 8 : 10,
     alignItems: "center",
     justifyContent: options.justifyContent ?? "center",
     paddingLeft: options.paddingLeft ?? 0,

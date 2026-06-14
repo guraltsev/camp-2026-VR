@@ -1,6 +1,11 @@
 import type { RuntimeDesktopToolId } from "../../runtime/runtimeMenuState";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
 
+const signIconSources: Record<PlacedFlagType, string> = {
+  WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
+  WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
+};
+
 export interface DesktopToolIndicator {
   readonly root: HTMLDivElement;
   setTool(toolId: RuntimeDesktopToolId, flagType: PlacedFlagType): void;
@@ -16,13 +21,30 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   icon.className = "desktop-tool-indicator-icon";
   icon.setAttribute("aria-hidden", "true");
 
-  const aimCross = document.createElement("span");
-  aimCross.className = "desktop-tool-indicator-aim-cross";
-  const board = document.createElement("span");
-  board.className = "desktop-tool-indicator-board";
-  const post = document.createElement("span");
-  post.className = "desktop-tool-indicator-post";
-  icon.append(aimCross, board, post);
+  const aimIcon = createSvgIcon("desktop-tool-indicator-svg", "0 0 24 24", [
+    ["circle", { cx: "12", cy: "12", r: "7" }],
+    ["path", { d: "M12 2v4" }],
+    ["path", { d: "M12 18v4" }],
+    ["path", { d: "M2 12h4" }],
+    ["path", { d: "M18 12h4" }],
+  ]);
+  aimIcon.classList.add("desktop-tool-indicator-aim-icon");
+
+  const signIcon = document.createElement("img");
+  signIcon.className = "desktop-tool-indicator-sign-icon";
+  signIcon.alt = "";
+  signIcon.decoding = "async";
+
+  const lightIcon = createSvgIcon("desktop-tool-indicator-svg", "0 0 24 24", [
+    ["path", { d: "M18 6l-6 6" }],
+    ["path", { d: "M9 11l4 4" }],
+    ["path", { d: "M6 14l4 4" }],
+    ["path", { d: "M5 13l6 6" }],
+    ["path", { d: "M13 5l6 6" }],
+    ["path", { d: "M15 3l6 6" }],
+  ]);
+  lightIcon.classList.add("desktop-tool-indicator-light-icon");
+  icon.append(aimIcon, signIcon, lightIcon);
 
   const label = document.createElement("span");
   label.className = "desktop-tool-indicator-label";
@@ -39,9 +61,10 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
       root.classList.toggle("desktop-tool-indicator-geodesic-cannon", toolId === "geodesic-cannon");
       root.classList.toggle("desktop-tool-indicator-WoodenSign1", flagType === "WoodenSign1");
       root.classList.toggle("desktop-tool-indicator-WoodenSign2", flagType === "WoodenSign2");
-      label.textContent = toolId === "geodesic-cannon" ? "Light" : toolId === "place-flag" ? "Flags" : toolId === "aim" ? "Aim" : "";
+      signIcon.src = signIconSources[flagType];
+      label.textContent = toolId === "geodesic-cannon" ? "Light" : toolId === "place-flag" ? "Sign" : toolId === "aim" ? "Aim" : "";
       root.ariaLabel = toolId === "place-flag"
-        ? "Selected tool: flags"
+        ? "Selected tool: sign"
         : toolId === "geodesic-cannon"
           ? "Selected tool: geodesic flashlight"
           : toolId === "aim"
@@ -52,4 +75,29 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
       root.remove();
     },
   };
+}
+
+function createSvgIcon(
+  className: string,
+  viewBox: string,
+  children: readonly [string, Record<string, string>][],
+): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.classList.add(className);
+  svg.setAttribute("viewBox", viewBox);
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+
+  for (const [tagName, attributes] of children) {
+    const child = document.createElementNS("http://www.w3.org/2000/svg", tagName);
+    for (const [name, value] of Object.entries(attributes)) {
+      child.setAttribute(name, value);
+    }
+    svg.append(child);
+  }
+
+  return svg;
 }

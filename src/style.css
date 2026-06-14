@@ -649,105 +649,32 @@ body {
 
 .desktop-tool-indicator-icon {
   position: relative;
-  display: block;
+  display: grid;
+  place-items: center;
   width: 2rem;
   height: 2rem;
 }
 
-.desktop-tool-indicator-aim-cross {
-  position: absolute;
-  inset: 0;
+.desktop-tool-indicator-svg,
+.desktop-tool-indicator-sign-icon {
   display: none;
+  width: 2rem;
+  height: 2rem;
 }
 
-.desktop-tool-indicator-aim-cross::before,
-.desktop-tool-indicator-aim-cross::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  border-radius: 999px;
-  background: #ef1b1b;
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 20%), 0 0 8px rgb(239 27 27 / 38%);
-  transform: translate(-50%, -50%);
+.desktop-tool-indicator-sign-icon {
+  object-fit: contain;
 }
 
-.desktop-tool-indicator-aim-cross::before {
-  width: 1.75rem;
-  height: 0.22rem;
-}
-
-.desktop-tool-indicator-aim-cross::after {
-  width: 0.22rem;
-  height: 1.75rem;
-}
-
-.desktop-tool-indicator-aim .desktop-tool-indicator-aim-cross {
+.desktop-tool-indicator-aim .desktop-tool-indicator-aim-icon {
   display: block;
+  color: #f8fafc;
 }
 
-.desktop-tool-indicator-aim .desktop-tool-indicator-board,
-.desktop-tool-indicator-aim .desktop-tool-indicator-post {
-  display: none;
-}
-
-.desktop-tool-indicator-place-flag .desktop-tool-indicator-aim-cross {
-  display: none;
-}
-
-.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-aim-cross,
-.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-board,
-.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-post {
-  display: none;
-}
-
-.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-icon::before {
-  content: "";
-  position: absolute;
-  left: 0.35rem;
-  top: 1.18rem;
-  width: 1.25rem;
-  height: 0.42rem;
-  border-radius: 999px 999px 4px 4px;
-  background: linear-gradient(180deg, #64748b, #1f2937);
-}
-
-.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-icon::after {
-  content: "";
-  position: absolute;
-  left: 0.76rem;
-  top: 0.66rem;
-  width: 1.05rem;
-  height: 0.32rem;
-  border-radius: 3px;
-  background: linear-gradient(180deg, #34d399, #059669);
-  transform: rotate(-20deg);
-  transform-origin: 0.1rem 50%;
-}
-
-.desktop-tool-indicator-board {
-  position: absolute;
-  left: 0.3rem;
-  top: 0.18rem;
-  width: 1.45rem;
-  height: 0.95rem;
-  border: 2px solid #8b5e34;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #c1844a, #84512d);
-}
-
-.desktop-tool-indicator-WoodenSign2 .desktop-tool-indicator-board {
-  border-radius: 999px 999px 6px 6px;
-}
-
-.desktop-tool-indicator-post {
-  position: absolute;
-  left: 0.9rem;
-  top: 1.05rem;
-  width: 0.22rem;
-  height: 0.85rem;
-  border-radius: 2px;
-  background: #6f4b2f;
+.desktop-tool-indicator-place-flag .desktop-tool-indicator-sign-icon,
+.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-light-icon {
+  display: block;
+  color: #f8fafc;
 }
 
 .desktop-tool-indicator-label {
