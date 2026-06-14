@@ -1,5 +1,13 @@
 # 24 - Desktop place-flag tool and runtime object registry
 
+Status: closed on 2026-06-14.
+
+## Outcome
+
+Issue 24 is complete.
+
+The app now has a runtime object registry for authored creatures and placed signs, desktop sign placement and editing, registry-based collision/interactions/tooltips, and placed sign rendering that participates in the runtime object portal rendering architecture.
+
 ## Goal
 
 Add a desktop-only place-flag tool backed by a general runtime object registry.

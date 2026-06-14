@@ -1,5 +1,13 @@
 # 25 - Runtime object archetype portal rendering
 
+Status: closed on 2026-06-14.
+
+## Outcome
+
+Issue 25 is complete.
+
+Portal-visible runtime objects now render through runtime archetype instanced meshes instead of per-path cloned `Object3D` trees. Mouse, butterfly, marmot, and placed sign render parts publish registry-backed runtime render records, while collision, movement, interactions, and sign editing remain registry-owned.
+
 ## Goal
 
 Move portal-renderable runtime objects onto the same archetype/instance rendering model used by static cell content.
