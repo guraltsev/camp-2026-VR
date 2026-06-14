@@ -40,6 +40,28 @@ describe("desktopControls", () => {
 
     controls.dispose();
   });
+
+  it("does not convert the trailing click from a palette selection into a world primary action", () => {
+    const { canvas, windowTarget } = installPointerLockDom();
+    const controls = createDesktopControls(canvas);
+    controls.setLookMode("palette");
+
+    dispatchMouse(windowTarget, "mousedown", 0);
+    controls.setLookMode("camera");
+    dispatchMouse(windowTarget, "mouseup", 0);
+    dispatchMouse(canvas, "click", 0);
+
+    const frameAfterPaletteSelection = controls.consumeFrame(1 / 60);
+
+    expect(frameAfterPaletteSelection.primaryActionRequested).toBe(false);
+
+    dispatchMouse(canvas, "click", 0);
+    const frameAfterWorldClick = controls.consumeFrame(1 / 60);
+
+    expect(frameAfterWorldClick.primaryActionRequested).toBe(true);
+
+    controls.dispose();
+  });
 });
 
 function installPointerLockDom(): {

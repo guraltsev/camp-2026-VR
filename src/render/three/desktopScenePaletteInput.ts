@@ -17,6 +17,8 @@ export interface DesktopScenePaletteInput {
   dispose(): void;
 }
 
+export type DesktopScenePaletteToggleAction = "open" | "right-action" | "close" | "none";
+
 const cursorClamp = 0.92;
 const cursorSpeed = 0.0032;
 const panelWidthMeters = 720 * 0.0012;
@@ -98,9 +100,9 @@ export function createDesktopScenePaletteInput(): DesktopScenePaletteInput {
 export function reduceDesktopScenePaletteToggle(
   isOpen: boolean,
   event: "secondary-click" | "escape-key",
-): "open" | "close" | "none" {
+): DesktopScenePaletteToggleAction {
   if (event === "secondary-click") {
-    return isOpen ? "close" : "open";
+    return isOpen ? "right-action" : "open";
   }
   return isOpen ? "close" : "none";
 }

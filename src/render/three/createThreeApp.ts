@@ -963,14 +963,27 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
-  function applyDesktopScenePaletteToggle(action: "open" | "close" | "none"): void {
+  function applyDesktopScenePaletteToggle(action: "open" | "right-action" | "close" | "none"): void {
     if (action === "open" && !menuState.isOpen) {
       menuState = openRuntimeMenu(menuState);
       syncDesktopPalette();
+    } else if (action === "right-action" && menuState.isOpen) {
+      applyRuntimeMenuRightAction();
     } else if (action === "close" && menuState.isOpen) {
       menuState = closeRuntimeMenu(menuState);
       syncDesktopPalette();
     }
+  }
+
+  function applyRuntimeMenuRightAction(): void {
+    if (menuState.page === "main") {
+      menuState = closeRuntimeMenu(menuState);
+    } else if (menuState.page === "debug-settings") {
+      menuState = showRuntimeMenuSettings(menuState);
+    } else {
+      menuState = showRuntimeMenuMainPage(menuState);
+    }
+    syncDesktopPalette();
   }
 
   function getDesktopInputFrame(deltaSeconds: number): RuntimeInputFrame {
@@ -2027,6 +2040,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     if (result.placed && result.object) {
       syncPlacedFlagRuntime(result.object);
+      menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+      syncDesktopPalette();
     }
   }
 

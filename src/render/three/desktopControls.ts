@@ -60,6 +60,7 @@ export function createDesktopControls(
   let primaryActionRequested = false;
   let paletteSelectPressed = false;
   let paletteSelectRequested = false;
+  let suppressNextPrimaryClick = false;
   let interactRequested = false;
   let lookMode: DesktopLookMode = "camera";
 
@@ -98,7 +99,13 @@ export function createDesktopControls(
       if (lookMode === "palette") {
         event.preventDefault();
         paletteSelectRequested = true;
+        suppressNextPrimaryClick = true;
       } else {
+        if (suppressNextPrimaryClick) {
+          event.preventDefault();
+          suppressNextPrimaryClick = false;
+          return;
+        }
         primaryActionRequested = true;
       }
       return;
@@ -111,6 +118,7 @@ export function createDesktopControls(
     if (document.pointerLockElement === canvas && lookMode === "palette" && event.button === 0) {
       event.preventDefault();
       paletteSelectPressed = true;
+      suppressNextPrimaryClick = true;
     }
   }
 
@@ -149,6 +157,7 @@ export function createDesktopControls(
     primaryActionRequested = false;
     paletteSelectPressed = false;
     paletteSelectRequested = false;
+    suppressNextPrimaryClick = false;
     interactRequested = false;
   }
 

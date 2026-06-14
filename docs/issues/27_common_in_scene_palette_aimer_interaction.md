@@ -501,6 +501,49 @@ For XR:
 
 First implementation may keep XR world tool firing disabled if not already implemented. The priority of this issue is common menu interaction.
 
+## World Object Interaction Prompts
+
+World objects may have two interaction classes:
+
+- primary/default interaction from aiming at the object and pressing the world primary action,
+- complex/menu interaction from aiming at the object and opening the object menu.
+
+Use these default prompts for complex menu-based object interaction:
+
+- desktop: `RMouse / F`,
+- VR: `A / X`.
+
+Use the primary/default prompt only when the object actually defines a direct primary interaction:
+
+- desktop: aim + `LMouse`,
+- VR: aim + trigger/select.
+
+For example, a placed wooden sign should advertise its complex edit interaction as:
+
+```text
+RMouse / F: edit sign
+A / X: edit sign
+```
+
+Do not describe this as only `F` on desktop or only `A` in VR. The tooltip should teach the shared menu affordance as well as the keyboard/controller shortcut.
+
+## Sign Text Editing
+
+Placed signs need an in-game editing path, not just a desktop DOM editor.
+
+Add a sign-edit menu opened through the complex object interaction. The menu should allow changing the sign message and should be usable from both desktop and VR through the common scene palette/aimer system.
+
+The sign-edit menu should include an on-screen keyboard:
+
+- number row,
+- QWERTY letter rows,
+- no `Ctrl`, `Alt`, function keys, arrow keys, or browser-style modifier shortcuts,
+- `Backspace` deletes the last character,
+- keep existing sign message sanitization and maximum length rules,
+- keep color selection available for sign text if it remains part of the sign feature.
+
+Desktop physical keyboard input may be added as a convenience later, but the shared in-game path must not depend on native DOM text input. VR must be able to edit a sign using the same menu and on-screen keyboard.
+
 ## Interaction Priority
 
 When menu is open:
@@ -536,9 +579,9 @@ Do not:
 - clone it for portal visibility,
 - make it visible through portals as if it lived in a cell.
 
-## Accessibility And DOM Caveat
+## Accessibility And Text Input Caveat
 
-Moving desktop menus from DOM to in-scene UI loses native browser affordances:
+Moving desktop menus and sign editing from DOM to in-scene UI loses native browser affordances:
 
 - tab focus,
 - native select controls,
@@ -546,9 +589,7 @@ Moving desktop menus from DOM to in-scene UI loses native browser affordances:
 - browser text selection,
 - easy text input.
 
-This is acceptable for the tool palette. It is not automatically acceptable for text-heavy editing.
-
-For the first version, keep the placed flag text editor as DOM unless a separate in-scene text-entry design is implemented. Do not block this issue on in-scene text editing.
+This is acceptable for the tool palette and for the short sign-message editor, because sign messages are deliberately constrained. Do not use this issue as precedent for long-form text editing without a separate accessibility plan.
 
 ## Non-Goals
 
@@ -557,7 +598,6 @@ For the first version, keep the placed flag text editor as DOM unless a separate
 - Do not portal-render the menu.
 - Do not implement hand tracking unless it falls out cheaply from the pointer abstraction.
 - Do not implement world tool firing for XR unless needed for parity tests.
-- Do not replace the flag text editor with in-scene text input.
 - Do not migrate the app to React Three Fiber.
 - Do not keep a permanent forked desktop DOM palette and VR scene palette.
 
@@ -671,7 +711,19 @@ Once feature parity is confirmed:
 - keep tests only if the modules remain as fallback,
 - ensure no desktop-only palette state remains.
 
-Do not remove DOM flag editing as part of this cleanup.
+Do not keep DOM flag editing as the only sign-editing path. The common in-scene sign-edit menu and on-screen keyboard should become the normal runtime path for desktop and VR.
+
+### 8a. Add in-scene sign editing
+
+Add sign editing to the common object interaction path:
+
+- focusing a sign and pressing `RMouse / F` on desktop opens the sign-edit menu,
+- focusing a sign and pressing `A / X` in VR opens the sign-edit menu,
+- the menu edits the placed sign registry object, not a renderer instance,
+- all portal-visible sign instances update from the same sign text texture/material path,
+- the on-screen keyboard supports numbers, QWERTY letters, and backspace,
+- backspace removes the last character,
+- no arrow keys or modifier keys are shown.
 
 ### 9. Verify desktop and XR behavior
 
@@ -709,7 +761,12 @@ Required tests:
 - `xrScenePaletteInput` maps controller select/menu buttons into shared input.
 - `scenePaletteLibraryAdapter` renders tool tiles for the main page.
 - `scenePaletteLibraryAdapter` renders place flag options.
+- `scenePaletteLibraryAdapter` renders the sign-edit menu and on-screen keyboard.
 - selecting `aim`, `place-flag`, and `geodesic-cannon` updates shared runtime menu state.
+- focusing a sign exposes `RMouse / F: edit sign` on desktop.
+- focusing a sign exposes `A / X: edit sign` in VR.
+- sign keyboard number and QWERTY keys append characters up to the existing sign limit.
+- sign keyboard backspace removes the last character.
 - desktop and XR code paths both consume the same `PaletteDefinition`.
 
 Regression tests:
@@ -734,6 +791,9 @@ Regression tests:
 - Tool selection state is shared and not named desktop-only.
 - The main palette exposes `aim`, `place-flag`, and `geodesic-cannon` through the in-scene UI.
 - The place flag options page works through the in-scene UI.
+- Placed signs can be edited through an in-game sign-edit menu.
+- The in-game sign editor includes number keys, QWERTY keys, and backspace, with no arrow or modifier keys.
+- Complex object interaction tooltips use `RMouse / F` on desktop and `A / X` in VR.
 - Menu panels are not runtime registry objects.
 - Menu panels are not cell-local or portal-rendered.
 - Existing world object rendering and portal rendering remain unchanged.

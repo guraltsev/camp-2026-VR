@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { createDesktopScenePaletteInput, reduceDesktopScenePaletteToggle } from "../../src/render/three/desktopScenePaletteInput";
 
 describe("desktopScenePaletteInput", () => {
-  it("toggles open and closed from secondary click without DOM pointer-lock release actions", () => {
+  it("opens from secondary click and maps open-menu secondary clicks to the right menu action", () => {
     expect(reduceDesktopScenePaletteToggle(false, "secondary-click")).toBe("open");
-    expect(reduceDesktopScenePaletteToggle(true, "secondary-click")).toBe("close");
+    expect(reduceDesktopScenePaletteToggle(true, "secondary-click")).toBe("right-action");
     expect(reduceDesktopScenePaletteToggle(true, "escape-key")).toBe("close");
   });
 

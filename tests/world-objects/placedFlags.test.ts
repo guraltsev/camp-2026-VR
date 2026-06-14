@@ -126,6 +126,25 @@ describe("placedFlags", () => {
     expect(flag.fontColor).toBe("#f8fafc");
   });
 
+  it("uses shared desktop and VR edit prompts for placed signs", () => {
+    const flag = createPlacedFlagObject({
+      id: "flag-a",
+      cellId: "room-a",
+      localPose: identityRigidTransform3,
+      flagType: "WoodenSign1",
+    });
+
+    expect(flag.tooltip).toMatchObject({
+      label: "sign",
+      desktopPrompt: "RMouse / F: edit sign",
+      xrPrompt: "A / X: edit sign",
+    });
+    expect(flag.interactable).toMatchObject({
+      label: "Edit sign",
+      action: "edit-flag",
+    });
+  });
+
   it("font color updates preserve unrelated flag state", () => {
     const flag = createPlacedFlagObject({
       id: "flag-a",
