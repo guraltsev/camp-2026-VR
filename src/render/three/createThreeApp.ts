@@ -66,8 +66,8 @@ import {
   placeGeodesicCannonAtFloorPoint,
   rebuildGeodesicToLength,
   removeGeodesic,
-  resolveGeodesicCannonAimYawRadians,
   shootGeodesic,
+  geodesicRayBeamHeightMeters,
 } from "../../world-objects/geodesicCannon";
 import {
   createRuntimeObjectRegistry,
@@ -80,6 +80,7 @@ import { createDesktopToolIndicator } from "../dom/desktopToolIndicator";
 import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
 import { createAimCrossMarker } from "./aimCrossMarker";
 import { geodesicSegmentAimRadiusMeters, resolveAimTarget } from "./aimTarget";
+import { resolveGeodesicCannonAimYawFromAbsolutePoints } from "./geodesicCannonAimTarget";
 import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRenderer";
 import {
   collectGeodesicRuntimeRenderRecords,
@@ -2662,10 +2663,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    const targetPoint = resolveCurrentEuclideanCrosshairFloorPoint(xrActive, xrFrame, xrReferenceSpace);
-    const nextYaw = targetPoint
-      ? resolveGeodesicCannonAimYawRadians(cannon, targetPoint)
-      : undefined;
+    const xrAimRay = xrActive ? resolveXrControllerRootRay(xrFrame, xrReferenceSpace) : undefined;
+    const centerRay = xrAimRay ?? resolveCameraRootRay();
+    const aimTarget = resolveCurrentAimTarget(xrAimRay);
+    const targetAbsolutePoint = aimTarget?.rootPoint
+      ?? (centerRay ? intersectRootRayWithFloor(centerRay.origin, centerRay.direction) : undefined);
+    const nextYaw = resolveGeodesicCannonAimYawFromAbsolutePoints({
+      source: resolveGeodesicCannonAbsoluteEmitterPoint(cannon),
+      target: targetAbsolutePoint,
+    });
     if (nextYaw !== undefined) {
       const yawDelta = Math.atan2(
         Math.sin(nextYaw - cannon.aimYawRadians),
@@ -2706,6 +2712,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const dx = playerPose.position.x - cannon.localPose.translation.x;
     const dy = playerPose.position.y - cannon.localPose.translation.y;
     return Math.hypot(dx, dy) <= rangeMeters;
+  }
+
+  function resolveGeodesicCannonAbsoluteEmitterPoint(
+    cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+  ): Vec3 {
+    return {
+      x: cannon.localPose.translation.x,
+      y: cannon.localPose.translation.y,
+      z: geodesicRayBeamHeightMeters,
+    };
   }
 
   function finishGeodesicCannonAimMode(): void {
@@ -2825,21 +2841,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     aimRayCamera.quaternion.copy(ray.quaternion);
     aimRayCamera.updateMatrixWorld(true);
     return aimRayCamera;
-  }
-
-  function resolveCurrentEuclideanCrosshairFloorPoint(
-    xrActive: boolean,
-    xrFrame: XRFrame | undefined,
-    xrReferenceSpace: XRReferenceSpace | null,
-  ): Vec3 | undefined {
-    const ray = xrActive
-      ? resolveXrControllerRootRay(xrFrame, xrReferenceSpace) ?? resolveCameraRootRay()
-      : resolveCameraRootRay();
-    if (!ray) {
-      return undefined;
-    }
-
-    return intersectRootRayWithFloor(ray.origin, ray.direction);
   }
 
   function resolveCameraRootRay(): { readonly origin: THREE.Vector3; readonly direction: THREE.Vector3 } {
