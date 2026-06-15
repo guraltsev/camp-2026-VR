@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { GeodesicCannonObject, GeodesicSegmentObject } from "../../world-objects/geodesicCannon";
+import { yawRigidTransform3 } from "../../math/rigidTransform3";
 import { collectRuntimeObjectRenderSourceMeshes, type RuntimeObjectRenderRecord, type RuntimeObjectRenderSourceMesh } from "./runtimeObjectRenderRecords";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { rigidTransformToThreeMatrix } from "./worldAxes";
@@ -41,12 +42,27 @@ export function collectGeodesicRuntimeRenderRecords(
 ): readonly RuntimeObjectRenderRecord[] {
   if (object.kind === "geodesic-cannon") {
     const localMatrix = rigidTransformToThreeMatrix(object.localPose);
-    return rayArchetypeKeys.map((archetypeKey) => ({
-      objectId: object.id,
+    const postRecords = rayArchetypeKeys
+      .filter((key) => key.startsWith(`${geodesicRayPostArchetypePrefix}:`))
+      .map((archetypeKey) => ({
+        objectId: object.id,
+        cellId: object.cellId,
+        archetypeKey,
+        localMatrix,
+      }));
+    const headKeys = rayArchetypeKeys.filter((key) => key.startsWith(`${geodesicRayHeadArchetypePrefix}:`));
+    const geodesicIds = object.geodesicIds.length > 0
+      ? object.geodesicIds
+      : object.activeGeodesicId
+        ? [object.activeGeodesicId]
+        : [object.id];
+    const headRecords = geodesicIds.flatMap((geodesicId) => headKeys.map((archetypeKey) => ({
+      objectId: `${object.id}:${geodesicId}:head`,
       cellId: object.cellId,
       archetypeKey,
-      localMatrix,
-    }));
+      localMatrix: composeEmitterYawMatrix(object, geodesicId),
+    })));
+    return [...postRecords, ...headRecords];
   }
 
   return [
@@ -57,6 +73,11 @@ export function collectGeodesicRuntimeRenderRecords(
       localMatrix: composeSegmentMatrix(object),
     },
   ];
+}
+
+function composeEmitterYawMatrix(cannon: GeodesicCannonObject, geodesicId: string): THREE.Matrix4 {
+  const yawRadians = cannon.geodesicEmitterYawRadiansById?.[geodesicId] ?? cannon.aimYawRadians;
+  return rigidTransformToThreeMatrix(yawRigidTransform3(yawRadians, cannon.localPose.translation));
 }
 
 export function composeSegmentMatrix(segment: GeodesicSegmentObject): THREE.Matrix4 {

@@ -26,8 +26,9 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onToolSelected?: (toolId: RuntimeToolId) => void;
   readonly onPlaceFlagOptionsRequested?: () => void;
   readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
-  readonly onGeodesicCannonRotateRequested?: (cannonId: string) => void;
-  readonly onGeodesicCannonAimRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonAddRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
+  readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onSignKeyboardCharacter?: (character: string) => void;
   readonly onSignKeyboardBackspace?: () => void;
   readonly onSignDeleteRequested?: () => void;
@@ -45,8 +46,8 @@ export type ScenePaletteLibraryAdapterOptions = VrPaletteLibraryAdapterOptions;
 export type ScenePaletteLibraryAdapter = VrPaletteLibraryAdapter;
 
 const panelPixelSize = 0.0012;
-const panelWidth = 720;
-const panelHeight = 500;
+const panelWidth = 780;
+const panelHeight = 560;
 const surfaceColor = "#0f172a";
 const sectionColor = "#111827";
 const borderColor = "#475569";
@@ -340,7 +341,7 @@ function buildGeodesicCannonActionsContent(
 ): Container {
   const panel = new Container({
     width: "100%",
-    minHeight: 300,
+    minHeight: 382,
     flexDirection: "column",
     gap: 12,
     padding: 16,
@@ -351,32 +352,84 @@ function buildGeodesicCannonActionsContent(
   });
   panel.add(createSectionLabel("Geodesic ray emitter"));
 
-  for (const action of content.actions) {
-    const button = createInteractiveSurface({
+  const addButton = createInteractiveSurface({
+    width: "100%",
+    height: 58,
+    label: content.addAction.label,
+    labelFontSize: 18,
+    justifyContent: "flex-start",
+    paddingLeft: 18,
+    disabled: content.addAction.disabled,
+    backgroundColor: content.addAction.disabled ? "#334155" : actionColor,
+    onClick: () => options.onGeodesicCannonAddRequested?.(content.cannonId),
+  });
+  addButton.userData.xrPaletteItemId = "geodesic-cannon-action:add-geodesic";
+  addButton.userData.scenePaletteItemId = "geodesic-cannon-action:add-geodesic";
+  addButton.add(createGeodesicCannonActionIcon("add-geodesic"));
+  panel.add(addButton);
+
+  const list = new Container({
+    width: "100%",
+    height: 250,
+    flexDirection: "column",
+    gap: 8,
+    overflow: "scroll",
+    paddingRight: 18,
+    scrollbarWidth: 12,
+    scrollbarColor,
+    scrollbarBorderColor,
+    scrollbarBorderWidth: 2,
+    scrollbarBorderRadius: 6,
+    scrollbarZIndex: 1004,
+  });
+
+  for (const geodesic of content.geodesics) {
+    const row = new Container({
       width: "100%",
-      height: 56,
-      label: action.label,
-      labelFontSize: 18,
-      justifyContent: "flex-start",
-      paddingLeft: 18,
-      disabled: action.disabled,
-      backgroundColor: action.disabled ? "#334155" : actionColor,
-      onClick: () => {
-        if (action.id === "rotate") {
-          options.onGeodesicCannonRotateRequested?.(content.cannonId);
-        } else if (action.id === "aim") {
-          options.onGeodesicCannonAimRequested?.(content.cannonId);
-        }
-      },
+      height: 58,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      padding: 8,
+      borderRadius: 14,
+      backgroundColor: inactiveColor,
+      borderColor,
+      borderWidth: 1,
     });
-    button.userData.xrPaletteItemId = `geodesic-cannon-action:${action.id}`;
-    button.userData.scenePaletteItemId = `geodesic-cannon-action:${action.id}`;
-    if (action.id === "rotate" || action.id === "aim") {
-      button.add(createGeodesicCannonActionIcon(action.id));
-    }
-    panel.add(button);
+    row.add(createButtonText(geodesic.label, 18));
+
+    const rotateButton = createInteractiveSurface({
+      width: 210,
+      height: 42,
+      label: "Rotate",
+      labelFontSize: 16,
+      disabled: geodesic.rotateDisabled,
+      backgroundColor: geodesic.rotateDisabled ? "#334155" : actionColor,
+      onClick: () => options.onGeodesicCannonRotateRequested?.(content.cannonId, geodesic.id),
+    });
+    rotateButton.userData.xrPaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
+    rotateButton.userData.scenePaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
+    rotateButton.add(createGeodesicCannonActionIcon("rotate"));
+
+    const aimButton = createInteractiveSurface({
+      width: 210,
+      height: 42,
+      label: "Aim",
+      labelFontSize: 16,
+      disabled: geodesic.aimDisabled,
+      backgroundColor: geodesic.aimDisabled ? "#334155" : actionColor,
+      onClick: () => options.onGeodesicCannonAimRequested?.(content.cannonId, geodesic.id),
+    });
+    aimButton.userData.xrPaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
+    aimButton.userData.scenePaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
+    aimButton.add(createGeodesicCannonActionIcon("aim"));
+
+    row.add(rotateButton, aimButton);
+    list.add(row);
   }
 
+  panel.add(list);
   return panel;
 }
 
@@ -644,8 +697,8 @@ function createRayIcon(): Component<any> {
   return image;
 }
 
-function createGeodesicCannonActionIcon(actionId: "rotate" | "aim"): Component<any> {
-  const source = actionId === "rotate" ? rotateIconSource : aimIconSource;
+function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim"): Component<any> {
+  const source = actionId === "rotate" || actionId === "add-geodesic" ? rotateIconSource : aimIconSource;
   const image = new Image({
     src: source,
     width: 28,

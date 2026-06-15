@@ -48,6 +48,7 @@ const centerNdc = { x: 0, y: 0 };
 const aimPointToleranceMeters = 1e-5;
 const fallbackObjectRadiusMeters = 0.25;
 export const geodesicSegmentAimRadiusMeters = 0.28;
+export const geodesicSegmentEmitterSuppressionRadiusMeters = 1;
 
 export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | undefined {
   const maxDistanceMeters = request.maxDistanceMeters ?? 24;
@@ -143,7 +144,7 @@ function resolveObjectAimTargets(
 
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
     const hit = object.kind === "geodesic-segment"
-      ? intersectRayWithSegmentCapsule(ray.origin, ray.direction, object.start, object.direction, object.lengthMeters)
+      ? intersectRayWithSelectableSegment(registry, object, ray.origin, ray.direction)
       : bounds
         ? intersectRayWithVerticalCylinder(ray.origin, ray.direction, bounds)
         : intersectRayWithSphere(ray.origin, ray.direction, object.localPose.translation, fallbackObjectRadiusMeters);
@@ -168,6 +169,73 @@ function resolveObjectAimTargets(
   }
 
   return hits;
+}
+
+function intersectRayWithSelectableSegment(
+  registry: RuntimeObjectRegistry,
+  segment: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>,
+  rayOrigin: Vec3,
+  rayDirection: Vec3,
+): ObjectAimHit | undefined {
+  const selectableStartMeters = getSelectableSegmentStartMeters(registry, segment);
+  if (selectableStartMeters >= segment.lengthMeters - aimPointToleranceMeters) {
+    return undefined;
+  }
+
+  const clippedStart = pointOnSegmentCenterline(segment.start, segment.direction, selectableStartMeters);
+  return intersectRayWithSegmentCapsule(
+    rayOrigin,
+    rayDirection,
+    clippedStart,
+    segment.direction,
+    segment.lengthMeters - selectableStartMeters,
+  );
+}
+
+function getSelectableSegmentStartMeters(
+  registry: RuntimeObjectRegistry,
+  segment: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>,
+): number {
+  const cannon = registry.getObjectsInCell(segment.cellId).find((object) =>
+    object.kind === "geodesic-cannon" && object.geodesicIds.includes(segment.geodesicId)
+  );
+  if (!cannon) {
+    return 0;
+  }
+
+  return getSegmentExitDistanceFromEmitterSuppressionRadius(segment, cannon.localPose.translation);
+}
+
+function getSegmentExitDistanceFromEmitterSuppressionRadius(
+  segment: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>,
+  emitterPoint: Vec3,
+): number {
+  const startOffsetX = segment.start.x - emitterPoint.x;
+  const startOffsetY = segment.start.y - emitterPoint.y;
+  const radius = geodesicSegmentEmitterSuppressionRadiusMeters;
+  const startDistanceSquared = startOffsetX * startOffsetX + startOffsetY * startOffsetY;
+  if (startDistanceSquared > radius * radius) {
+    return 0;
+  }
+
+  const a = segment.direction.x * segment.direction.x + segment.direction.y * segment.direction.y;
+  if (a <= aimPointToleranceMeters) {
+    return 0;
+  }
+
+  const b = 2 * (startOffsetX * segment.direction.x + startOffsetY * segment.direction.y);
+  const c = startDistanceSquared - radius * radius;
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant <= 0) {
+    return 0;
+  }
+
+  const exitDistance = (-b + Math.sqrt(discriminant)) / (2 * a);
+  if (!Number.isFinite(exitDistance) || exitDistance <= 0) {
+    return 0;
+  }
+
+  return Math.min(segment.lengthMeters, exitDistance + geodesicSegmentAimRadiusMeters);
 }
 
 function intersectRayWithSegmentCapsule(

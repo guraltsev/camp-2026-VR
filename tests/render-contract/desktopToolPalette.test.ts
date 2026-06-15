@@ -52,6 +52,7 @@ describe("desktopToolPalette", () => {
       debugOverlayEnabled: true,
     }), {
       cannonId: "cannon-a",
+      geodesicIds: ["g-a"],
     }));
     const view = describeDesktopPaletteView(definition);
 
@@ -60,8 +61,9 @@ describe("desktopToolPalette", () => {
     if (view.content.kind !== "geodesic-cannon-actions") {
       throw new Error("Expected geodesic cannon actions content.");
     }
-    expect(view.content.actionLabels).toEqual(["Rotate", "Aim"]);
-    expect(view.content.disabledActionLabels).toEqual([]);
+    expect(view.content.addLabel).toBe("Add geodesic");
+    expect(view.content.geodesicLabels).toEqual(["G1"]);
+    expect(view.content.disabledGeodesicActions).toEqual([]);
   });
 
 

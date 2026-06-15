@@ -415,11 +415,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       menuState = closeRuntimeMenu(selectRuntimeMenuPlaceFlagToolType(menuState, flagType));
       syncDesktopPalette();
     },
-    onGeodesicCannonRotateRequested(cannonId) {
-      startGeodesicCannonRotation(cannonId);
+    onGeodesicCannonAddRequested(cannonId) {
+      addGeodesicToCannon(cannonId);
     },
-    onGeodesicCannonAimRequested(cannonId) {
-      startGeodesicCannonAim(cannonId);
+    onGeodesicCannonRotateRequested(cannonId, geodesicId) {
+      startGeodesicCannonRotation(cannonId, geodesicId);
+    },
+    onGeodesicCannonAimRequested(cannonId, geodesicId) {
+      startGeodesicCannonAim(cannonId, geodesicId);
     },
     onSignKeyboardCharacter(character) {
       appendEditingSignCharacter(character);
@@ -2274,6 +2277,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       };
       menuState = showRuntimeMenuGeodesicCannonActions(menuState, {
         cannonId: focused.object.id,
+        geodesicIds: focused.object.geodesicIds,
       });
       syncDesktopPalette();
       return true;
@@ -2282,7 +2286,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return false;
   }
 
-  function startGeodesicCannonRotation(cannonId: string): void {
+  function addGeodesicToCannon(cannonId: string): void {
     const cannon = runtimeObjectRegistry.get(cannonId);
     if (cannon?.kind !== "geodesic-cannon") {
       menuState = closeRuntimeMenu(menuState);
@@ -2290,19 +2294,66 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    activeGeodesicCannonToolState = {
-      selectedCannonId: cannon.id,
-      activeGeodesicId: cannon.activeGeodesicId,
+    const geodesicId = `geodesic:${Date.now()}:${geodesicIdCounter++}`;
+    const aimYawRadians = Math.random() * Math.PI * 2 - Math.PI;
+    const cannonForNewGeodesic = {
+      ...cannon,
+      aimYawRadians,
+      localPose: yawRigidTransform3(aimYawRadians, cannon.localPose.translation),
     };
-    geodesicCannonRotationTargetLengthMeters = cannon.activeGeodesicId
-      ? getGeodesicTotalLengthMeters(cannon.activeGeodesicId)
+    const segment = shootGeodesic({
+      world: appState.world,
+      registry: runtimeObjectRegistry,
+      cannon: cannonForNewGeodesic,
+      geodesicId,
+    });
+    const updatedCannon = runtimeObjectRegistry.get(cannonId);
+    if (updatedCannon?.kind === "geodesic-cannon") {
+      activeGeodesicCannonToolState = {
+        selectedCannonId: updatedCannon.id,
+        activeGeodesicId: geodesicId,
+      };
+      menuState = showRuntimeMenuGeodesicCannonActions(menuState, {
+        cannonId: updatedCannon.id,
+        geodesicIds: updatedCannon.geodesicIds,
+      });
+    }
+
+    if (segment) {
+      syncRuntimeObjectPortalInstances();
+      syncSelectableHitboxDebug();
+    }
+    syncDesktopPalette();
+  }
+
+  function startGeodesicCannonRotation(cannonId: string, requestedGeodesicId?: string): void {
+    const cannon = runtimeObjectRegistry.get(cannonId);
+    if (cannon?.kind !== "geodesic-cannon") {
+      menuState = closeRuntimeMenu(menuState);
+      syncDesktopPalette();
+      return;
+    }
+
+    const geodesicId = resolveCannonGeodesicId(cannon, requestedGeodesicId);
+    const selectedCannon = geodesicId && cannon.activeGeodesicId !== geodesicId
+      ? { ...cannon, activeGeodesicId: geodesicId }
+      : cannon;
+    if (selectedCannon !== cannon) {
+      runtimeObjectRegistry.update(selectedCannon);
+    }
+    activeGeodesicCannonToolState = {
+      selectedCannonId: selectedCannon.id,
+      activeGeodesicId: geodesicId,
+    };
+    geodesicCannonRotationTargetLengthMeters = geodesicId
+      ? getGeodesicTotalLengthMeters(geodesicId)
       : undefined;
     menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "geodesic-cannon-rotate"));
     syncDesktopPalette();
     void controls.requestPointerLock();
   }
 
-  function startGeodesicCannonAim(cannonId: string): void {
+  function startGeodesicCannonAim(cannonId: string, requestedGeodesicId?: string): void {
     const cannon = runtimeObjectRegistry.get(cannonId);
     if (cannon?.kind !== "geodesic-cannon") {
       menuState = closeRuntimeMenu(menuState);
@@ -2310,18 +2361,36 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
+    const geodesicId = resolveCannonGeodesicId(cannon, requestedGeodesicId);
+    const selectedCannon = geodesicId && cannon.activeGeodesicId !== geodesicId
+      ? { ...cannon, activeGeodesicId: geodesicId }
+      : cannon;
+    if (selectedCannon !== cannon) {
+      runtimeObjectRegistry.update(selectedCannon);
+    }
     activeGeodesicCannonToolState = {
-      selectedCannonId: cannon.id,
-      activeGeodesicId: cannon.activeGeodesicId,
+      selectedCannonId: selectedCannon.id,
+      activeGeodesicId: geodesicId,
     };
-    geodesicCannonRotationTargetLengthMeters = cannon.activeGeodesicId
-      ? getGeodesicTotalLengthMeters(cannon.activeGeodesicId)
+    geodesicCannonRotationTargetLengthMeters = geodesicId
+      ? getGeodesicTotalLengthMeters(geodesicId)
       : undefined;
     menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "geodesic-cannon-aim"));
     syncDesktopPalette();
     if (!renderer.xr.isPresenting) {
       void controls.requestPointerLock();
     }
+  }
+
+  function resolveCannonGeodesicId(
+    cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+    requestedGeodesicId: string | undefined,
+  ): string | undefined {
+    if (requestedGeodesicId && cannon.geodesicIds.includes(requestedGeodesicId)) {
+      return requestedGeodesicId;
+    }
+
+    return cannon.activeGeodesicId ?? cannon.geodesicIds[0];
   }
 
   function updateActiveGeodesicCannonRotation(yawDeltaRadians: number, finishRequested: boolean): void {
@@ -2344,6 +2413,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         ...cannon,
         aimYawRadians: nextYaw,
         localPose: yawRigidTransform3(nextYaw, cannon.localPose.translation),
+        geodesicEmitterYawRadiansById: activeGeodesicCannonToolState.activeGeodesicId
+          ? {
+              ...cannon.geodesicEmitterYawRadiansById,
+              [activeGeodesicCannonToolState.activeGeodesicId]: nextYaw,
+            }
+          : cannon.geodesicEmitterYawRadiansById,
       };
       runtimeObjectRegistry.update(nextCannon);
       rebuildActiveGeodesicFromCannon(nextCannon);
@@ -2392,6 +2467,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           ...cannon,
           aimYawRadians: nextYaw,
           localPose: yawRigidTransform3(nextYaw, cannon.localPose.translation),
+          geodesicEmitterYawRadiansById: activeGeodesicCannonToolState.activeGeodesicId
+            ? {
+                ...cannon.geodesicEmitterYawRadiansById,
+                [activeGeodesicCannonToolState.activeGeodesicId]: nextYaw,
+              }
+            : cannon.geodesicEmitterYawRadiansById,
         };
         runtimeObjectRegistry.update(nextCannon);
         rebuildActiveGeodesicFromCannon(nextCannon);

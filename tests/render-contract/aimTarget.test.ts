@@ -6,7 +6,7 @@ import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 import { createPlacedFlagObject } from "../../src/world-objects/placedFlags";
 import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
-import type { GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
+import { createGeodesicCannonObject, type GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
 import { resolveAimTarget } from "../../src/render/three/aimTarget";
 import type { VisiblePortalPath } from "../../src/render/three/visiblePortalPaths";
 import { rigidTransformToThreeMatrix, worldPointToThree } from "../../src/render/three/worldAxes";
@@ -121,6 +121,62 @@ describe("resolveAimTarget", () => {
     expect(target?.object?.id).toBe("segment-a");
     expect(target?.localPoint.x).toBeCloseTo(0);
     expect(target?.localPoint.z).toBeCloseTo(1.08);
+  });
+
+  it("does not resolve or tooltip geodesic ray segments within one meter of their emitter", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+      activeGeodesicId: "g-a",
+      geodesicIds: ["g-a"],
+    });
+    const segment = createGeodesicSegment({
+      start: { x: 0.2, y: 0, z: 1.08 },
+      lengthMeters: 1.8,
+    });
+    const registry = createRuntimeObjectRegistry([cannon, segment]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0.5, y: -2, z: 1.08 }, { x: 0.5, y: 0, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target).toBeUndefined();
+  });
+
+  it("resolves the selectable part of a geodesic ray while standing near its emitter", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+      activeGeodesicId: "g-a",
+      geodesicIds: ["g-a"],
+    });
+    const segment = createGeodesicSegment({
+      start: { x: 0.2, y: 0, z: 1.08 },
+      lengthMeters: 1.8,
+    });
+    const registry = createRuntimeObjectRegistry([cannon, segment]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0, y: -0.35, z: 1.08 }, { x: 1.05, y: 0, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("segment-a");
+    expect(target?.localPoint.x).toBeGreaterThanOrEqual(1);
   });
 
   it("ignores geodesic ray segments for a selected geodesic when requested", () => {

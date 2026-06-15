@@ -10,12 +10,14 @@ export interface GeodesicCannonObject extends RuntimeWorldObjectBase {
   readonly kind: "geodesic-cannon";
   readonly activeGeodesicId?: string;
   readonly geodesicIds: readonly string[];
+  readonly geodesicEmitterYawRadiansById?: Readonly<Record<string, number>>;
   readonly aimYawRadians: number;
 }
 
 export interface GeodesicSegmentObject extends RuntimeWorldObjectBase {
   readonly kind: "geodesic-segment";
   readonly geodesicId: string;
+  readonly geodesicNumber?: number;
   readonly segmentIndex: number;
   readonly start: Vec3;
   readonly direction: Vec3;
@@ -42,6 +44,7 @@ export interface CreateGeodesicCannonOptions {
   readonly localPose: RigidTransform3;
   readonly activeGeodesicId?: string;
   readonly geodesicIds?: readonly string[];
+  readonly geodesicEmitterYawRadiansById?: Readonly<Record<string, number>>;
   readonly aimYawRadians?: number;
   readonly collision?: SimpleCollisionCylinder;
 }
@@ -132,6 +135,7 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
     },
     activeGeodesicId: options.activeGeodesicId,
     geodesicIds: options.geodesicIds ?? (options.activeGeodesicId ? [options.activeGeodesicId] : []),
+    geodesicEmitterYawRadiansById: options.geodesicEmitterYawRadiansById,
     aimYawRadians,
   };
 }
@@ -347,6 +351,7 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
 
 export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject {
   const direction = directionFromYaw(input.cannon.aimYawRadians);
+  const geodesicNumber = getGeodesicNumber(input.cannon.geodesicIds, input.geodesicId);
   const start = addVec3(
     {
       x: input.cannon.localPose.translation.x,
@@ -358,6 +363,7 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
   const segment = createSegmentFromTrace({
     id: `${input.geodesicId}:segment:0`,
     geodesicId: input.geodesicId,
+    geodesicNumber,
     segmentIndex: 0,
     trace: traceGeodesicSegment({
       world: input.world,
@@ -375,6 +381,10 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
     geodesicIds: input.cannon.geodesicIds.includes(input.geodesicId)
       ? input.cannon.geodesicIds
       : [...input.cannon.geodesicIds, input.geodesicId],
+    geodesicEmitterYawRadiansById: {
+      ...input.cannon.geodesicEmitterYawRadiansById,
+      [input.geodesicId]: input.cannon.aimYawRadians,
+    },
   });
   return segment;
 }
@@ -404,6 +414,7 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
   const next = createSegmentFromTrace({
     id: `${input.geodesicId}:segment:${tail.segmentIndex + 1}`,
     geodesicId: input.geodesicId,
+    geodesicNumber: tail.geodesicNumber,
     segmentIndex: tail.segmentIndex + 1,
     trace,
   });
@@ -451,10 +462,12 @@ export function rebuildGeodesicToLength(input: RebuildGeodesicToLengthInput): re
 function createSegmentFromTrace(options: {
   readonly id: string;
   readonly geodesicId: string;
+  readonly geodesicNumber?: number;
   readonly segmentIndex: number;
   readonly trace: TraceGeodesicSegmentResult;
 }): GeodesicSegmentObject {
   const yaw = Math.atan2(options.trace.direction.y, options.trace.direction.x);
+  const geodesicLabel = options.geodesicNumber === undefined ? undefined : `G${options.geodesicNumber}`;
 
   return {
     id: options.id,
@@ -463,16 +476,22 @@ function createSegmentFromTrace(options: {
     localPose: yawRigidTransform3(yaw, options.trace.start),
     portalRenderable: true,
     tooltip: {
-      label: "Geodesic segment",
+      label: geodesicLabel ? `Geodesic segment ${geodesicLabel}` : "Geodesic segment",
       rangeMeters: 6,
     },
     geodesicId: options.geodesicId,
+    geodesicNumber: options.geodesicNumber,
     segmentIndex: options.segmentIndex,
     start: options.trace.start,
     direction: options.trace.direction,
     lengthMeters: options.trace.lengthMeters,
     terminal: options.trace.terminal,
   };
+}
+
+function getGeodesicNumber(geodesicIds: readonly string[], geodesicId: string): number {
+  const existingIndex = geodesicIds.indexOf(geodesicId);
+  return existingIndex >= 0 ? existingIndex + 1 : geodesicIds.length + 1;
 }
 
 function directionFromYaw(yawRadians: number): Vec3 {

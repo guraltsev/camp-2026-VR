@@ -66,10 +66,15 @@ export interface EditSignPaletteContent {
 export interface GeodesicCannonActionsPaletteContent {
   readonly kind: "geodesic-cannon-actions";
   readonly cannonId: string;
-  readonly actions: readonly {
-    readonly id: "rotate" | "aim";
+  readonly addAction: {
     readonly label: string;
     readonly disabled: boolean;
+  };
+  readonly geodesics: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly rotateDisabled: boolean;
+    readonly aimDisabled: boolean;
   }[];
 }
 
@@ -175,10 +180,8 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       content: {
         kind: "geodesic-cannon-actions",
         cannonId: state.geodesicCannonOptions.cannonId,
-        actions: [
-          { id: "rotate", label: "Rotate", disabled: false },
-          { id: "aim", label: "Aim", disabled: false },
-        ],
+        addAction: { label: "Add geodesic", disabled: false },
+        geodesics: createGeodesicCannonEntries(state.geodesicCannonOptions.geodesicIds),
       },
     };
   }
@@ -193,6 +196,17 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       placeFlagType: state.placeFlagOptions.flagType,
     },
   };
+}
+
+function createGeodesicCannonEntries(
+  geodesicIds: readonly string[],
+): GeodesicCannonActionsPaletteContent["geodesics"] {
+  return geodesicIds.map((geodesicId, index) => ({
+    id: geodesicId,
+    label: `G${index + 1}`,
+    rotateDisabled: false,
+    aimDisabled: false,
+  }));
 }
 
 function createHeaderAction(id: PaletteHeaderAction["id"]): PaletteHeaderAction {

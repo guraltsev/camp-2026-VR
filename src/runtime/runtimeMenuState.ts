@@ -55,6 +55,7 @@ export interface RuntimeMenuState {
   };
   readonly geodesicCannonOptions?: {
     readonly cannonId: string;
+    readonly geodesicIds: readonly string[];
   };
   readonly editingFlagId?: string;
 }
@@ -164,6 +165,7 @@ export function showRuntimeMenuGeodesicCannonActions(
   state: RuntimeMenuState,
   options: {
     readonly cannonId: string;
+    readonly geodesicIds?: readonly string[];
   },
 ): RuntimeMenuState {
   return {
@@ -172,6 +174,7 @@ export function showRuntimeMenuGeodesicCannonActions(
     page: "geodesic-cannon-actions",
     geodesicCannonOptions: {
       cannonId: options.cannonId,
+      geodesicIds: options.geodesicIds ?? [],
     },
   };
 }

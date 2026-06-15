@@ -43,8 +43,9 @@ export interface DesktopPaletteView {
     }
     | {
       readonly kind: "geodesic-cannon-actions";
-      readonly actionLabels: readonly string[];
-      readonly disabledActionLabels: readonly string[];
+      readonly addLabel: string;
+      readonly geodesicLabels: readonly string[];
+      readonly disabledGeodesicActions: readonly string[];
     };
 }
 
@@ -64,8 +65,9 @@ export interface DesktopToolPaletteOptions {
   readonly onToolSelected: (toolId: RuntimeDesktopToolId) => void;
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
-  readonly onGeodesicCannonRotateRequested?: (cannonId: string) => void;
-  readonly onGeodesicCannonAimRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonAddRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
+  readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onResumeRequested: () => void;
 }
 
@@ -233,10 +235,12 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
       rightAction: definition.rightAction,
       content: {
         kind: "geodesic-cannon-actions",
-        actionLabels: definition.content.actions.map((action) => action.label),
-        disabledActionLabels: definition.content.actions
-          .filter((action) => action.disabled)
-          .map((action) => action.label),
+        addLabel: definition.content.addAction.label,
+        geodesicLabels: definition.content.geodesics.map((geodesic) => geodesic.label),
+        disabledGeodesicActions: definition.content.geodesics.flatMap((geodesic) => [
+          ...(geodesic.rotateDisabled ? [`${geodesic.label} Rotate`] : []),
+          ...(geodesic.aimDisabled ? [`${geodesic.label} Aim`] : []),
+        ]),
       },
     };
   }
@@ -348,22 +352,50 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     const actions = document.createElement("div");
     actions.className = "desktop-tool-palette-settings";
 
-    for (const action of geodesicCannonContent.actions) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "desktop-tool-palette-button";
-      button.disabled = action.disabled;
-      button.ariaDisabled = String(action.disabled);
-      button.append(createGeodesicCannonActionIcon(action.id), document.createTextNode(action.label));
-      button.addEventListener("click", () => {
-        if (action.id === "rotate") {
-          options.onGeodesicCannonRotateRequested?.(geodesicCannonContent.cannonId);
-        } else if (action.id === "aim") {
-          options.onGeodesicCannonAimRequested?.(geodesicCannonContent.cannonId);
-        }
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "desktop-tool-palette-button";
+    addButton.disabled = geodesicCannonContent.addAction.disabled;
+    addButton.ariaDisabled = String(geodesicCannonContent.addAction.disabled);
+    addButton.append(createGeodesicCannonActionIcon("add-geodesic"), document.createTextNode(geodesicCannonContent.addAction.label));
+    addButton.addEventListener("click", () => {
+      options.onGeodesicCannonAddRequested?.(geodesicCannonContent.cannonId);
+    });
+    actions.append(addButton);
+
+    const geodesicList = document.createElement("div");
+    geodesicList.className = "desktop-tool-palette-geodesic-list";
+    for (const geodesic of geodesicCannonContent.geodesics) {
+      const row = document.createElement("div");
+      row.className = "desktop-tool-palette-geodesic-row";
+      const label = document.createElement("span");
+      label.className = "desktop-tool-palette-field-label";
+      label.textContent = geodesic.label;
+
+      const rotateButton = document.createElement("button");
+      rotateButton.type = "button";
+      rotateButton.className = "desktop-tool-palette-button";
+      rotateButton.disabled = geodesic.rotateDisabled;
+      rotateButton.ariaDisabled = String(geodesic.rotateDisabled);
+      rotateButton.append(createGeodesicCannonActionIcon("rotate"), document.createTextNode("Rotate"));
+      rotateButton.addEventListener("click", () => {
+        options.onGeodesicCannonRotateRequested?.(geodesicCannonContent.cannonId, geodesic.id);
       });
-      actions.append(button);
+
+      const aimButton = document.createElement("button");
+      aimButton.type = "button";
+      aimButton.className = "desktop-tool-palette-button";
+      aimButton.disabled = geodesic.aimDisabled;
+      aimButton.ariaDisabled = String(geodesic.aimDisabled);
+      aimButton.append(createGeodesicCannonActionIcon("aim"), document.createTextNode("Aim"));
+      aimButton.addEventListener("click", () => {
+        options.onGeodesicCannonAimRequested?.(geodesicCannonContent.cannonId, geodesic.id);
+      });
+
+      row.append(label, rotateButton, aimButton);
+      geodesicList.append(row);
     }
+    actions.append(geodesicList);
 
     return actions;
   }
@@ -616,10 +648,10 @@ function createCannonTileIcon(): HTMLElement {
   return icon;
 }
 
-function createGeodesicCannonActionIcon(actionId: "rotate" | "aim"): HTMLElement {
+function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim"): HTMLElement {
   const icon = document.createElement("img");
   icon.className = "desktop-tool-palette-button-icon";
-  icon.src = actionId === "rotate" ? rotateIconSource : aimIconSource;
+  icon.src = actionId === "rotate" || actionId === "add-geodesic" ? rotateIconSource : aimIconSource;
   icon.alt = "";
   icon.decoding = "async";
   return icon;

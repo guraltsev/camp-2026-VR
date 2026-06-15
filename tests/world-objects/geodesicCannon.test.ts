@@ -54,9 +54,38 @@ describe("geodesic cannon world objects", () => {
     expect(cannon.tooltip?.desktopPrompt).toBe("Geodesic ray emitter\nRMouse / F - menu");
     expect(cannon.tooltip?.xrPrompt).toBe("Geodesic ray emitter\nA / X - menu");
     expect(first.lengthMeters).toBe(2);
+    expect(first.geodesicNumber).toBe(1);
+    expect(first.tooltip?.label).toBe("Geodesic segment G1");
     expect(first.tooltip?.rangeMeters).toBe(6);
     expect(second?.lengthMeters).toBe(2);
+    expect(second?.geodesicNumber).toBe(1);
+    expect(second?.tooltip?.label).toBe("Geodesic segment G1");
     expect(second?.tooltip?.rangeMeters).toBe(6);
+  });
+
+  it("numbers multiple geodesics from the same emitter pole incrementally", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    registry.add(cannon);
+
+    const first = shootGeodesic({ world, registry, cannon, geodesicId: "g-a" });
+    const updatedCannon = registry.get("cannon-a");
+    if (updatedCannon?.kind !== "geodesic-cannon") {
+      throw new Error("Expected updated geodesic cannon.");
+    }
+    const second = shootGeodesic({ world, registry, cannon: updatedCannon, geodesicId: "g-b" });
+
+    expect(first.tooltip?.label).toBe("Geodesic segment G1");
+    expect(second.geodesicNumber).toBe(2);
+    expect(second.tooltip?.label).toBe("Geodesic segment G2");
+    expect(second.start.y).toBeCloseTo(0);
+    const finalCannon = registry.get("cannon-a");
+    expect(finalCannon?.kind === "geodesic-cannon" ? finalCannon.geodesicIds : []).toEqual(["g-a", "g-b"]);
   });
 
   it("starts the first ray segment at the visual laser emitter", () => {

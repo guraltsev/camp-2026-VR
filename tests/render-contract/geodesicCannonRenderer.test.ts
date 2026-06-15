@@ -55,7 +55,22 @@ describe("geodesic cannon renderer", () => {
     expect(rayKeys.some((key) => key.startsWith(`${geodesicRayPostArchetypePrefix}:`))).toBe(true);
     expect(rayKeys.some((key) => key.startsWith(`${geodesicRayHeadArchetypePrefix}:`))).toBe(true);
     expect(records).toHaveLength(rayKeys.length);
-    expect(records.every((record) => record.objectId === "ray-emitter-a" && record.cellId === "cell-a")).toBe(true);
+    expect(records.every((record) => record.cellId === "cell-a")).toBe(true);
+    expect(records.map((record) => record.objectId)).toContain("ray-emitter-a");
+    expect(records.map((record) => record.objectId)).toContain("ray-emitter-a:g-a:head");
+  });
+
+  it("publishes one laser emitter head record for each geodesic on the same post", () => {
+    const sources = createGeodesicRuntimeRenderSources();
+    const rayKeys = getGeodesicRayArchetypeKeys(sources);
+    const headKeys = rayKeys.filter((key) => key.startsWith(`${geodesicRayHeadArchetypePrefix}:`));
+    const postKeys = rayKeys.filter((key) => key.startsWith(`${geodesicRayPostArchetypePrefix}:`));
+    const records = collectGeodesicRuntimeRenderRecords(createRayEmitter({
+      geodesicIds: ["g-a", "g-b", "g-c"],
+    }), rayKeys);
+
+    expect(records.filter((record) => postKeys.includes(record.archetypeKey))).toHaveLength(postKeys.length);
+    expect(records.filter((record) => headKeys.includes(record.archetypeKey))).toHaveLength(headKeys.length * 3);
   });
 
   it("raises prepared post assets so the post is not buried below the floor", () => {
@@ -86,7 +101,7 @@ function createSegment(overrides: Partial<GeodesicSegmentObject> = {}): Geodesic
   };
 }
 
-function createRayEmitter(): GeodesicCannonObject {
+function createRayEmitter(overrides: Partial<GeodesicCannonObject> = {}): GeodesicCannonObject {
   return {
     id: "ray-emitter-a",
     kind: "geodesic-cannon",
@@ -97,6 +112,7 @@ function createRayEmitter(): GeodesicCannonObject {
     activeGeodesicId: "g-a",
     geodesicIds: ["g-a"],
     aimYawRadians: 0,
+    ...overrides,
   };
 }
 

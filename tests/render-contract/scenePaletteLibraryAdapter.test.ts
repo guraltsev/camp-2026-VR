@@ -47,17 +47,19 @@ describe("scenePaletteLibraryAdapter", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
     adapter.setDefinition(createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(
       createRuntimeMenuState({ selectedWorldId: "cube" }),
-      { cannonId: "cannon-a" },
+      { cannonId: "cannon-a", geodesicIds: ["g-a"] },
     )));
 
     const itemIds = collectPaletteItemIds(adapter.root);
     const actionIds = collectPaletteActionItemIds(adapter.root);
     const imageSources = collectPaletteImageSources(adapter.root);
 
-    expect(itemIds).toContain("geodesic-cannon-action:rotate");
-    expect(itemIds).toContain("geodesic-cannon-action:aim");
-    expect(actionIds).toContain("geodesic-cannon-action:rotate");
-    expect(actionIds).toContain("geodesic-cannon-action:aim");
+    expect(itemIds).toContain("geodesic-cannon-action:add-geodesic");
+    expect(itemIds).toContain("geodesic-cannon-action:rotate:g-a");
+    expect(itemIds).toContain("geodesic-cannon-action:aim:g-a");
+    expect(actionIds).toContain("geodesic-cannon-action:add-geodesic");
+    expect(actionIds).toContain("geodesic-cannon-action:rotate:g-a");
+    expect(actionIds).toContain("geodesic-cannon-action:aim:g-a");
     expect(imageSources).toContain("/assets/icons/arrow-circle-inverted.png");
     expect(imageSources).toContain("/assets/icons/aim-inverted.png");
 
