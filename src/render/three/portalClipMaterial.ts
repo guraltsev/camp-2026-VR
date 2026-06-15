@@ -137,6 +137,15 @@ function patchVertexShader(shader: string): string {
         "vPortalClipIndex = portalClipIndex;",
         "#include <begin_vertex>",
       ].join("\n"),
+    )
+    .replace(
+      "#include <project_vertex>",
+      [
+        "#include <project_vertex>",
+        "if (vPortalClipIndex >= -0.5) {",
+        "  gl_Position.z += min(0.00008 * gl_Position.w, 0.0008);",
+        "}",
+      ].join("\n"),
     );
 }
 

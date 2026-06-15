@@ -99,6 +99,7 @@ const fullScreenPolygonNdc: readonly Vec2[] = [
 ];
 
 const polygonTolerance = 1e-9;
+const nearCoplanarPortalToleranceMeters = 0.05;
 
 export function computeVisiblePortalPaths(input: ComputeVisiblePortalPathsInput): ComputeVisiblePortalPathsResult {
   const rootPath = input.pathTable.pathsById.get(0);
@@ -328,7 +329,7 @@ function projectNearCoplanarPortalToNdc(
   normal.divideScalar(normalLength);
   const planeDistanceFromCamera = Math.abs(normal.dot(points[0]));
 
-  if (planeDistanceFromCamera >= near) {
+  if (planeDistanceFromCamera >= near + nearCoplanarPortalToleranceMeters) {
     return undefined;
   }
 

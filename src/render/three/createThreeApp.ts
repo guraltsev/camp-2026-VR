@@ -144,6 +144,7 @@ import {
   resolveRenderQualityPixelRatio,
   type RenderQualityState,
 } from "./renderQuality";
+import { renderCameraFarMeters, renderCameraNearMeters } from "./renderCameraClip";
 import { installRuntimeDiagnostics, runtimeDiagnostics } from "./runtimeDiagnostics";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import type {
@@ -221,8 +222,6 @@ interface PortalEyeRenderState {
   readonly rootCellId: string;
 }
 
-const renderCameraNearMeters = 0.001;
-const renderCameraFarMeters = 250;
 const underCellInfinityFloorSizeMeters = 1_000;
 const underCellInfinityFloorWorldZMeters = -1;
 const selectableObjectHitboxDebugColor = 0xffc400;

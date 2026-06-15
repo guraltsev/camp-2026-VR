@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { cube, twoPrismLoop } from "../../src/authoring/exampleWorlds";
+import { cube, tetrahedron, twoPrismLoop } from "../../src/authoring/exampleWorlds";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { buildPortalPathTables } from "../../src/cell-complex/portalPaths";
 import {
@@ -219,6 +219,33 @@ describe("computeVisiblePortalPaths", () => {
     expect(result.paths.map((path) => path.pathId)).toContain(topPortalPath!.id);
     expect(result.visiblePathById.get(topPortalPath!.id)?.screenAreaPixels).toBeGreaterThan(10_000);
     expect(result.visiblePathById.get(topPortalPath!.id)?.clipRectNdc.maxX).toBeGreaterThan(0.95);
+  });
+
+  it("keeps a tetrahedron portal filling the view when the camera is just inside its boundary", () => {
+    const world = compileCellComplex(tetrahedron);
+    const table = buildPortalPathTables(world, { maxDepth: 2 }).tablesByRootCellId.get("face-a")!;
+    const directFaceBPath = table.paths.find((path) =>
+      path.steps.map((step) => step.sourcePortalSideIndex).join(" ") === "1"
+    );
+    const result = computeVisiblePortalPaths({
+      world,
+      rootCellId: "face-a",
+      pathTable: table,
+      camera: createCamera(
+        { x: 9.461191, y: 6.636625, z: 1.45 },
+        { x: 9.510715, y: 7.626288, z: 1.31541 },
+        70,
+        1053 / 665,
+      ),
+      viewportPixels: { width: 1053, height: 665 },
+      options: defaultOptions({ maxDepth: 2, minPortalScreenAreaPixels: 16 }),
+    });
+
+    expect(directFaceBPath).toBeDefined();
+    const visiblePath = result.visiblePathById.get(directFaceBPath!.id);
+    expect(visiblePath).toBeDefined();
+    expect(visiblePath?.screenAreaPixels).toBeGreaterThan(100_000);
+    expect(visiblePath?.clipRectNdc.minX).toBeLessThanOrEqual(-0.95);
   });
 
   it("keeps cube portals stable at a captured left-face near-boundary camera pose", () => {

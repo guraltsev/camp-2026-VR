@@ -29,6 +29,7 @@ describe("portal clip material", () => {
         "#include <common>",
         "void main() {",
         "#include <begin_vertex>",
+        "#include <project_vertex>",
         "}",
       ].join("\n"),
       fragmentShader: [
@@ -43,6 +44,8 @@ describe("portal clip material", () => {
 
     expect(shader.vertexShader).toContain("attribute float portalPathId;");
     expect(shader.vertexShader).toContain("attribute float portalClipIndex;");
+    expect(shader.vertexShader).toContain("if (vPortalClipIndex >= -0.5)");
+    expect(shader.vertexShader).toContain("gl_Position.z += min(0.00008 * gl_Position.w, 0.0008);");
     expect(shader.fragmentShader).toContain("portalFragmentClipCoverage(gl_FragCoord.xy, vPortalClipIndex)");
     expect(shader.fragmentShader).toContain("if (clipIndex < -1.5)");
     expect(shader.fragmentShader).toContain("return 1.0;");
@@ -77,6 +80,7 @@ describe("portal clip material", () => {
         "#include <common>",
         "void main() {",
         "#include <begin_vertex>",
+        "#include <project_vertex>",
         "}",
       ].join("\n"),
       fragmentShader: [
