@@ -5,40 +5,43 @@ import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { rigidTransformToThreeMatrix } from "./worldAxes";
 
 export const geodesicSegmentArchetypeKey = "geodesic-segment:ribbon-cross";
-export const geodesicFlashlightPostArchetypePrefix = "geodesic-flashlight:post";
-export const geodesicFlashlightHeadArchetypePrefix = "geodesic-flashlight:head";
-export const geodesicFlashlightAssetPaths = {
+export const geodesicRayPostArchetypePrefix = "geodesic-ray:post";
+export const geodesicRayHeadArchetypePrefix = "geodesic-ray:head";
+export const geodesicRayAssetPaths = {
   post: "flashlight/Post.glb",
-  flashlight: "flashlight/Flashlight.glb",
+  lightsaber: "flashlight/Lightsaber.glb",
 } as const;
+const geodesicRayAssetScale = 0.42;
+const geodesicRayPostAssetFloorOffsetMeters = 0.74;
+const geodesicRayEmitterPosition = { x: 0.06, y: 1.08, z: 0 } as const;
 
 export function createGeodesicRuntimeRenderSources(
   assets?: PreparedWorldAssets,
 ): readonly RuntimeObjectRenderSourceMesh[] {
   return [
     createSegmentSource(),
-    ...createFlashlightOnPostSources(assets),
+    ...createRayEmitterOnPostSources(assets),
   ];
 }
 
-export function getGeodesicFlashlightArchetypeKeys(
+export function getGeodesicRayArchetypeKeys(
   sources: readonly RuntimeObjectRenderSourceMesh[],
 ): readonly string[] {
   return sources
     .map((source) => source.archetypeKey)
     .filter((key) =>
-      key.startsWith(`${geodesicFlashlightPostArchetypePrefix}:`) ||
-      key.startsWith(`${geodesicFlashlightHeadArchetypePrefix}:`)
+      key.startsWith(`${geodesicRayPostArchetypePrefix}:`) ||
+      key.startsWith(`${geodesicRayHeadArchetypePrefix}:`)
     );
 }
 
 export function collectGeodesicRuntimeRenderRecords(
   object: GeodesicCannonObject | GeodesicSegmentObject,
-  flashlightArchetypeKeys: readonly string[] = [],
+  rayArchetypeKeys: readonly string[] = [],
 ): readonly RuntimeObjectRenderRecord[] {
   if (object.kind === "geodesic-cannon") {
     const localMatrix = rigidTransformToThreeMatrix(object.localPose);
-    return flashlightArchetypeKeys.map((archetypeKey) => ({
+    return rayArchetypeKeys.map((archetypeKey) => ({
       objectId: object.id,
       cellId: object.cellId,
       archetypeKey,
@@ -97,38 +100,46 @@ function createSegmentSource(): RuntimeObjectRenderSourceMesh {
   };
 }
 
-function createFlashlightOnPostSources(
+function createRayEmitterOnPostSources(
   assets: PreparedWorldAssets | undefined,
 ): readonly RuntimeObjectRenderSourceMesh[] {
   const postRoot = new THREE.Group();
-  postRoot.name = "geodesic-flashlight-post-source";
+  postRoot.name = "geodesic-ray-post-source";
   const headRoot = new THREE.Group();
-  headRoot.name = "geodesic-flashlight-head-source";
+  headRoot.name = "geodesic-ray-head-source";
 
-  const post = assets?.instantiateGltf(geodesicFlashlightAssetPaths.post)?.scene ?? createFallbackPost();
-  post.name = "asset:geodesic-flashlight-post";
-  post.scale.setScalar(0.42);
+  const preparedPost = assets?.instantiateGltf(geodesicRayAssetPaths.post)?.scene;
+  const post = preparedPost ?? createFallbackPost();
+  post.name = "asset:geodesic-ray-post";
+  post.scale.setScalar(geodesicRayAssetScale);
+  if (preparedPost) {
+    post.position.y = geodesicRayPostAssetFloorOffsetMeters;
+  }
   postRoot.add(post);
 
-  const flashlight = assets?.instantiateGltf(geodesicFlashlightAssetPaths.flashlight)?.scene ?? createFallbackFlashlight();
-  flashlight.name = "asset:geodesic-flashlight-head";
-  flashlight.scale.setScalar(0.42);
-  flashlight.position.set(0.18, 0.92, 0);
-  headRoot.add(flashlight);
+  const lightsaber = assets?.instantiateGltf(geodesicRayAssetPaths.lightsaber)?.scene ?? createFallbackLightsaber();
+  lightsaber.name = "asset:geodesic-ray-lightsaber";
+  lightsaber.scale.setScalar(geodesicRayAssetScale);
+  lightsaber.position.set(
+    geodesicRayEmitterPosition.x,
+    geodesicRayEmitterPosition.y,
+    geodesicRayEmitterPosition.z,
+  );
+  headRoot.add(lightsaber);
 
   postRoot.updateMatrixWorld(true);
   headRoot.updateMatrixWorld(true);
 
   return [
     ...collectRuntimeObjectRenderSourceMeshes(
-      "geodesic-flashlight:post-source",
+      "geodesic-ray:post-source",
       postRoot,
-      geodesicFlashlightPostArchetypePrefix,
+      geodesicRayPostArchetypePrefix,
     ),
     ...collectRuntimeObjectRenderSourceMeshes(
-      "geodesic-flashlight:head-source",
+      "geodesic-ray:head-source",
       headRoot,
-      geodesicFlashlightHeadArchetypePrefix,
+      geodesicRayHeadArchetypePrefix,
     ),
   ];
 }
@@ -166,20 +177,20 @@ function createFallbackPost(): THREE.Object3D {
   return root;
 }
 
-function createFallbackFlashlight(): THREE.Object3D {
+function createFallbackLightsaber(): THREE.Object3D {
   const root = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.07, 0.09, 0.32, 18),
-    new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5, metalness: 0.35 }),
+  const hilt = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.045, 0.06, 0.22, 18),
+    new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.38, metalness: 0.42 }),
   );
-  body.rotation.z = Math.PI / 2;
-  body.position.x = 0.08;
-  const lens = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.095, 0.095, 0.035, 18),
-    new THREE.MeshStandardMaterial({ color: 0x67e8f9, emissive: 0x0e7490, roughness: 0.22 }),
+  hilt.rotation.z = Math.PI / 2;
+  hilt.position.x = 0.04;
+  const blade = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.022, 0.022, 0.42, 18),
+    new THREE.MeshStandardMaterial({ color: 0x38f2ff, emissive: 0x0e7490, roughness: 0.18 }),
   );
-  lens.rotation.z = Math.PI / 2;
-  lens.position.x = 0.26;
-  root.add(body, lens);
+  blade.rotation.z = Math.PI / 2;
+  blade.position.x = 0.34;
+  root.add(hilt, blade);
   return root;
 }

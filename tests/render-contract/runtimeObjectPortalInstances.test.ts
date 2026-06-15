@@ -1,6 +1,12 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { createRootVisiblePortalPath, updateRuntimeObjectRenderArchetypeInstances } from "../../src/render/three/renderPortalInstances";
+import {
+  buildVisiblePathsByDestinationCell,
+  createRootVisiblePortalPath,
+  flattenVisiblePortalPathGroups,
+  updateRuntimeObjectRenderArchetypeInstances,
+} from "../../src/render/three/renderPortalInstances";
+import type { PortalRenderPath } from "../../src/cell-complex/portalPaths";
 import {
   createRuntimeObjectRenderArchetypeDiagnostics,
   groupRuntimeObjectRenderRecordsByArchetype,
@@ -85,6 +91,31 @@ describe("updateRuntimeObjectRenderArchetypeInstances", () => {
     expect(diagnostics.capacityOverflowCount).toBe(1);
     expect(diagnostics.capacityOverflowArchetypes).toEqual(["flag-text"]);
   });
+
+  it("flattens statically-kept visible path groups for runtime object rendering", () => {
+    const rootPath = createRootVisiblePortalPath("room-a");
+    const portalPath = {
+      ...createRootVisiblePortalPath("room-b"),
+      pathId: 4,
+      destinationCellId: "room-b",
+      depth: 1,
+    };
+    const groups = buildVisiblePathsByDestinationCell(
+      new Map<string, readonly PortalRenderPath[]>([
+        ["room-a", [portalRenderPath("room-a", 0)]],
+        ["room-b", [portalRenderPath("room-b", 4)]],
+      ]),
+      new Map([
+        [rootPath.pathId, rootPath],
+        [portalPath.pathId, portalPath],
+      ]),
+    );
+
+    expect(flattenVisiblePortalPathGroups(groups).map((path) => path.destinationCellId)).toEqual([
+      "room-a",
+      "room-b",
+    ]);
+  });
 });
 
 function createArchetype(archetypeKey: string, capacity: number): RuntimeObjectRenderArchetype {
@@ -112,4 +143,30 @@ function readMatrix(mesh: THREE.InstancedMesh, index: number): readonly number[]
   const matrix = new THREE.Matrix4();
   mesh.getMatrixAt(index, matrix);
   return matrix.elements;
+}
+
+function portalRenderPath(destinationCellId: string, id: number): PortalRenderPath {
+  const identity = {
+    rotation: {
+      m00: 1,
+      m01: 0,
+      m02: 0,
+      m10: 0,
+      m11: 1,
+      m12: 0,
+      m20: 0,
+      m21: 0,
+      m22: 1,
+    },
+    translation: { x: 0, y: 0, z: 0 },
+  };
+  return {
+    id,
+    rootCellId: "room-a",
+    destinationCellId,
+    depth: id === 0 ? 0 : 1,
+    steps: [],
+    destinationFromRoot: identity,
+    rootFromDestination: identity,
+  };
 }

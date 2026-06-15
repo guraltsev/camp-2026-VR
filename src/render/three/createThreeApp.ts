@@ -13,7 +13,7 @@ import type { DebugSettings } from "../../glue/debugSettings";
 import { hasActiveDebugOption, type DebugOptionId } from "../../glue/debugOptions";
 import type { DebugLevelId } from "../../glue/debugLevels";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
-import { distanceVec3, dotVec3, normalizeVec3, subVec3, vec3 } from "../../math/vec3";
+import { normalizeVec3, vec3 } from "../../math/vec3";
 import { movePlayer } from "../../movement/movePlayer";
 import { createAppCommandDispatcher } from "../../runtime/appCommandDispatcher";
 import type { RuntimeCommand } from "../../runtime/runtimeCommands";
@@ -62,7 +62,6 @@ import {
 } from "../../world-objects/placedFlags";
 import {
   extendGeodesic,
-  getGeodesicTail,
   placeGeodesicCannonAtFloorPoint,
   shootGeodesic,
 } from "../../world-objects/geodesicCannon";
@@ -71,17 +70,17 @@ import {
   runtimeObjectToDynamicObjectState,
   type RuntimeWorldObject,
 } from "../../world-objects/runtimeObjectRegistry";
-import { getDynamicObjectCollisionBounds } from "../../movement/collision";
+import { getDynamicObjectCollisionBounds, type SimpleCylinderBounds } from "../../movement/collision";
 import { createDesktopFlagEditor } from "../dom/desktopFlagEditor";
 import { createDesktopToolIndicator } from "../dom/desktopToolIndicator";
 import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
 import { createAimCrossMarker } from "./aimCrossMarker";
-import { resolveAimTarget } from "./aimTarget";
+import { geodesicSegmentAimRadiusMeters, resolveAimTarget } from "./aimTarget";
 import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRenderer";
 import {
   collectGeodesicRuntimeRenderRecords,
   createGeodesicRuntimeRenderSources,
-  getGeodesicFlashlightArchetypeKeys,
+  getGeodesicRayArchetypeKeys,
 } from "./geodesicCannonRenderer";
 import {
   buildCellRenderArchetypes,
@@ -106,6 +105,7 @@ import {
   createPortalInstanceDiagnostics,
   createPortalInstanceRenderDebugState,
   buildVisiblePathsByDestinationCell,
+  flattenVisiblePortalPathGroups,
   groupVisiblePortalPathsByDestinationCell,
   updateCellRenderArchetypeInstances,
   updateRuntimeObjectRenderArchetypeInstances,
@@ -165,11 +165,11 @@ import {
   type VisiblePortalPathDebugSummary,
   type VisiblePortalPathLookupResult,
 } from "./visiblePortalPaths";
-import { rigidTransformToThreeMatrix, worldPointToThree } from "./worldAxes";
+import { rigidTransformToThreeMatrix, threePointToWorld, worldPointToThree } from "./worldAxes";
 import { createXrControls } from "./xrControls";
 import { createXrEntryUi } from "./xrEntryUi";
 import { resolveXrPortalEyeRenderRoot, type XrPortalEyeRenderRoot } from "./xrPortalEye";
-import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose } from "./xrPlayerRig";
+import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose, xrRigidTransformLocalMatrix } from "./xrPlayerRig";
 import { resolveVrPalettePlacement } from "./vrPalettePlacement";
 import { createXrScenePaletteInput } from "./xrScenePaletteInput";
 import {
@@ -214,6 +214,10 @@ const renderCameraNearMeters = 0.001;
 const renderCameraFarMeters = 250;
 const underCellInfinityFloorSizeMeters = 1_000;
 const underCellInfinityFloorWorldZMeters = -1;
+const selectableObjectHitboxDebugColor = 0xffc400;
+const selectableGeodesicSegmentHitboxDebugColor = 0xff2bd6;
+const selectableHitboxDebugOpacity = 0.24;
+const selectableHitboxDebugRenderOrder = 930;
 
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const scene = new THREE.Scene();
@@ -448,8 +452,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const runtimeObjectRootsById = new Map<string, THREE.Object3D>();
   const runtimeObjectRenderSourcesByKey = new Map<string, RuntimeObjectRenderSourceMesh>();
   const runtimeObjectRenderArchetypesByKey = new Map<string, RuntimeObjectRenderArchetype>();
+  const selectableHitboxDebugGroupsByCellId = new Map<string, THREE.Group>();
   const geodesicRuntimeRenderSources = createGeodesicRuntimeRenderSources(options.assets);
-  const geodesicFlashlightArchetypeKeys = getGeodesicFlashlightArchetypeKeys(geodesicRuntimeRenderSources);
+  const geodesicRayArchetypeKeys = getGeodesicRayArchetypeKeys(geodesicRuntimeRenderSources);
   const runtimeObjectRenderDiagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
   const portalInstanceDiagnostics = createPortalInstanceDiagnostics();
   const portalClipData = createPortalClipData({ maxVisiblePaths });
@@ -632,6 +637,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "place-flag") {
       tryPlaceFlagFromDesktopAim();
     }
+    if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "aim") {
+      tryExtendFocusedGeodesicFromDesktopAim();
+    }
     if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "geodesic-cannon") {
       tryUseGeodesicCannonToolFromDesktopAim();
     }
@@ -664,7 +672,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else {
       applyDesktopCameraPose();
     }
-    updateFloatingObjectTooltip(xrActive);
+    updateFloatingObjectTooltip(xrActive, xrFrame, xrReferenceSpace);
     const frameAfterCameraMs = performance.now();
     const frameBeforePortalMs = frameAfterCameraMs;
 
@@ -740,6 +748,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     syncDynamicObjectDebugWireframes();
     syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
     applyDesktopCameraPose();
     renderer.render(scene, camera);
   }
@@ -816,6 +825,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         runtime.dispose();
       }
       placedFlagRuntimes.clear();
+      for (const group of selectableHitboxDebugGroupsByCellId.values()) {
+        group.removeFromParent();
+        disposeObject3D(group);
+      }
+      selectableHitboxDebugGroupsByCellId.clear();
       for (const cellMesh of cellMeshes.values()) {
         disposeObject3D(cellMesh);
       }
@@ -1377,7 +1391,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       visiblePathById,
     );
     updatePortalVisiblePathInstances(visiblePathsByDestinationCell);
-    syncRuntimeObjectPortalInstances(visiblePaths);
+    syncRuntimeObjectPortalInstances(flattenVisiblePortalPathGroups(visiblePathsByDestinationCell));
   }
 
   function applyPortalVisiblePaths(
@@ -1472,6 +1486,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtimeObjectRenderDiagnostics,
       portalClipData.clipIndexByPathId,
     );
+    syncSelectableHitboxDebug();
   }
 
   function syncRuntimeObjectRenderSources(): void {
@@ -1558,7 +1573,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function collectRuntimeObjectRenderRecords(): readonly RuntimeObjectRenderRecord[] {
     return runtimeObjectRegistry.getAll().flatMap((object) => {
       if (object.portalRenderable && (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment")) {
-        return collectGeodesicRuntimeRenderRecords(object, geodesicFlashlightArchetypeKeys);
+        return collectGeodesicRuntimeRenderRecords(object, geodesicRayArchetypeKeys);
       }
 
       if (!object.portalRenderable || !runtimeObjectRootsById.has(object.id)) {
@@ -1653,7 +1668,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function getRuntimeObjectVisiblePaths(): readonly VisiblePortalPath[] {
     if (portalEyeRenderStates.length <= 1) {
-      return latestVisibleResult?.paths ?? [];
+      if (!latestVisibleResult) {
+        return [];
+      }
+
+      return flattenVisiblePortalPathGroups(buildVisiblePathsByDestinationCell(
+        portalStaticCull.tables.tablesByRootCellId.get(playerPose.cellId)?.pathsByDestinationCellId ?? new Map(),
+        latestVisibleResult.visiblePathById,
+      ));
     }
 
     const visiblePathsById = new Map<number, VisiblePortalPath>();
@@ -2110,26 +2132,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       syncPlacedFlagRuntime(result.object);
       menuState = setRuntimeMenuSelectedTool(menuState, "aim");
       syncDesktopPalette();
+      syncSelectableHitboxDebug();
     }
   }
 
   function tryUseGeodesicCannonToolFromDesktopAim(): void {
-    const activeGeodesicId = activeGeodesicCannonToolState.activeGeodesicId;
-    if (activeGeodesicId) {
-      const tail = getGeodesicTail(runtimeObjectRegistry, activeGeodesicId);
-      if (tail) {
-        const segment = extendGeodesic({
-          world: appState.world,
-          registry: runtimeObjectRegistry,
-          geodesicId: activeGeodesicId,
-        });
-        if (segment) {
-          syncRuntimeObjectPortalInstances();
-        }
-        return;
-      }
-    }
-
     const target = resolveCurrentAimTarget();
     if (target?.kind !== "floor") {
       return;
@@ -2166,7 +2173,45 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       selectedCannonId: result.object.id,
       activeGeodesicId: geodesicId,
     };
+    menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+    syncDesktopPalette();
     syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
+  }
+
+  function tryExtendFocusedGeodesicFromDesktopAim(): void {
+    const target = resolveCurrentAimTarget();
+    logVerboseAimClick(target);
+    if (!targetIsWithinInteractionRange(target)) {
+      return;
+    }
+
+    const geodesicId = target?.object?.kind === "geodesic-cannon"
+      ? target.object.activeGeodesicId
+      : target?.object?.kind === "geodesic-segment"
+        ? target.object.geodesicId
+        : undefined;
+    if (!geodesicId) {
+      return;
+    }
+
+    const segment = extendGeodesic({
+      world: appState.world,
+      registry: runtimeObjectRegistry,
+      geodesicId,
+    });
+    if (!segment) {
+      return;
+    }
+
+    activeGeodesicCannonToolState = {
+      selectedCannonId: target?.object?.kind === "geodesic-cannon"
+        ? target.object.id
+        : activeGeodesicCannonToolState.selectedCannonId,
+      activeGeodesicId: geodesicId,
+    };
+    syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
   }
 
   function tryOpenFocusedFlagEditor(): boolean {
@@ -2183,7 +2228,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return true;
   }
 
-  function updateFloatingObjectTooltip(xrActive: boolean): void {
+  function updateFloatingObjectTooltip(
+    xrActive: boolean,
+    xrFrame: XRFrame | undefined,
+    xrReferenceSpace: XRReferenceSpace | null,
+  ): void {
     if (menuState.isOpen || desktopFlagEditor.isOpen()) {
       floatingObjectTooltip.update({ visible: false });
       return;
@@ -2191,7 +2240,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const focused = findFocusedRuntimeObject();
     const text = focused ? getRuntimeObjectTooltipText(focused.object, xrActive ? "xr" : "desktop") : undefined;
-    const screenPosition = focused ? projectWorldPointToScreen(focused.tooltipAnchor) : undefined;
+    const anchor = focused && xrActive
+      ? resolveXrTooltipAnchor(xrFrame, xrReferenceSpace) ?? focused.tooltipAnchor
+      : focused?.tooltipAnchor;
+    const screenPosition = anchor ? projectWorldPointToScreen(anchor) : undefined;
 
     floatingObjectTooltip.update({
       visible: Boolean(text && screenPosition),
@@ -2220,8 +2272,42 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       world: appState.world,
       registry: runtimeObjectRegistry,
       camera,
-      visiblePortalPaths: latestVisibleResult?.paths ?? [],
+      visiblePortalPaths: getRuntimeObjectVisiblePaths(),
+      maxDistanceMeters: 24,
     });
+  }
+
+  function logVerboseAimClick(target: ReturnType<typeof resolveCurrentAimTarget>): void {
+    if (debugLevel !== "verbose") {
+      return;
+    }
+
+    if (!target) {
+      console.info("Aim click: no target within 24m.");
+      return;
+    }
+
+    const fields: Record<string, string | number | undefined> = {
+      kind: target.kind,
+      cellId: target.cellId,
+      portalPathId: target.portalPathId,
+      distanceMeters: roundNumber(target.distanceMeters),
+      localPoint: formatVec3(target.localPoint),
+      rootPoint: formatVec3(target.rootPoint),
+      localNormal: formatVec3(target.localNormal),
+    };
+
+    if (target.object) {
+      const interactionRange = target.object.tooltip?.rangeMeters ?? target.object.interactable?.rangeMeters;
+      fields.objectId = target.object.id;
+      fields.objectKind = target.object.kind;
+      fields.interactionRangeMeters = interactionRange;
+      fields.withinInteractionRange = interactionRange === undefined
+        ? undefined
+        : target.distanceMeters <= interactionRange ? "yes" : "no";
+    }
+
+    console.info("Aim click:", fields);
   }
 
   function findFocusedRuntimeObject(): {
@@ -2229,48 +2315,64 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     readonly distance: number;
     readonly tooltipAnchor: { readonly x: number; readonly y: number; readonly z: number };
   } | undefined {
-    const eye = getCameraWorldPosition();
-    const forward = getCameraForwardVector();
-    let best:
-      | {
-        readonly object: RuntimeWorldObject;
-        readonly distance: number;
-        readonly tooltipAnchor: { readonly x: number; readonly y: number; readonly z: number };
-      }
-      | undefined;
-
-    for (const object of runtimeObjectRegistry.getTooltipObjectsInCell(playerPose.cellId)) {
-      if (!object.tooltip && !object.interactable) {
-        continue;
-      }
-
-      const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
-      const target = bounds?.center ?? object.localPose.translation;
-      const distance = distanceVec3(eye, target);
-      const range = object.tooltip?.rangeMeters ?? object.interactable?.rangeMeters ?? 2.25;
-      if (distance > range || distance <= 0.001) {
-        continue;
-      }
-
-      const alignment = dotVec3(normalizeVec3(subVec3(target, eye)), forward);
-      if (alignment < Math.cos(Math.PI / 7)) {
-        continue;
-      }
-
-      if (!best || distance < best.distance) {
-        best = {
-          object,
-          distance,
-          tooltipAnchor: {
-            x: target.x,
-            y: target.y,
-            z: target.z + (bounds?.halfHeight ?? 0.35) + 0.25,
-          },
-        };
-      }
+    const target = resolveCurrentAimTarget();
+    const object = target?.object;
+    if (target?.kind !== "object" || !object || (!object.tooltip && !object.interactable)) {
+      return undefined;
     }
 
-    return best;
+    if (!targetIsWithinInteractionRange(target)) {
+      return undefined;
+    }
+
+    return {
+      object,
+      distance: target.distanceMeters,
+      tooltipAnchor: {
+        x: target.rootPoint.x,
+        y: target.rootPoint.y,
+        z: target.rootPoint.z + 0.18,
+      },
+    };
+  }
+
+  function targetIsWithinInteractionRange(target: ReturnType<typeof resolveCurrentAimTarget>): boolean {
+    const object = target?.object;
+    if (target?.kind !== "object" || !object || target.distanceMeters <= 0.001) {
+      return false;
+    }
+
+    return target.distanceMeters <= getRuntimeObjectInteractionRangeMeters(object);
+  }
+
+  function getRuntimeObjectInteractionRangeMeters(object: RuntimeWorldObject): number {
+    return object.tooltip?.rangeMeters ?? object.interactable?.rangeMeters ?? 2.5;
+  }
+
+  function resolveXrTooltipAnchor(
+    xrFrame: XRFrame | undefined,
+    xrReferenceSpace: XRReferenceSpace | null,
+  ): { readonly x: number; readonly y: number; readonly z: number } | undefined {
+    const session = renderer.xr.getSession();
+    if (!xrFrame || !xrReferenceSpace || !session) {
+      return undefined;
+    }
+
+    const source = [...session.inputSources].find((candidate) => candidate.targetRaySpace);
+    if (!source?.targetRaySpace) {
+      return undefined;
+    }
+
+    const pose = xrFrame.getPose(source.targetRaySpace, xrReferenceSpace);
+    if (!pose) {
+      return undefined;
+    }
+
+    const worldMatrix = xrRig.root.matrixWorld.clone().multiply(xrRigidTransformLocalMatrix(pose.transform));
+    const origin = new THREE.Vector3().setFromMatrixPosition(worldMatrix);
+    const direction = new THREE.Vector3(0, 0, -1).transformDirection(worldMatrix).normalize();
+    const anchor = origin.addScaledVector(direction, 1).add(new THREE.Vector3(0, 0.14, 0));
+    return threePointToWorld(anchor);
   }
 
   function getRuntimeObjectTooltipText(object: RuntimeWorldObject, inputMode: "desktop" | "xr"): string | undefined {
@@ -2324,16 +2426,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     activeGeodesicCannonToolState = {};
     syncRuntimeObjectPortalInstances();
-  }
-
-  function getCameraWorldPosition(): { readonly x: number; readonly y: number; readonly z: number } {
-    camera.updateMatrixWorld(true);
-    const position = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
-    return {
-      x: position.x,
-      y: -position.z,
-      z: position.y,
-    };
+    syncSelectableHitboxDebug();
   }
 
   function getCameraForwardVector(): { readonly x: number; readonly y: number; readonly z: number } {
@@ -2354,6 +2447,55 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     for (const runtime of dynamicObjectRuntimes) {
       runtime.setCollisionWireframeVisible(visible);
     }
+  }
+
+  function syncSelectableHitboxDebug(): void {
+    for (const group of selectableHitboxDebugGroupsByCellId.values()) {
+      group.removeFromParent();
+      disposeObject3D(group);
+    }
+    selectableHitboxDebugGroupsByCellId.clear();
+
+    if (!hasActiveDebugOption(debugLevel, debugOptions, "selectable-hitboxes")) {
+      return;
+    }
+
+    for (const cell of appState.world.cells) {
+      const cellRoot = cellMeshes.get(cell.id);
+      if (!cellRoot) {
+        continue;
+      }
+
+      const group = new THREE.Group();
+      group.name = `selectable-hitboxes:${cell.id}`;
+      for (const object of runtimeObjectRegistry.getObjectsInCell(cell.id)) {
+        const hitbox = buildSelectableHitboxDebugMesh(object);
+        if (hitbox) {
+          group.add(hitbox);
+        }
+      }
+
+      if (group.children.length === 0) {
+        disposeObject3D(group);
+        continue;
+      }
+
+      cellRoot.add(group);
+      selectableHitboxDebugGroupsByCellId.set(cell.id, group);
+    }
+  }
+
+  function buildSelectableHitboxDebugMesh(object: RuntimeWorldObject): THREE.Object3D | undefined {
+    if (!object.tooltip && !object.interactable) {
+      return undefined;
+    }
+
+    if (object.kind === "geodesic-segment") {
+      return buildGeodesicSegmentSelectableHitboxDebugMesh(object);
+    }
+
+    const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
+    return bounds ? buildCylinderSelectableHitboxDebugMesh(bounds, selectableObjectHitboxDebugColor) : undefined;
   }
 
   function dispatchRuntimeCommand(command: RuntimeCommand): void {
@@ -2861,6 +3003,84 @@ function createUnderCellInfinityFloor(): THREE.Mesh {
   mesh.receiveShadow = false;
   mesh.castShadow = false;
   return mesh;
+}
+
+function buildCylinderSelectableHitboxDebugMesh(
+  bounds: SimpleCylinderBounds,
+  color: number,
+): THREE.Mesh {
+  const geometry = new THREE.CylinderGeometry(1, 1, 1, 28, 1, true);
+  const material = createSelectableHitboxDebugMaterial(color);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = "selectable-hitbox:cylinder";
+  mesh.position.copy(worldPointToThree(bounds.center));
+  mesh.scale.set(bounds.radius, bounds.halfHeight * 2, bounds.radius);
+  mesh.renderOrder = selectableHitboxDebugRenderOrder;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+function buildGeodesicSegmentSelectableHitboxDebugMesh(
+  object: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>,
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "selectable-hitbox:geodesic-segment";
+  group.renderOrder = selectableHitboxDebugRenderOrder;
+  group.frustumCulled = false;
+
+  const length = Math.max(0.001, object.lengthMeters);
+  const segmentGeometry = new THREE.CylinderGeometry(
+    geodesicSegmentAimRadiusMeters,
+    geodesicSegmentAimRadiusMeters,
+    length,
+    20,
+    1,
+    true,
+  );
+  const material = createSelectableHitboxDebugMaterial(selectableGeodesicSegmentHitboxDebugColor);
+  const segmentMesh = new THREE.Mesh(segmentGeometry, material);
+  segmentMesh.name = "selectable-hitbox:geodesic-segment-body";
+  segmentMesh.position.copy(worldPointToThree({
+    x: object.start.x + object.direction.x * length * 0.5,
+    y: object.start.y + object.direction.y * length * 0.5,
+    z: object.start.z + object.direction.z * length * 0.5,
+  }));
+  const threeDirection = worldPointToThree(object.direction).normalize();
+  segmentMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), threeDirection);
+  segmentMesh.renderOrder = selectableHitboxDebugRenderOrder;
+  segmentMesh.frustumCulled = false;
+  group.add(segmentMesh);
+
+  const capGeometry = new THREE.SphereGeometry(geodesicSegmentAimRadiusMeters, 16, 8);
+  const startCap = new THREE.Mesh(capGeometry, material.clone());
+  startCap.name = "selectable-hitbox:geodesic-segment-start-cap";
+  startCap.position.copy(worldPointToThree(object.start));
+  startCap.renderOrder = selectableHitboxDebugRenderOrder;
+  startCap.frustumCulled = false;
+  group.add(startCap);
+
+  const endCap = new THREE.Mesh(capGeometry.clone(), material.clone());
+  endCap.name = "selectable-hitbox:geodesic-segment-end-cap";
+  endCap.position.copy(worldPointToThree({
+    x: object.start.x + object.direction.x * length,
+    y: object.start.y + object.direction.y * length,
+    z: object.start.z + object.direction.z * length,
+  }));
+  endCap.renderOrder = selectableHitboxDebugRenderOrder;
+  endCap.frustumCulled = false;
+  group.add(endCap);
+
+  return group;
+}
+
+function createSelectableHitboxDebugMaterial(color: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color,
+    depthWrite: false,
+    opacity: selectableHitboxDebugOpacity,
+    side: THREE.DoubleSide,
+    transparent: true,
+  });
 }
 
 function disableFrustumCulling(root: THREE.Object3D): void {

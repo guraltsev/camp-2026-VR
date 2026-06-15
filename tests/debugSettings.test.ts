@@ -71,12 +71,15 @@ describe("canApplyDebugSettingsAtRuntime", () => {
     ).toBe(true);
   });
 
-  it("parses and allows collision geometry wireframe debug options at runtime", () => {
-    const parsed = parseDebugOptions("forbidden-zone-wireframes,object-collision-wireframes");
+  it("parses and allows collision and selectable hitbox debug options at runtime", () => {
+    const parsed = parseDebugOptions("forbidden-zone-wireframes,object-collision-wireframes,selectable-hitboxes");
 
-    expect(parsed).toEqual(["forbidden-zone-wireframes", "object-collision-wireframes"]);
+    expect(parsed).toEqual(["forbidden-zone-wireframes", "object-collision-wireframes", "selectable-hitboxes"]);
     expect(hasActiveDebugOption("basic", parsed, "forbidden-zone-wireframes")).toBe(true);
-    expect(serializeDebugOptions(parsed)).toBe("forbidden-zone-wireframes,object-collision-wireframes");
+    expect(hasActiveDebugOption("basic", parsed, "selectable-hitboxes")).toBe(true);
+    expect(serializeDebugOptions(parsed)).toBe(
+      "forbidden-zone-wireframes,object-collision-wireframes,selectable-hitboxes",
+    );
     expect(
       canApplyDebugSettingsAtRuntime({
         debugLevel: "basic",

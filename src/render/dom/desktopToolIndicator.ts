@@ -5,6 +5,7 @@ const signIconSources: Record<PlacedFlagType, string> = {
   WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
   WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
 };
+const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 
 export interface DesktopToolIndicator {
   readonly root: HTMLDivElement;
@@ -35,16 +36,12 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   signIcon.alt = "";
   signIcon.decoding = "async";
 
-  const lightIcon = createSvgIcon("desktop-tool-indicator-svg", "0 0 24 24", [
-    ["path", { d: "M18 6l-6 6" }],
-    ["path", { d: "M9 11l4 4" }],
-    ["path", { d: "M6 14l4 4" }],
-    ["path", { d: "M5 13l6 6" }],
-    ["path", { d: "M13 5l6 6" }],
-    ["path", { d: "M15 3l6 6" }],
-  ]);
-  lightIcon.classList.add("desktop-tool-indicator-light-icon");
-  icon.append(aimIcon, signIcon, lightIcon);
+  const rayIcon = document.createElement("img");
+  rayIcon.className = "desktop-tool-indicator-ray-icon";
+  rayIcon.alt = "";
+  rayIcon.decoding = "async";
+  rayIcon.src = rayToolIconSource;
+  icon.append(aimIcon, signIcon, rayIcon);
 
   const label = document.createElement("span");
   label.className = "desktop-tool-indicator-label";
@@ -62,11 +59,11 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
       root.classList.toggle("desktop-tool-indicator-WoodenSign1", flagType === "WoodenSign1");
       root.classList.toggle("desktop-tool-indicator-WoodenSign2", flagType === "WoodenSign2");
       signIcon.src = signIconSources[flagType];
-      label.textContent = toolId === "geodesic-cannon" ? "Light" : toolId === "place-flag" ? "Sign" : toolId === "aim" ? "Aim" : "";
+      label.textContent = toolId === "geodesic-cannon" ? "Ray" : toolId === "place-flag" ? "Sign" : toolId === "aim" ? "Aim" : "";
       root.ariaLabel = toolId === "place-flag"
         ? "Selected tool: sign"
         : toolId === "geodesic-cannon"
-          ? "Selected tool: geodesic flashlight"
+          ? "Selected tool: geodesic ray"
           : toolId === "aim"
             ? "Selected tool: aim"
             : "No selected tool";

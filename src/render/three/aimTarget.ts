@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex";
 import type { CompiledPrismCell } from "../../cell-complex/prismCells";
-import { distanceVec3, dotVec3, normalizeVec3, type Vec3 } from "../../math/vec3";
+import { distanceVec3, dotVec3, normalizeVec3, subVec3, type Vec3 } from "../../math/vec3";
 import { getDynamicObjectCollisionBounds, signedDistanceToSide, type SimpleCylinderBounds } from "../../movement/collision";
 import { runtimeObjectToDynamicObjectState, type RuntimeObjectRegistry, type RuntimeWorldObject } from "../../world-objects/runtimeObjectRegistry";
 import type { VisiblePortalPath } from "./visiblePortalPaths";
@@ -37,9 +37,16 @@ interface CellRay {
   readonly rootFromCellMatrix: THREE.Matrix4;
 }
 
+interface ObjectAimHit {
+  readonly distance: number;
+  readonly normal: Vec3;
+  readonly point?: Vec3;
+}
+
 const centerNdc = { x: 0, y: 0 };
 const aimPointToleranceMeters = 1e-5;
 const fallbackObjectRadiusMeters = 0.25;
+export const geodesicSegmentAimRadiusMeters = 0.28;
 
 export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | undefined {
   const maxDistanceMeters = request.maxDistanceMeters ?? 24;
@@ -102,15 +109,17 @@ function resolveObjectAimTargets(
 
   for (const object of registry.getObjectsInCell(cell.id)) {
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
-    const hit = bounds
-      ? intersectRayWithVerticalCylinder(ray.origin, ray.direction, bounds)
-      : intersectRayWithSphere(ray.origin, ray.direction, object.localPose.translation, fallbackObjectRadiusMeters);
+    const hit = object.kind === "geodesic-segment"
+      ? intersectRayWithSegmentCapsule(ray.origin, ray.direction, object.start, object.direction, object.lengthMeters)
+      : bounds
+        ? intersectRayWithVerticalCylinder(ray.origin, ray.direction, bounds)
+        : intersectRayWithSphere(ray.origin, ray.direction, object.localPose.translation, fallbackObjectRadiusMeters);
 
     if (!hit || hit.distance > maxDistanceMeters) {
       continue;
     }
 
-    const localPoint = pointOnRay(ray.origin, ray.direction, hit.distance);
+    const localPoint = hit.point ?? pointOnRay(ray.origin, ray.direction, hit.distance);
     hits.push({
       kind: "object",
       cellId: cell.id,
@@ -126,6 +135,182 @@ function resolveObjectAimTargets(
   }
 
   return hits;
+}
+
+function intersectRayWithSegmentCapsule(
+  origin: Vec3,
+  direction: Vec3,
+  segmentStart: Vec3,
+  segmentDirection: Vec3,
+  segmentLengthMeters: number,
+): ObjectAimHit | undefined {
+  if (!(segmentLengthMeters > 0)) {
+    return undefined;
+  }
+
+  const lateral = normalizeVec3OrFallback({
+    x: -segmentDirection.y,
+    y: segmentDirection.x,
+    z: 0,
+  });
+  const offset = subVec3(origin, segmentStart);
+  const localOrigin = {
+    x: dotVec3(offset, segmentDirection),
+    y: dotVec3(offset, lateral),
+    z: offset.z,
+  };
+  const localDirection = {
+    x: dotVec3(direction, segmentDirection),
+    y: dotVec3(direction, lateral),
+    z: direction.z,
+  };
+  const hits: ObjectAimHit[] = [];
+
+  pushSegmentCylinderHit(hits, localOrigin, localDirection, origin, direction, segmentStart, segmentDirection, segmentLengthMeters);
+  pushSegmentSphereHit(hits, localOrigin, localDirection, origin, direction, segmentStart, segmentDirection, 0);
+  pushSegmentSphereHit(
+    hits,
+    localOrigin,
+    localDirection,
+    origin,
+    direction,
+    segmentStart,
+    segmentDirection,
+    segmentLengthMeters,
+  );
+
+  return hits.length > 0
+    ? hits.reduce((best, hit) => hit.distance < best.distance ? hit : best)
+    : undefined;
+}
+
+function pushSegmentCylinderHit(
+  hits: ObjectAimHit[],
+  localOrigin: Vec3,
+  localDirection: Vec3,
+  origin: Vec3,
+  direction: Vec3,
+  segmentStart: Vec3,
+  segmentDirection: Vec3,
+  segmentLengthMeters: number,
+): void {
+  const a = localDirection.y * localDirection.y + localDirection.z * localDirection.z;
+  if (a <= aimPointToleranceMeters) {
+    return;
+  }
+
+  const b = 2 * (localOrigin.y * localDirection.y + localOrigin.z * localDirection.z);
+  const c = localOrigin.y * localOrigin.y + localOrigin.z * localOrigin.z -
+    geodesicSegmentAimRadiusMeters * geodesicSegmentAimRadiusMeters;
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) {
+    return;
+  }
+
+  const root = Math.sqrt(discriminant);
+  pushSegmentCylinderDistance(
+    hits,
+    (-b - root) / (2 * a),
+    localOrigin,
+    localDirection,
+    origin,
+    direction,
+    segmentStart,
+    segmentDirection,
+    segmentLengthMeters,
+  );
+  pushSegmentCylinderDistance(
+    hits,
+    (-b + root) / (2 * a),
+    localOrigin,
+    localDirection,
+    origin,
+    direction,
+    segmentStart,
+    segmentDirection,
+    segmentLengthMeters,
+  );
+}
+
+function pushSegmentCylinderDistance(
+  hits: ObjectAimHit[],
+  distance: number,
+  localOrigin: Vec3,
+  localDirection: Vec3,
+  origin: Vec3,
+  direction: Vec3,
+  segmentStart: Vec3,
+  segmentDirection: Vec3,
+  segmentLengthMeters: number,
+): void {
+  if (distance <= aimPointToleranceMeters) {
+    return;
+  }
+
+  const segmentDistance = localOrigin.x + localDirection.x * distance;
+  if (segmentDistance < -aimPointToleranceMeters || segmentDistance > segmentLengthMeters + aimPointToleranceMeters) {
+    return;
+  }
+
+  const point = pointOnRay(origin, direction, distance);
+  const centerlinePoint = pointOnSegmentCenterline(segmentStart, segmentDirection, segmentDistance);
+  hits.push({
+    distance,
+    normal: normalizeVec3OrFallback(subVec3(point, centerlinePoint)),
+    point,
+  });
+}
+
+function pushSegmentSphereHit(
+  hits: ObjectAimHit[],
+  localOrigin: Vec3,
+  localDirection: Vec3,
+  origin: Vec3,
+  direction: Vec3,
+  segmentStart: Vec3,
+  segmentDirection: Vec3,
+  segmentDistance: number,
+): void {
+  const sphereOrigin = {
+    x: localOrigin.x - segmentDistance,
+    y: localOrigin.y,
+    z: localOrigin.z,
+  };
+  const b = 2 * dotVec3(sphereOrigin, localDirection);
+  const c = dotVec3(sphereOrigin, sphereOrigin) -
+    geodesicSegmentAimRadiusMeters * geodesicSegmentAimRadiusMeters;
+  const discriminant = b * b - 4 * c;
+  if (discriminant < 0) {
+    return;
+  }
+
+  const root = Math.sqrt(discriminant);
+  const near = (-b - root) / 2;
+  const far = (-b + root) / 2;
+  const distance = near > aimPointToleranceMeters
+    ? near
+    : far > aimPointToleranceMeters
+      ? far
+      : undefined;
+  if (distance === undefined) {
+    return;
+  }
+
+  const point = pointOnRay(origin, direction, distance);
+  const center = pointOnSegmentCenterline(segmentStart, segmentDirection, segmentDistance);
+  hits.push({
+    distance,
+    normal: normalizeVec3OrFallback(subVec3(point, center)),
+    point,
+  });
+}
+
+function pointOnSegmentCenterline(segmentStart: Vec3, segmentDirection: Vec3, distance: number): Vec3 {
+  return {
+    x: segmentStart.x + segmentDirection.x * distance,
+    y: segmentStart.y + segmentDirection.y * distance,
+    z: segmentStart.z + segmentDirection.z * distance,
+  };
 }
 
 function resolveFloorAimTarget(
@@ -177,7 +362,7 @@ function intersectRayWithVerticalCylinder(
   origin: Vec3,
   direction: Vec3,
   bounds: SimpleCylinderBounds,
-): { readonly distance: number; readonly normal: Vec3 } | undefined {
+): ObjectAimHit | undefined {
   const hits: Array<{ readonly distance: number; readonly normal: Vec3 }> = [];
   const dx = origin.x - bounds.center.x;
   const dy = origin.y - bounds.center.y;
@@ -254,7 +439,7 @@ function intersectRayWithSphere(
   direction: Vec3,
   center: Vec3,
   radius: number,
-): { readonly distance: number; readonly normal: Vec3 } | undefined {
+): ObjectAimHit | undefined {
   const offset = {
     x: origin.x - center.x,
     y: origin.y - center.y,
@@ -318,6 +503,14 @@ function distanceSquared2(a: Vec3, b: Vec3): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return dx * dx + dy * dy;
+}
+
+function normalizeVec3OrFallback(direction: Vec3): Vec3 {
+  try {
+    return normalizeVec3(direction);
+  } catch {
+    return { x: 0, y: 0, z: 1 };
+  }
 }
 
 function pathContainsNdcPoint(path: VisiblePortalPath, point: { readonly x: number; readonly y: number }): boolean {

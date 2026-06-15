@@ -39,6 +39,11 @@ export const debugOptionDefinitions = [
     label: "Object Collision Wireframes",
     description: "Render wireframe cylinders for object collision shapes.",
   },
+  {
+    id: "selectable-hitboxes",
+    label: "Selectable Hitboxes",
+    description: "Render colored volumes used by the aimer for selectable objects.",
+  },
 ] as const;
 
 export type DebugOptionId = (typeof debugOptionDefinitions)[number]["id"];

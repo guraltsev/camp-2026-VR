@@ -5,11 +5,13 @@ import {
   collectGeodesicRuntimeRenderRecords,
   composeSegmentMatrix,
   createGeodesicRuntimeRenderSources,
-  geodesicFlashlightHeadArchetypePrefix,
-  geodesicFlashlightPostArchetypePrefix,
+  geodesicRayAssetPaths,
+  geodesicRayHeadArchetypePrefix,
+  geodesicRayPostArchetypePrefix,
   geodesicSegmentArchetypeKey,
-  getGeodesicFlashlightArchetypeKeys,
+  getGeodesicRayArchetypeKeys,
 } from "../../src/render/three/geodesicCannonRenderer";
+import type { PreparedWorldAssets } from "../../src/render/three/preloadWorldAssets";
 import type { GeodesicCannonObject, GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 
@@ -44,16 +46,26 @@ describe("geodesic cannon renderer", () => {
     expect(archetype.capacity).toBe(3);
   });
 
-  it("publishes flashlight-on-post records from shared source archetype keys", () => {
+  it("publishes ray-emitter-on-post records from shared source archetype keys", () => {
     const sources = createGeodesicRuntimeRenderSources();
-    const flashlightKeys = getGeodesicFlashlightArchetypeKeys(sources);
-    const records = collectGeodesicRuntimeRenderRecords(createFlashlight(), flashlightKeys);
+    const rayKeys = getGeodesicRayArchetypeKeys(sources);
+    const records = collectGeodesicRuntimeRenderRecords(createRayEmitter(), rayKeys);
 
-    expect(flashlightKeys.length).toBeGreaterThan(0);
-    expect(flashlightKeys.some((key) => key.startsWith(`${geodesicFlashlightPostArchetypePrefix}:`))).toBe(true);
-    expect(flashlightKeys.some((key) => key.startsWith(`${geodesicFlashlightHeadArchetypePrefix}:`))).toBe(true);
-    expect(records).toHaveLength(flashlightKeys.length);
-    expect(records.every((record) => record.objectId === "flashlight-a" && record.cellId === "cell-a")).toBe(true);
+    expect(rayKeys.length).toBeGreaterThan(0);
+    expect(rayKeys.some((key) => key.startsWith(`${geodesicRayPostArchetypePrefix}:`))).toBe(true);
+    expect(rayKeys.some((key) => key.startsWith(`${geodesicRayHeadArchetypePrefix}:`))).toBe(true);
+    expect(records).toHaveLength(rayKeys.length);
+    expect(records.every((record) => record.objectId === "ray-emitter-a" && record.cellId === "cell-a")).toBe(true);
+  });
+
+  it("raises prepared post assets so the post is not buried below the floor", () => {
+    const sources = createGeodesicRuntimeRenderSources(createPreparedRayAssets());
+    const postSource = sources.find((source) => source.archetypeKey.startsWith(`${geodesicRayPostArchetypePrefix}:`));
+
+    expect(postSource).toBeDefined();
+    const bounds = getSourceMeshWorldBounds(postSource!);
+
+    expect(bounds.min.y).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -74,9 +86,9 @@ function createSegment(overrides: Partial<GeodesicSegmentObject> = {}): Geodesic
   };
 }
 
-function createFlashlight(): GeodesicCannonObject {
+function createRayEmitter(): GeodesicCannonObject {
   return {
-    id: "flashlight-a",
+    id: "ray-emitter-a",
     kind: "geodesic-cannon",
     cellId: "cell-a",
     localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
@@ -86,4 +98,33 @@ function createFlashlight(): GeodesicCannonObject {
     geodesicIds: ["g-a"],
     aimYawRadians: 0,
   };
+}
+
+function createPreparedRayAssets(): PreparedWorldAssets {
+  return {
+    getTexture: () => undefined,
+    getConfiguredTexture: () => undefined,
+    instantiateGltf(assetPath) {
+      if (assetPath === geodesicRayAssetPaths.post) {
+        const scene = new THREE.Group();
+        scene.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 2, 0.2), new THREE.MeshBasicMaterial()));
+        return { scene, animations: [] };
+      }
+
+      if (assetPath === geodesicRayAssetPaths.lightsaber) {
+        const scene = new THREE.Group();
+        scene.add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.08), new THREE.MeshBasicMaterial()));
+        return { scene, animations: [] };
+      }
+
+      return undefined;
+    },
+  };
+}
+
+function getSourceMeshWorldBounds(source: { readonly mesh: THREE.Mesh }): THREE.Box3 {
+  source.mesh.updateWorldMatrix(true, false);
+  const geometry = source.mesh.geometry;
+  geometry.computeBoundingBox();
+  return geometry.boundingBox!.clone().applyMatrix4(source.mesh.matrixWorld);
 }

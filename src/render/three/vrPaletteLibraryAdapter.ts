@@ -1,5 +1,5 @@
 import { Component, Container, Image, Text } from "@pmndrs/uikit";
-import { ArrowLeft, Crosshair, Flashlight, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
+import { ArrowLeft, Crosshair, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -59,6 +59,7 @@ const signIconSources: Record<PlacedFlagType, string> = {
   WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
   WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
 };
+const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const signTypeLabels: Record<PlacedFlagType, string> = {
   WoodenSign1: "Wooden Sign 1",
   WoodenSign2: "Wooden Sign 2",
@@ -319,7 +320,7 @@ function buildMainContent(
   row.add(
     createToolTile("aim", "Aim", content.selectedTool, options),
     createToolTile("place-flag", "Sign", content.selectedTool, options, content.placeFlagType),
-    createToolTile("geodesic-cannon", "Light", content.selectedTool, options),
+    createToolTile("geodesic-cannon", "Ray", content.selectedTool, options),
   );
 
   panel.add(row);
@@ -573,10 +574,25 @@ function createToolIcon(
   }
 
   if (toolId === "geodesic-cannon") {
-    return new Flashlight(createLucideIconProperties());
+    return createRayIcon();
   }
 
   return new Container({ width: 64, height: 64, opacity: 0 });
+}
+
+function createRayIcon(): Component<any> {
+  const image = new Image({
+    src: rayToolIconSource,
+    width: 88,
+    height: 88,
+    objectFit: "fill",
+    keepAspectRatio: true,
+    depthTest: false,
+    depthWrite: false,
+    renderOrder: 1002,
+  });
+  image.userData.scenePaletteIconSrc = rayToolIconSource;
+  return image;
 }
 
 function createSignIcon(signType: PlacedFlagType): Container {

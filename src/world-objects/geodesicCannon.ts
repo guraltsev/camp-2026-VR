@@ -93,12 +93,12 @@ export interface PlaceGeodesicCannonResult {
 
 const defaultCannonCollision: SimpleCollisionCylinder = {
   radius: 0.3,
-  height: 0.5,
-  offset: { x: 0, y: 0, z: 0.25 },
+  height: 1.25,
+  offset: { x: 0, y: 0, z: 0.625 },
 };
-const defaultSegmentHeightMeters = 0.92;
-const flashlightMuzzleOffsetMeters = 0.34;
-const defaultTraceLengthMeters = 1;
+export const geodesicRayBeamHeightMeters = 1.08;
+export const geodesicRayBeamStartOffsetMeters = 0.2;
+const defaultTraceLengthMeters = 2;
 const portalStartEpsilonMeters = 1e-4;
 const intersectionTolerance = 1e-7;
 
@@ -116,8 +116,8 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
     collision: options.collision ?? defaultCannonCollision,
     portalRenderable: true,
     tooltip: {
-      label: "Geodesic flashlight",
-      rangeMeters: 2.25,
+      label: "Geodesic ray emitter",
+      rangeMeters: 2.5,
     },
     activeGeodesicId: options.activeGeodesicId,
     geodesicIds: options.geodesicIds ?? (options.activeGeodesicId ? [options.activeGeodesicId] : []),
@@ -303,9 +303,9 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
     {
       x: input.cannon.localPose.translation.x,
       y: input.cannon.localPose.translation.y,
-      z: defaultSegmentHeightMeters,
+      z: geodesicRayBeamHeightMeters,
     },
-    scaleVec3(direction, flashlightMuzzleOffsetMeters),
+    scaleVec3(direction, geodesicRayBeamStartOffsetMeters),
   );
   const segment = createSegmentFromTrace({
     id: `${input.geodesicId}:segment:0`,
@@ -379,7 +379,7 @@ function createSegmentFromTrace(options: {
     portalRenderable: true,
     tooltip: {
       label: "Geodesic segment",
-      rangeMeters: 1.5,
+      rangeMeters: 6,
     },
     geodesicId: options.geodesicId,
     segmentIndex: options.segmentIndex,

@@ -130,6 +130,20 @@ export function buildVisiblePathsByDestinationCell(
   return grouped;
 }
 
+export function flattenVisiblePortalPathGroups(
+  visiblePathsByDestinationCell: ReadonlyMap<string, readonly VisiblePortalPath[]>,
+): readonly VisiblePortalPath[] {
+  const visiblePathById = new Map<number, VisiblePortalPath>();
+
+  for (const paths of visiblePathsByDestinationCell.values()) {
+    for (const path of paths) {
+      visiblePathById.set(path.pathId, path);
+    }
+  }
+
+  return [...visiblePathById.values()].sort((left, right) => left.pathId - right.pathId);
+}
+
 export function updateCellRenderArchetypeInstances(
   archetypes: readonly CellRenderArchetype[],
   visiblePathsByDestinationCell: ReadonlyMap<string, readonly VisiblePortalPath[]>,

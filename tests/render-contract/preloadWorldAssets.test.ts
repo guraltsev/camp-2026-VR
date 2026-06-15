@@ -65,7 +65,7 @@ describe("preloadWorldAssets", () => {
     expect(assetPaths).toContain("WoodenSign1/WoodenSign1.glb");
     expect(assetPaths).toContain("WoodenSign2/WoodenSign2.glb");
     expect(assetPaths).toContain("flashlight/Post.glb");
-    expect(assetPaths).toContain("flashlight/Flashlight.glb");
+    expect(assetPaths).toContain("flashlight/Lightsaber.glb");
   });
 
   it("classifies .ktx2 files as textures", () => {

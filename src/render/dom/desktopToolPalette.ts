@@ -7,6 +7,8 @@ import type {
 } from "../../runtime/runtimeMenuState";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
 
+const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
+
 export interface DesktopPaletteView {
   readonly pageId: PaletteDefinition["pageId"];
   readonly leftAction: PaletteHeaderAction;
@@ -295,7 +297,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     cannonButton.type = "button";
     cannonButton.className = "desktop-tool-tile";
     cannonButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "geodesic-cannon");
-    cannonButton.ariaLabel = "Geodesic flashlight";
+    cannonButton.ariaLabel = "Geodesic ray";
     cannonButton.ariaPressed = String(mainContent.selectedTool === "geodesic-cannon");
     cannonButton.addEventListener("click", () => {
       options.onToolSelected(mainContent.selectedTool === "geodesic-cannon" ? "none" : "geodesic-cannon");
@@ -303,7 +305,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
 
     const cannonLabel = document.createElement("span");
     cannonLabel.className = "desktop-tool-tile-label";
-    cannonLabel.textContent = "light";
+    cannonLabel.textContent = "ray";
     cannonButton.append(createCannonTileIcon(), cannonLabel);
 
     tools.append(aimButton, flagTile, cannonButton);
@@ -575,12 +577,10 @@ function createFlagTileIcon(flagType: PlacedFlagType): HTMLElement {
 }
 
 function createCannonTileIcon(): HTMLElement {
-  const icon = document.createElement("span");
-  icon.className = "desktop-tool-tile-icon desktop-tool-cannon-icon";
-  const base = document.createElement("span");
-  base.className = "desktop-tool-cannon-base";
-  const barrel = document.createElement("span");
-  barrel.className = "desktop-tool-cannon-barrel";
-  icon.append(base, barrel);
+  const icon = document.createElement("img");
+  icon.className = "desktop-tool-tile-icon desktop-tool-ray-icon";
+  icon.src = rayToolIconSource;
+  icon.alt = "";
+  icon.decoding = "async";
   return icon;
 }

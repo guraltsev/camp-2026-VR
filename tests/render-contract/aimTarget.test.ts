@@ -6,6 +6,7 @@ import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 import { createPlacedFlagObject } from "../../src/world-objects/placedFlags";
 import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
+import type { GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
 import { resolveAimTarget } from "../../src/render/three/aimTarget";
 import type { VisiblePortalPath } from "../../src/render/three/visiblePortalPaths";
 import { rigidTransformToThreeMatrix, worldPointToThree } from "../../src/render/three/worldAxes";
@@ -100,6 +101,100 @@ describe("resolveAimTarget", () => {
     });
 
     expect(target).toBeUndefined();
+  });
+
+  it("resolves geodesic ray segments along the segment body", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const segment = createGeodesicSegment();
+    const registry = createRuntimeObjectRegistry([segment]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0, y: -2, z: 1.08 }, { x: 0, y: 0, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("segment-a");
+    expect(target?.localPoint.x).toBeCloseTo(0);
+    expect(target?.localPoint.z).toBeCloseTo(1.08);
+  });
+
+  it("resolves the tail geodesic ray segment before the floor below it", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const first = createGeodesicSegment({ id: "segment-a", start: { x: -0.9, y: 0, z: 1.08 }, lengthMeters: 0.6 });
+    const tail = createGeodesicSegment({
+      id: "segment-b",
+      segmentIndex: 1,
+      start: { x: -0.3, y: 0, z: 1.08 },
+      lengthMeters: 0.8,
+    });
+    const registry = createRuntimeObjectRegistry([first, tail]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0.2, y: -2, z: 1.08 }, { x: 0.2, y: 0, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("segment-b");
+    expect(target?.localPoint.x).toBeCloseTo(0.2);
+    expect(target?.localPoint.z).toBeCloseTo(1.08);
+  });
+
+  it("resolves geodesic ray segments from a shallow first-person angle", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const segment = createGeodesicSegment({
+      start: { x: -0.4, y: 0, z: 1.08 },
+      direction: { x: 0.984183, y: 0.177153, z: 0 },
+      lengthMeters: 1.2,
+    });
+    const registry = createRuntimeObjectRegistry([segment]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: -0.7, y: -0.25, z: 1.05 }, { x: 0.45, y: 0.08, z: 1.02 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("segment-a");
+  });
+
+  it("resolves geodesic ray segment instances through visible portal paths", () => {
+    const world = compileCellComplex(twoRoomPortalWorld());
+    const segment = createGeodesicSegment({
+      cellId: "room-b",
+      start: { x: -0.5, y: 0, z: 1.08 },
+      localPose: yawRigidTransform3(0, { x: -0.5, y: 0, z: 1.08 }),
+    });
+    const registry = createRuntimeObjectRegistry([segment]);
+    const pathTable = buildPortalPathTables(world, { maxDepth: 1 }).tablesByRootCellId.get("room-a")!;
+    const destinationPath = pathTable.paths.find((path) => path.destinationCellId === "room-b")!;
+    const rootTarget = destinationLocalPointInRoot(destinationPath, { x: 0, y: 0, z: 1.08 });
+    const camera = cameraLookingAt({ x: 0, y: 0, z: 1.08 }, rootTarget);
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(pathTable.pathsById.get(0)!), visiblePath(destinationPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("segment-a");
+    expect(target?.cellId).toBe("room-b");
+    expect(target?.portalPathId).toBe(destinationPath.id);
   });
 });
 
@@ -201,4 +296,25 @@ function squareBase(): readonly { readonly x: number; readonly y: number }[] {
     { x: 1, y: 1 },
     { x: -1, y: 1 },
   ];
+}
+
+function createGeodesicSegment(overrides: Partial<GeodesicSegmentObject> = {}): GeodesicSegmentObject {
+  return {
+    id: "segment-a",
+    kind: "geodesic-segment",
+    cellId: "room",
+    localPose: yawRigidTransform3(0, { x: -0.5, y: 0, z: 1.08 }),
+    portalRenderable: true,
+    tooltip: {
+      label: "Geodesic segment",
+      rangeMeters: 6,
+    },
+    geodesicId: "g-a",
+    segmentIndex: 0,
+    start: { x: -0.5, y: 0, z: 1.08 },
+    direction: { x: 1, y: 0, z: 0 },
+    lengthMeters: 1,
+    terminal: { kind: "open" },
+    ...overrides,
+  };
 }

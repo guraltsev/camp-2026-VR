@@ -70,7 +70,7 @@ const defaultFlagCollision: SimpleCollisionCylinder = {
 const defaultFlagInteraction: RuntimeObjectInteraction = {
   label: "Edit sign",
   action: "edit-flag",
-  rangeMeters: 2.25,
+  rangeMeters: 2.5,
 };
 
 export function isPlacedFlagType(value: string): value is PlacedFlagType {
@@ -114,7 +114,7 @@ export function createPlacedFlagObject(options: CreatePlacedFlagOptions): Placed
     portalRenderable: true,
     tooltip: {
       label: "sign",
-      rangeMeters: 2.25,
+      rangeMeters: 2.5,
       desktopPrompt: "RMouse / F: edit sign",
       xrPrompt: "A / X: edit sign",
     },

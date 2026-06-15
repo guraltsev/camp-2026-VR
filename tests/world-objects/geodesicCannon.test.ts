@@ -4,6 +4,8 @@ import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObje
 import {
   createGeodesicCannonObject,
   extendGeodesic,
+  geodesicRayBeamHeightMeters,
+  geodesicRayBeamStartOffsetMeters,
   getGeodesicSegmentEnd,
   getGeodesicTail,
   removeGeodesic,
@@ -24,6 +26,49 @@ describe("geodesic cannon world objects", () => {
 
     expect(result.lengthMeters).toBe(1);
     expect(result.terminal).toEqual({ kind: "open" });
+  });
+
+  it("shoots and extends two-meter segments by default", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    registry.add(cannon);
+
+    const first = shootGeodesic({ world, registry, cannon, geodesicId: "g-a" });
+    const second = extendGeodesic({ world, registry, geodesicId: "g-a" });
+
+    expect(cannon.collision).toEqual({
+      radius: 0.3,
+      height: 1.25,
+      offset: { x: 0, y: 0, z: 0.625 },
+    });
+    expect(cannon.tooltip?.label).toBe("Geodesic ray emitter");
+    expect(cannon.tooltip?.rangeMeters).toBe(2.5);
+    expect(first.lengthMeters).toBe(2);
+    expect(first.tooltip?.rangeMeters).toBe(6);
+    expect(second?.lengthMeters).toBe(2);
+    expect(second?.tooltip?.rangeMeters).toBe(6);
+  });
+
+  it("starts the first ray segment at the visual laser emitter", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    registry.add(cannon);
+
+    const first = shootGeodesic({ world, registry, cannon, geodesicId: "g-a" });
+
+    expect(first.start.x).toBeCloseTo(-1.5 + geodesicRayBeamStartOffsetMeters);
+    expect(first.start.y).toBeCloseTo(0);
+    expect(first.start.z).toBeCloseTo(geodesicRayBeamHeightMeters);
   });
 
   it("shortens a segment at a wall hit", () => {
@@ -141,6 +186,24 @@ function compileWorld(withPortal: boolean) {
           { x: 0, y: 2 },
         ],
         portals: withPortal ? [{ id: "ba", sideIndex: 3, targetCellId: "a", targetPortalId: "ab" }] : [],
+      },
+    ],
+  });
+}
+
+function compileLargeWorld() {
+  return compileCellComplex({
+    cells: [
+      {
+        id: "a",
+        heightMeters: 3,
+        baseVertices: [
+          { x: -3, y: -3 },
+          { x: 3, y: -3 },
+          { x: 3, y: 3 },
+          { x: -3, y: 3 },
+        ],
+        portals: [],
       },
     ],
   });

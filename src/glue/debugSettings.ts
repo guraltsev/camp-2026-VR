@@ -22,6 +22,7 @@ const defaultDebugSettingsSupport: DebugSettingsSupport = {
     "portal-path-overlay-instances",
     "forbidden-zone-wireframes",
     "object-collision-wireframes",
+    "selectable-hitboxes",
   ],
 };
 

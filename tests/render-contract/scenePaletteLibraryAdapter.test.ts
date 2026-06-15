@@ -16,6 +16,7 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("tool:geodesic-cannon");
     expect(itemIds).toContain("tool-options:place-sign");
     expect(imageSources).toContain("/assets/WoodenSign1/WoodenSign1.png");
+    expect(imageSources).toContain("/assets/flashlight/Lightsaber.png");
 
     adapter.dispose();
   });

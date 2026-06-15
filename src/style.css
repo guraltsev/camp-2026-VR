@@ -428,6 +428,10 @@ body {
   display: block;
 }
 
+img.desktop-tool-tile-icon {
+  object-fit: contain;
+}
+
 .desktop-tool-aim-icon {
   display: grid;
   place-items: center;
@@ -656,13 +660,15 @@ body {
 }
 
 .desktop-tool-indicator-svg,
-.desktop-tool-indicator-sign-icon {
+.desktop-tool-indicator-sign-icon,
+.desktop-tool-indicator-ray-icon {
   display: none;
   width: 2rem;
   height: 2rem;
 }
 
-.desktop-tool-indicator-sign-icon {
+.desktop-tool-indicator-sign-icon,
+.desktop-tool-indicator-ray-icon {
   object-fit: contain;
 }
 
@@ -672,7 +678,7 @@ body {
 }
 
 .desktop-tool-indicator-place-flag .desktop-tool-indicator-sign-icon,
-.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-light-icon {
+.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-ray-icon {
   display: block;
   color: #f8fafc;
 }
