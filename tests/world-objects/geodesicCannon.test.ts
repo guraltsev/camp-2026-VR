@@ -12,6 +12,7 @@ import {
   rebuildGeodesicToLength,
   removeGeodesic,
   resolveGeodesicCannonAimYawRadians,
+  resolveGeodesicNumber,
   shootGeodesic,
   traceGeodesicSegment,
   updateGeodesicIntersectionObjects,
@@ -88,6 +89,46 @@ describe("geodesic cannon world objects", () => {
     expect(second.start.y).toBeCloseTo(0);
     const finalCannon = registry.get("cannon-a");
     expect(finalCannon?.kind === "geodesic-cannon" ? finalCannon.geodesicIds : []).toEqual(["g-a", "g-b"]);
+  });
+
+  it("numbers geodesics globally across emitters", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const firstCannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const secondCannon = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI / 2, { x: 1.5, y: 0, z: 0 }),
+    });
+    registry.add(firstCannon);
+    registry.add(secondCannon);
+
+    const first = shootGeodesic({ world, registry, cannon: firstCannon, geodesicId: "g-a" });
+    const second = shootGeodesic({ world, registry, cannon: secondCannon, geodesicId: "g-b" });
+
+    expect(first.geodesicNumber).toBe(1);
+    expect(first.tooltip?.label).toBe("Geodesic G1");
+    expect(second.geodesicNumber).toBe(2);
+    expect(second.tooltip?.label).toBe("Geodesic G2");
+    expect(resolveGeodesicNumber(registry, "g-a")).toBe(1);
+    expect(resolveGeodesicNumber(registry, "g-b")).toBe(2);
+  });
+
+  it("preserves existing global geodesic numbers when lower numbers are absent", () => {
+    const registry = createRuntimeObjectRegistry([
+      createSegment({
+        id: "g-b:segment:0",
+        geodesicId: "g-b",
+        geodesicNumber: 2,
+      }),
+    ]);
+
+    expect(resolveGeodesicNumber(registry, "g-b")).toBe(2);
+    expect(resolveGeodesicNumber(registry, "g-c")).toBe(1);
   });
 
   it("starts the first ray segment at the visual laser emitter", () => {

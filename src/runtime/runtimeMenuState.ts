@@ -56,6 +56,7 @@ export interface RuntimeMenuState {
   readonly geodesicCannonOptions?: {
     readonly cannonId: string;
     readonly geodesicIds: readonly string[];
+    readonly geodesicLabelsById?: Readonly<Record<string, string>>;
   };
   readonly editingFlagId?: string;
 }
@@ -166,6 +167,7 @@ export function showRuntimeMenuGeodesicCannonActions(
   options: {
     readonly cannonId: string;
     readonly geodesicIds?: readonly string[];
+    readonly geodesicLabelsById?: Readonly<Record<string, string>>;
   },
 ): RuntimeMenuState {
   return {
@@ -175,6 +177,7 @@ export function showRuntimeMenuGeodesicCannonActions(
     geodesicCannonOptions: {
       cannonId: options.cannonId,
       geodesicIds: options.geodesicIds ?? [],
+      geodesicLabelsById: options.geodesicLabelsById,
     },
   };
 }

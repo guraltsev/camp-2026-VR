@@ -97,8 +97,26 @@ describe("runtimeMenuState", () => {
     }
     expect(definition.content.addAction).toEqual({ label: "Add geodesic", disabled: false });
     expect(definition.content.geodesics).toEqual([
-      { id: "g-a", label: "G1", rotateDisabled: false, aimDisabled: false },
-      { id: "g-b", label: "G2", rotateDisabled: false, aimDisabled: false },
+      { id: "g-a", label: "G1", rotateDisabled: false, aimDisabled: false, deleteDisabled: false },
+      { id: "g-b", label: "G2", rotateDisabled: false, aimDisabled: false, deleteDisabled: false },
+    ]);
+  });
+
+  it("uses explicit global geodesic labels in emitter action menus", () => {
+    const definition = createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), {
+      cannonId: "cannon-b",
+      geodesicIds: ["g-b"],
+      geodesicLabelsById: { "g-b": "G2" },
+    }));
+
+    expect(definition.content.kind).toBe("geodesic-cannon-actions");
+    if (definition.content.kind !== "geodesic-cannon-actions") {
+      throw new Error("Expected geodesic cannon actions.");
+    }
+    expect(definition.content.geodesics).toEqual([
+      { id: "g-b", label: "G2", rotateDisabled: false, aimDisabled: false, deleteDisabled: false },
     ]);
   });
 });

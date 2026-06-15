@@ -215,6 +215,10 @@ export function getGeodesicTail(
   return getGeodesicSegments(registry, geodesicId).at(-1);
 }
 
+export function resolveGeodesicNumber(registry: RuntimeObjectRegistry, geodesicId: string): number {
+  return getGlobalGeodesicNumbers(registry, geodesicId).get(geodesicId) ?? 1;
+}
+
 export function removeGeodesic(registry: RuntimeObjectRegistry, geodesicId: string): void {
   for (const segment of getGeodesicSegments(registry, geodesicId)) {
     registry.remove(segment.id);
@@ -365,7 +369,7 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
 
 export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject {
   const direction = directionFromYaw(input.cannon.aimYawRadians);
-  const geodesicNumber = getGeodesicNumber(input.cannon.geodesicIds, input.geodesicId);
+  const geodesicNumber = resolveGeodesicNumber(input.registry, input.geodesicId);
   const start = addVec3(
     {
       x: input.cannon.localPose.translation.x,
@@ -647,9 +651,64 @@ function sanitizeIdPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9._:-]+/g, "_");
 }
 
-function getGeodesicNumber(geodesicIds: readonly string[], geodesicId: string): number {
-  const existingIndex = geodesicIds.indexOf(geodesicId);
-  return existingIndex >= 0 ? existingIndex + 1 : geodesicIds.length + 1;
+function getGlobalGeodesicNumbers(
+  registry: RuntimeObjectRegistry,
+  requestedGeodesicId: string,
+): ReadonlyMap<string, number> {
+  const numbersById = new Map<string, number>();
+  const usedNumbers = new Set<number>();
+  const ids: string[] = [];
+  const seenIds = new Set<string>();
+  const numberedSegments = registry.getAll()
+    .filter(isGeodesicSegmentObject)
+    .filter((segment) => segment.geodesicNumber !== undefined)
+    .sort((left, right) => left.geodesicNumber! - right.geodesicNumber!);
+
+  for (const segment of numberedSegments) {
+    if (!numbersById.has(segment.geodesicId) && segment.geodesicNumber !== undefined) {
+      numbersById.set(segment.geodesicId, segment.geodesicNumber);
+      usedNumbers.add(segment.geodesicNumber);
+    }
+    pushUniqueId(ids, seenIds, segment.geodesicId);
+  }
+
+  for (const object of registry.getAll()) {
+    if (object.kind === "geodesic-cannon") {
+      for (const geodesicId of object.geodesicIds) {
+        pushUniqueId(ids, seenIds, geodesicId);
+      }
+      if (object.activeGeodesicId) {
+        pushUniqueId(ids, seenIds, object.activeGeodesicId);
+      }
+    } else if (object.kind === "geodesic-segment") {
+      pushUniqueId(ids, seenIds, object.geodesicId);
+    }
+  }
+
+  pushUniqueId(ids, seenIds, requestedGeodesicId);
+  let nextNumber = 1;
+  for (const geodesicId of ids) {
+    if (numbersById.has(geodesicId)) {
+      continue;
+    }
+
+    while (usedNumbers.has(nextNumber)) {
+      nextNumber += 1;
+    }
+    numbersById.set(geodesicId, nextNumber);
+    usedNumbers.add(nextNumber);
+  }
+
+  return numbersById;
+}
+
+function pushUniqueId(ids: string[], seenIds: Set<string>, geodesicId: string): void {
+  if (seenIds.has(geodesicId)) {
+    return;
+  }
+
+  seenIds.add(geodesicId);
+  ids.push(geodesicId);
 }
 
 function directionFromYaw(yawRadians: number): Vec3 {

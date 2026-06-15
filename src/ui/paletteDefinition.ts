@@ -182,7 +182,10 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
         kind: "geodesic-cannon-actions",
         cannonId: state.geodesicCannonOptions.cannonId,
         addAction: { label: "Add geodesic", disabled: false },
-        geodesics: createGeodesicCannonEntries(state.geodesicCannonOptions.geodesicIds),
+        geodesics: createGeodesicCannonEntries(
+          state.geodesicCannonOptions.geodesicIds,
+          state.geodesicCannonOptions.geodesicLabelsById,
+        ),
       },
     };
   }
@@ -201,10 +204,11 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
 
 function createGeodesicCannonEntries(
   geodesicIds: readonly string[],
+  geodesicLabelsById: Readonly<Record<string, string>> | undefined,
 ): GeodesicCannonActionsPaletteContent["geodesics"] {
   return geodesicIds.map((geodesicId, index) => ({
     id: geodesicId,
-    label: `G${index + 1}`,
+    label: geodesicLabelsById?.[geodesicId] ?? `G${index + 1}`,
     rotateDisabled: false,
     aimDisabled: false,
     deleteDisabled: false,

@@ -66,6 +66,7 @@ import {
   placeGeodesicCannonAtFloorPoint,
   rebuildGeodesicToLength,
   removeGeodesic,
+  resolveGeodesicNumber,
   shootGeodesic,
   geodesicRayBeamHeightMeters,
 } from "../../world-objects/geodesicCannon";
@@ -97,6 +98,10 @@ import { createDebugOverlay } from "./debugOverlay";
 import { createDesktopControls } from "./desktopControls";
 import { createDesktopScenePaletteInput, reduceDesktopScenePaletteToggle } from "./desktopScenePaletteInput";
 import { resolveDesktopScenePalettePlacement } from "./desktopScenePalettePlacement";
+import {
+  collectGeodesicCreatureDebugDump,
+  type GeodesicCreatureDebugDump,
+} from "./geodesicCreatureDebug";
 import { createScenePaletteController } from "./scenePaletteController";
 import { buildForbiddenZoneWireframe } from "./debugCollisionWireframes";
 import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
@@ -228,6 +233,8 @@ const geodesicEmitterLabelRangeMeters = 3;
 const geodesicEmitterLabelRenderOrder = 940;
 const geodesicEmitterLabelLocalForwardOffsetMeters = 0.12;
 const geodesicEmitterLabelLocalYOffsetMeters = 0.03;
+const geodesicCreatureDebugCheckIntervalSeconds = 0.1;
+const geodesicCreatureHealthyLogIntervalSeconds = 5;
 
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const scene = new THREE.Scene();
@@ -471,6 +478,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     readonly selectedCannonId?: string;
     readonly activeGeodesicId?: string;
   } = {};
+  let geodesicCreatureDebugElapsedSeconds = 0;
+  let geodesicCreatureHealthyLogElapsedSeconds = geodesicCreatureHealthyLogIntervalSeconds;
   const runtimeObjectRenderRoot = new THREE.Group();
   runtimeObjectRenderRoot.name = "runtime-object-archetype-renders";
   scene.add(runtimeObjectRenderRoot);
@@ -520,6 +529,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   syncPortalInstanceRender();
   let portalDebugRuntime = createPortalDebugRuntime();
   logDebugStartupGuide(debugLevel, debugOptions);
+  installGeneralDebugHelpers({
+    debugHelp: () => logDebugStartupGuide(debugLevel, debugOptions),
+    dumpGeodesicCreatures: dumpGeodesicCreatures,
+  });
   syncDesktopPalette();
 
   for (const cell of appState.world.cells) {
@@ -702,6 +715,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtime.update(appState.world, frame.resetRequested ? 0 : deltaSeconds);
       runtime.syncParent(cellMeshes);
     }
+    updateGeodesicCreatureDebug(deltaSeconds);
     for (const runtime of placedFlagRuntimes.values()) {
       runtime.syncParent(cellMeshes);
     }
@@ -792,6 +806,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     portalDebugRuntime.dispose();
     portalDebugRuntime = createPortalDebugRuntime();
     logDebugStartupGuide(debugLevel, debugOptions);
+    installGeneralDebugHelpers({
+      debugHelp: () => logDebugStartupGuide(debugLevel, debugOptions),
+      dumpGeodesicCreatures: dumpGeodesicCreatures,
+    });
     for (const runtime of dynamicObjectRuntimes) {
       runtime.syncParent(cellMeshes);
     }
@@ -800,6 +818,63 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncSelectableHitboxDebug();
     applyDesktopCameraPose();
     renderer.render(scene, camera);
+  }
+
+  function dumpGeodesicCreatures(): GeodesicCreatureDebugDump {
+    const dump = collectGeodesicCreatureDebugDump({
+      world: appState.world,
+      runtimes: dynamicObjectRuntimes,
+      registry: runtimeObjectRegistry,
+      cellRoots: cellMeshes,
+    });
+    console.info("[noneuclid] geodesic creature dump", dump);
+    console.table(dump.records.map((record) => ({
+      id: record.id,
+      kind: record.kind,
+      runtimeCellId: record.runtimeCellId,
+      registryCellId: record.registryCellId,
+      parentCellId: record.parentCellId,
+      localPosition: record.localPosition
+        ? `${record.localPosition.x}, ${record.localPosition.y}, ${record.localPosition.z}`
+        : "(missing)",
+      renderVisible: record.renderVisible,
+      ancestorsVisible: record.ancestorsVisible,
+      issues: record.issues.join(", "),
+    })));
+    return dump;
+  }
+
+  function updateGeodesicCreatureDebug(deltaSeconds: number): void {
+    if (debugLevel !== "verbose" || deltaSeconds <= 0) {
+      return;
+    }
+
+    geodesicCreatureDebugElapsedSeconds += deltaSeconds;
+    geodesicCreatureHealthyLogElapsedSeconds += deltaSeconds;
+    if (geodesicCreatureDebugElapsedSeconds < geodesicCreatureDebugCheckIntervalSeconds) {
+      return;
+    }
+
+    geodesicCreatureDebugElapsedSeconds = 0;
+    const dump = collectGeodesicCreatureDebugDump({
+      world: appState.world,
+      runtimes: dynamicObjectRuntimes,
+      registry: runtimeObjectRegistry,
+      cellRoots: cellMeshes,
+    });
+    const message = `[noneuclid] geodesic creature consistency: ${dump.issueCount} issue(s) across ${dump.creatureCount} creature(s)`;
+
+    if (dump.issueCount > 0) {
+      console.warn(message, dump);
+      return;
+    }
+
+    if (geodesicCreatureHealthyLogElapsedSeconds < geodesicCreatureHealthyLogIntervalSeconds) {
+      return;
+    }
+
+    geodesicCreatureHealthyLogElapsedSeconds = 0;
+    console.info(message, dump.records);
   }
 
   function syncDebugSettingsUrl(): void {
@@ -902,6 +977,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtimeObjectRenderArchetypesByKey.clear();
       runtimeObjectRenderRoot.removeFromParent();
       portalDebugRuntime.dispose();
+      uninstallGeneralDebugHelpers();
       debugOverlay.dispose();
       xrEntryUi.dispose();
       clipPolygonOverlay.dispose();
@@ -2139,10 +2215,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         playerPose.position.y - object.localPose.translation.y,
       );
       const visible = inCurrentCell && distanceMeters <= geodesicEmitterLabelRangeMeters;
-      object.geodesicIds.forEach((geodesicId, index) => {
+      object.geodesicIds.forEach((geodesicId) => {
         const key = getGeodesicEmitterLabelKey(object.id, geodesicId);
         activeLabelKeys.add(key);
-        const text = getGeodesicDisplayName(geodesicId, index);
+        const text = getGeodesicDisplayName(geodesicId);
         const label = syncGeodesicEmitterLabelObject(key, text);
         label.root.visible = visible;
         if (!visible) {
@@ -2202,13 +2278,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     ).applyMatrix4(emitterMatrix);
   }
 
-  function getGeodesicDisplayName(geodesicId: string, fallbackIndex: number): string {
-    const segment = runtimeObjectRegistry.getAll().find((object) =>
-      object.kind === "geodesic-segment" && object.geodesicId === geodesicId && object.geodesicNumber !== undefined
-    );
-    return segment?.kind === "geodesic-segment" && segment.geodesicNumber !== undefined
-      ? `G${segment.geodesicNumber}`
-      : `G${fallbackIndex + 1}`;
+  function getGeodesicDisplayName(geodesicId: string): string {
+    return `G${resolveGeodesicNumber(runtimeObjectRegistry, geodesicId)}`;
+  }
+
+  function getGeodesicLabelsById(geodesicIds: readonly string[]): Readonly<Record<string, string>> {
+    return Object.fromEntries(geodesicIds.map((geodesicId) => [geodesicId, getGeodesicDisplayName(geodesicId)]));
   }
 
   function createGeodesicEmitterLabel(text: string): THREE.Object3D {
@@ -2446,6 +2521,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       menuState = showRuntimeMenuGeodesicCannonActions(menuState, {
         cannonId: focused.object.id,
         geodesicIds: focused.object.geodesicIds,
+        geodesicLabelsById: getGeodesicLabelsById(focused.object.geodesicIds),
       });
       syncDesktopPalette();
       return true;
@@ -2492,6 +2568,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         : showRuntimeMenuGeodesicCannonActions(menuState, {
             cannonId: updatedCannon.id,
             geodesicIds: updatedCannon.geodesicIds,
+            geodesicLabelsById: getGeodesicLabelsById(updatedCannon.geodesicIds),
           });
     }
 
@@ -2586,6 +2663,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     menuState = showRuntimeMenuGeodesicCannonActions(menuState, {
       cannonId: updatedCannon.id,
       geodesicIds: updatedCannon.geodesicIds,
+      geodesicLabelsById: getGeodesicLabelsById(updatedCannon.geodesicIds),
     });
     syncDesktopPalette();
     syncRuntimeObjectPortalInstances();
@@ -3168,6 +3246,9 @@ function logPortalOverlayGuide(portalPathDebugActive: boolean): void {
 
 function logDebugStartupGuide(debugLevel: DebugLevelId, debugOptions: readonly DebugOptionId[]): void {
   const commands = [
+    "debug_help()",
+    "dump_geodesic_creatures()",
+    "window.noneuclidDebug.DumpGeodesicCreatures()",
     "window.noneuclidPortalDebug.state",
     'window.noneuclidPortalDebug.CheckCellPath("0 2 3")',
     'window.noneuclidPortalDebug.ShowCellPath("0 2 3")',
@@ -3185,6 +3266,7 @@ function logDebugStartupGuide(debugLevel: DebugLevelId, debugOptions: readonly D
       "Debugging quick start:",
       `debugLevel=${debugLevel}`,
       `debugOptions=${activeOptions}`,
+      "Geodesic creature dump helpers are installed as debug_help() and dump_geodesic_creatures().",
       "Portal debug helpers are installed when portal-path-debug or portal-visible-path-debug is active.",
       "ShowCellPath overlays also need portal-path-overlays.",
       "Live clip polygons need portal-visible-path-debug.",
@@ -3277,6 +3359,23 @@ interface PortalDebugHelpers {
   readonly staticCull: StaticPortalPathCullResult;
 }
 
+interface GeneralDebugHelpers {
+  debug_help(): void;
+  dump_geodesic_creatures(): GeodesicCreatureDebugDump;
+  DumpGeodesicCreatures(): GeodesicCreatureDebugDump;
+}
+
+interface GeneralDebugHelperCallbacks {
+  readonly debugHelp: () => void;
+  readonly dumpGeodesicCreatures: () => GeodesicCreatureDebugDump;
+}
+
+type WindowWithGeneralDebugHelpers = typeof window & {
+  debug_help?: () => void;
+  dump_geodesic_creatures?: () => GeodesicCreatureDebugDump;
+  noneuclidDebug?: GeneralDebugHelpers;
+};
+
 type PortalPathCheckResultWithVisibility = ReturnType<typeof checkPortalPathString> & VisiblePortalPathLookupResult;
 
 interface CameraPoseDebugDump {
@@ -3313,6 +3412,27 @@ function installPortalDebugHelpers(helpers: PortalDebugHelpers): void {
 
 function uninstallPortalDebugHelpers(): void {
   delete (window as typeof window & { noneuclidPortalDebug?: PortalDebugHelpers }).noneuclidPortalDebug;
+}
+
+function installGeneralDebugHelpers(callbacks: GeneralDebugHelperCallbacks): void {
+  const target = window as WindowWithGeneralDebugHelpers;
+  const helpers: GeneralDebugHelpers = {
+    debug_help: callbacks.debugHelp,
+    dump_geodesic_creatures: callbacks.dumpGeodesicCreatures,
+    DumpGeodesicCreatures: callbacks.dumpGeodesicCreatures,
+  };
+
+  target.debug_help = helpers.debug_help;
+  target.dump_geodesic_creatures = helpers.dump_geodesic_creatures;
+  target.noneuclidDebug = helpers;
+}
+
+function uninstallGeneralDebugHelpers(): void {
+  const target = window as WindowWithGeneralDebugHelpers;
+
+  delete target.debug_help;
+  delete target.dump_geodesic_creatures;
+  delete target.noneuclidDebug;
 }
 
 function liveVisibilityFields(

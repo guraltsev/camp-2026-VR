@@ -3,4 +3,5 @@ arrow-circle-inverted.png - inverted derivative of arrow-circle.png
 aim.png - <a href="https://www.flaticon.com/free-icons/aim" title="aim icons">Aim icons created by Creative Stall Premium - Flaticon</a>
 aim-inverted.png - inverted derivative of aim.png
 deleted.png - <a href="https://www.flaticon.com/free-icons/delete" title="delete icons">Delete icons created by bqlqn - Flaticon</a>
-add.pnd - <a href="https://www.flaticon.com/free-icons/plus" title="plus icons">Plus icons created by dmitri13 - Flaticon</a>
+add.png - <a href="https://www.flaticon.com/free-icons/plus" title="plus icons">Plus icons created by dmitri13 - Flaticon</a>
+lock.png - <a href="https://www.flaticon.com/free-icons/privacy" title="privacy icons">Privacy icons created by meaicon - Flaticon</a>
