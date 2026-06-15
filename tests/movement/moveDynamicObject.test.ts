@@ -113,6 +113,26 @@ describe("moveDynamicObject", () => {
     expect(result.object.localPose.translation.x).toBeCloseTo(-0.95);
   });
 
+  it("teleports an out-of-domain endpoint through only one most probable portal per frame", () => {
+    const world = compileCellComplex(selfWrappingRoom());
+    const object = dynamicObject("room", { x: 5.1, y: 0, z: 0.5 });
+
+    const firstFrame = moveDynamicObject({ world, object, displacement: { x: 0, y: 0, z: 0 } });
+
+    expect(firstFrame.blocked).toBe(false);
+    expect(firstFrame.crossedPortal).toBe(true);
+    expect(firstFrame.crossedPortalId).toBe("east");
+    expect(firstFrame.object.cellId).toBe("room");
+    expect(firstFrame.object.localPose.translation.x).toBeCloseTo(3.1);
+
+    const secondFrame = moveDynamicObject({ world, object: firstFrame.object, displacement: { x: 0, y: 0, z: 0 } });
+
+    expect(secondFrame.blocked).toBe(false);
+    expect(secondFrame.crossedPortal).toBe(true);
+    expect(secondFrame.crossedPortalId).toBe("east");
+    expect(secondFrame.object.localPose.translation.x).toBeCloseTo(1.1);
+  });
+
   it("does not let an offset collision center trigger anchor portal crossing before the object anchor crosses", () => {
     const world = compileCellComplex(twoRoomsWithPortal());
     const object = dynamicObject(
@@ -410,6 +430,32 @@ function twoRoomsWithPortal(options: { readonly targetHeightMeters?: number } = 
             id: "west",
             sideIndex: 3,
             targetCellId: "room-a",
+            targetPortalId: "east",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function selfWrappingRoom(): CellComplexSpec {
+  return {
+    cells: [
+      {
+        id: "room",
+        heightMeters: 2,
+        baseVertices: squareRoomBase,
+        portals: [
+          {
+            id: "east",
+            sideIndex: 1,
+            targetCellId: "room",
+            targetPortalId: "west",
+          },
+          {
+            id: "west",
+            sideIndex: 3,
+            targetCellId: "room",
             targetPortalId: "east",
           },
         ],

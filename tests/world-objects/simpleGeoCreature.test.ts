@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import type { CellComplexSpec } from "../../src/cell-complex/specs";
+import { tetrahedron } from "../../src/authoring/exampleWorlds";
 import { identityMat3 } from "../../src/math/rigidTransform3";
 import { simpleCollisionCylinder, type DynamicObjectState } from "../../src/movement/dynamicObject";
+import { collectGeodesicCreatureDebugDump } from "../../src/render/three/geodesicCreatureDebug";
 import type { PreparedWorldAssets } from "../../src/render/three/preloadWorldAssets";
+import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
 import {
   createSimpleGeoCreature,
   createSimpleGeoCreatureRuntime,
@@ -76,6 +79,39 @@ describe("simple geo creature movement", () => {
 
     expect(forbiddenZoneLateralOscillationScale(cell, dynamicObject({ x: 0, y: 1, z: 0.5 }))).toBeCloseTo(0.5);
     expect(forbiddenZoneLateralOscillationScale(cell, dynamicObject({ x: -0.25, y: 1, z: 0.5 }))).toBe(1);
+  });
+
+  it("keeps a tetrahedron creature inside its runtime cell across repeated portal crossings", () => {
+    const world = compileCellComplex(tetrahedron);
+    const registry = createRuntimeObjectRegistry();
+    const mouse = createSimpleGeoCreature("geo-mouse", "mouse", "mouse/Mouse.glb", {
+      position: [-2.2, 0, 2.2],
+      scale: 0.1,
+      turn: 114,
+      speed: 1.7,
+      oscillationRate: 1.4,
+      oscillationMagnitude: 0.15,
+    });
+    const runtime = createSimpleGeoCreatureRuntime(mouse, "face-a", stubAssets(), registry);
+    const cellRoots = new Map<string, THREE.Object3D>(
+      world.cells.map((cell) => [cell.id, new THREE.Group()] as const),
+    );
+
+    runtime.syncParent(cellRoots);
+
+    for (let frame = 0; frame < 900; frame += 1) {
+      runtime.update(world, 1 / 30);
+      runtime.syncParent(cellRoots);
+
+      const dump = collectGeodesicCreatureDebugDump({
+        world,
+        runtimes: [runtime],
+        registry,
+        cellRoots,
+      });
+
+      expect(dump.issueCount, `frame ${frame}: ${JSON.stringify(dump.records[0])}`).toBe(0);
+    }
   });
 });
 
