@@ -28,6 +28,7 @@ export interface ResolveAimTargetRequest {
   readonly camera: THREE.Camera;
   readonly visiblePortalPaths: readonly VisiblePortalPath[];
   readonly maxDistanceMeters?: number;
+  readonly ignoredGeodesicIds?: readonly string[];
 }
 
 interface CellRay {
@@ -51,11 +52,40 @@ export const geodesicSegmentAimRadiusMeters = 0.28;
 export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | undefined {
   const maxDistanceMeters = request.maxDistanceMeters ?? 24;
   request.camera.updateMatrixWorld(true);
+  const originRootThree = new THREE.Vector3().setFromMatrixPosition(request.camera.matrixWorld);
+  const directionRootThree = new THREE.Vector3(0, 0, -1);
+  const cameraQuaternion = new THREE.Quaternion();
+  request.camera.getWorldQuaternion(cameraQuaternion);
+  directionRootThree.applyQuaternion(cameraQuaternion).normalize();
+
+  return resolveAimTargetFromRootThreeRay({
+    world: request.world,
+    registry: request.registry,
+    rootOriginThree: originRootThree,
+    rootDirectionThree: directionRootThree,
+    ndcPoint: centerNdc,
+    visiblePortalPaths: request.visiblePortalPaths,
+    maxDistanceMeters,
+    ignoredGeodesicIds: new Set(request.ignoredGeodesicIds ?? []),
+  });
+}
+
+function resolveAimTargetFromRootThreeRay(request: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly rootOriginThree: THREE.Vector3;
+  readonly rootDirectionThree: THREE.Vector3;
+  readonly ndcPoint: { readonly x: number; readonly y: number };
+  readonly visiblePortalPaths: readonly VisiblePortalPath[];
+  readonly maxDistanceMeters: number;
+  readonly ignoredGeodesicIds: ReadonlySet<string>;
+}): AimTarget | undefined {
+  const rootDirectionThree = request.rootDirectionThree.clone().normalize();
 
   let best: AimTarget | undefined;
 
   for (const path of request.visiblePortalPaths) {
-    if (!pathContainsNdcPoint(path, centerNdc)) {
+    if (!pathContainsNdcPoint(path, request.ndcPoint)) {
       continue;
     }
 
@@ -64,10 +94,10 @@ export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | 
       continue;
     }
 
-    const ray = buildCellRay(request.camera, path);
+    const ray = buildCellRayFromRootThreeRay(request.rootOriginThree, rootDirectionThree, path);
     const candidates = [
-      ...resolveObjectAimTargets(request.registry, cell, ray, maxDistanceMeters),
-      ...resolveFloorAimTarget(cell, ray, maxDistanceMeters),
+      ...resolveObjectAimTargets(request.registry, cell, ray, request.maxDistanceMeters, request.ignoredGeodesicIds),
+      ...resolveFloorAimTarget(cell, ray, request.maxDistanceMeters),
     ];
 
     for (const candidate of candidates) {
@@ -80,13 +110,11 @@ export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | 
   return best;
 }
 
-function buildCellRay(camera: THREE.Camera, path: VisiblePortalPath): CellRay {
-  const originRootThree = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
-  const directionRootThree = new THREE.Vector3(0, 0, -1);
-  const cameraQuaternion = new THREE.Quaternion();
-  camera.getWorldQuaternion(cameraQuaternion);
-  directionRootThree.applyQuaternion(cameraQuaternion).normalize();
-
+function buildCellRayFromRootThreeRay(
+  originRootThree: THREE.Vector3,
+  directionRootThree: THREE.Vector3,
+  path: VisiblePortalPath,
+): CellRay {
   const cellFromRootMatrix = path.rootFromDestinationMatrix.clone().invert();
   const originCellThree = originRootThree.clone().applyMatrix4(cellFromRootMatrix);
   const directionCellThree = directionRootThree.clone().transformDirection(cellFromRootMatrix).normalize();
@@ -104,10 +132,15 @@ function resolveObjectAimTargets(
   cell: CompiledPrismCell,
   ray: CellRay,
   maxDistanceMeters: number,
+  ignoredGeodesicIds: ReadonlySet<string>,
 ): readonly AimTarget[] {
   const hits: AimTarget[] = [];
 
   for (const object of registry.getObjectsInCell(cell.id)) {
+    if (object.kind === "geodesic-segment" && ignoredGeodesicIds.has(object.geodesicId)) {
+      continue;
+    }
+
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
     const hit = object.kind === "geodesic-segment"
       ? intersectRayWithSegmentCapsule(ray.origin, ray.direction, object.start, object.direction, object.lengthMeters)

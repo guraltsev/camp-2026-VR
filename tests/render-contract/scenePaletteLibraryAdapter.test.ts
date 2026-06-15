@@ -43,7 +43,7 @@ describe("scenePaletteLibraryAdapter", () => {
     adapter.dispose();
   });
 
-  it("renders geodesic ray emitter actions and keeps aim disabled", () => {
+  it("renders geodesic ray emitter actions and enables aim", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
     adapter.setDefinition(createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(
       createRuntimeMenuState({ selectedWorldId: "cube" }),
@@ -57,8 +57,9 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("geodesic-cannon-action:rotate");
     expect(itemIds).toContain("geodesic-cannon-action:aim");
     expect(actionIds).toContain("geodesic-cannon-action:rotate");
-    expect(actionIds).not.toContain("geodesic-cannon-action:aim");
-    expect(imageSources).toContain("/assets/icons/arrow-circle.png");
+    expect(actionIds).toContain("geodesic-cannon-action:aim");
+    expect(imageSources).toContain("/assets/icons/arrow-circle-inverted.png");
+    expect(imageSources).toContain("/assets/icons/aim-inverted.png");
 
     adapter.dispose();
   });

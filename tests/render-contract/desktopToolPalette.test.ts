@@ -46,7 +46,7 @@ describe("desktopToolPalette", () => {
     expect(view.content.flagTypeLabels).toEqual(["WoodenSign1", "WoodenSign2"]);
   });
 
-  it("describes the geodesic ray emitter action menu with disabled aim", () => {
+  it("describes the geodesic ray emitter action menu with enabled aim", () => {
     const definition = createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(createRuntimeMenuState({
       selectedWorldId: "cube",
       debugOverlayEnabled: true,
@@ -61,7 +61,7 @@ describe("desktopToolPalette", () => {
       throw new Error("Expected geodesic cannon actions content.");
     }
     expect(view.content.actionLabels).toEqual(["Rotate", "Aim"]);
-    expect(view.content.disabledActionLabels).toEqual(["Aim"]);
+    expect(view.content.disabledActionLabels).toEqual([]);
   });
 
 

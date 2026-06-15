@@ -11,6 +11,7 @@ import {
   getGeodesicTail,
   rebuildGeodesicToLength,
   removeGeodesic,
+  resolveGeodesicCannonAimYawRadians,
   shootGeodesic,
   traceGeodesicSegment,
 } from "../../src/world-objects/geodesicCannon";
@@ -73,6 +74,27 @@ describe("geodesic cannon world objects", () => {
     expect(first.start.x).toBeCloseTo(-1.5 + geodesicRayBeamStartOffsetMeters);
     expect(first.start.y).toBeCloseTo(0);
     expect(first.start.z).toBeCloseTo(geodesicRayBeamHeightMeters);
+  });
+
+  it("resolves cannon aim yaw from the local euclidean target direction", () => {
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 1, y: 1, z: 0 }),
+    });
+
+    expect(resolveGeodesicCannonAimYawRadians(cannon, { x: 1, y: 4, z: 2 })).toBeCloseTo(Math.PI / 2);
+    expect(resolveGeodesicCannonAimYawRadians(cannon, { x: -2, y: 1, z: -1 })).toBeCloseTo(Math.PI);
+  });
+
+  it("does not resolve aim yaw at the same horizontal point as the cannon", () => {
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 1, y: 1, z: 0 }),
+    });
+
+    expect(resolveGeodesicCannonAimYawRadians(cannon, { x: 1, y: 1, z: 2 })).toBeUndefined();
   });
 
   it("shortens a segment at a wall hit", () => {

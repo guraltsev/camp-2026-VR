@@ -27,6 +27,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onPlaceFlagOptionsRequested?: () => void;
   readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
   readonly onGeodesicCannonRotateRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonAimRequested?: (cannonId: string) => void;
   readonly onSignKeyboardCharacter?: (character: string) => void;
   readonly onSignKeyboardBackspace?: () => void;
   readonly onSignDeleteRequested?: () => void;
@@ -60,7 +61,8 @@ const signIconSources: Record<PlacedFlagType, string> = {
   WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
   WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
 };
-const rotateIconSource = "/assets/icons/arrow-circle.png";
+const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
+const aimIconSource = "/assets/icons/aim-inverted.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const signTypeLabels: Record<PlacedFlagType, string> = {
   WoodenSign1: "Wooden Sign 1",
@@ -362,13 +364,15 @@ function buildGeodesicCannonActionsContent(
       onClick: () => {
         if (action.id === "rotate") {
           options.onGeodesicCannonRotateRequested?.(content.cannonId);
+        } else if (action.id === "aim") {
+          options.onGeodesicCannonAimRequested?.(content.cannonId);
         }
       },
     });
     button.userData.xrPaletteItemId = `geodesic-cannon-action:${action.id}`;
     button.userData.scenePaletteItemId = `geodesic-cannon-action:${action.id}`;
-    if (action.id === "rotate") {
-      button.add(createRotateIcon());
+    if (action.id === "rotate" || action.id === "aim") {
+      button.add(createGeodesicCannonActionIcon(action.id));
     }
     panel.add(button);
   }
@@ -640,9 +644,10 @@ function createRayIcon(): Component<any> {
   return image;
 }
 
-function createRotateIcon(): Component<any> {
+function createGeodesicCannonActionIcon(actionId: "rotate" | "aim"): Component<any> {
+  const source = actionId === "rotate" ? rotateIconSource : aimIconSource;
   const image = new Image({
-    src: rotateIconSource,
+    src: source,
     width: 28,
     height: 28,
     objectFit: "fill",
@@ -651,7 +656,7 @@ function createRotateIcon(): Component<any> {
     depthWrite: false,
     renderOrder: 1002,
   });
-  image.userData.scenePaletteIconSrc = rotateIconSource;
+  image.userData.scenePaletteIconSrc = source;
   return image;
 }
 

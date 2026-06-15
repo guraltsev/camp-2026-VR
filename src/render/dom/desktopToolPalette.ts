@@ -7,7 +7,8 @@ import type {
 } from "../../runtime/runtimeMenuState";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
 
-const rotateIconSource = "/assets/icons/arrow-circle.png";
+const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
+const aimIconSource = "/assets/icons/aim-inverted.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 
 export interface DesktopPaletteView {
@@ -64,6 +65,7 @@ export interface DesktopToolPaletteOptions {
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
   readonly onGeodesicCannonRotateRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonAimRequested?: (cannonId: string) => void;
   readonly onResumeRequested: () => void;
 }
 
@@ -352,14 +354,12 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
       button.className = "desktop-tool-palette-button";
       button.disabled = action.disabled;
       button.ariaDisabled = String(action.disabled);
-      if (action.id === "rotate") {
-        button.append(createRotateButtonIcon(), document.createTextNode(action.label));
-      } else {
-        button.textContent = action.label;
-      }
+      button.append(createGeodesicCannonActionIcon(action.id), document.createTextNode(action.label));
       button.addEventListener("click", () => {
         if (action.id === "rotate") {
           options.onGeodesicCannonRotateRequested?.(geodesicCannonContent.cannonId);
+        } else if (action.id === "aim") {
+          options.onGeodesicCannonAimRequested?.(geodesicCannonContent.cannonId);
         }
       });
       actions.append(button);
@@ -616,10 +616,10 @@ function createCannonTileIcon(): HTMLElement {
   return icon;
 }
 
-function createRotateButtonIcon(): HTMLElement {
+function createGeodesicCannonActionIcon(actionId: "rotate" | "aim"): HTMLElement {
   const icon = document.createElement("img");
   icon.className = "desktop-tool-palette-button-icon";
-  icon.src = rotateIconSource;
+  icon.src = actionId === "rotate" ? rotateIconSource : aimIconSource;
   icon.alt = "";
   icon.decoding = "async";
   return icon;

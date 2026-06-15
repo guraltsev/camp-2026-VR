@@ -177,7 +177,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
         cannonId: state.geodesicCannonOptions.cannonId,
         actions: [
           { id: "rotate", label: "Rotate", disabled: false },
-          { id: "aim", label: "Aim", disabled: true },
+          { id: "aim", label: "Aim", disabled: false },
         ],
       },
     };

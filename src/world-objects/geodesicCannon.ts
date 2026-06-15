@@ -227,6 +227,19 @@ export function canExtendGeodesicSegment(segment: GeodesicSegmentObject): boolea
   return segment.terminal.kind !== "wall-hit" && segment.terminal.kind !== "forbidden-zone-hit";
 }
 
+export function resolveGeodesicCannonAimYawRadians(
+  cannon: GeodesicCannonObject,
+  targetLocalPoint: Vec3,
+): number | undefined {
+  const dx = targetLocalPoint.x - cannon.localPose.translation.x;
+  const dy = targetLocalPoint.y - cannon.localPose.translation.y;
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || Math.hypot(dx, dy) <= intersectionTolerance) {
+    return undefined;
+  }
+
+  return sanitizeYaw(Math.atan2(dy, dx));
+}
+
 export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeodesicSegmentResult {
   const cell = input.world.cellsById.get(input.cellId);
   if (!cell) {

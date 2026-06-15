@@ -65,6 +65,7 @@ import {
   extendGeodesic,
   placeGeodesicCannonAtFloorPoint,
   rebuildGeodesicToLength,
+  resolveGeodesicCannonAimYawRadians,
   shootGeodesic,
 } from "../../world-objects/geodesicCannon";
 import {
@@ -167,7 +168,7 @@ import {
   type VisiblePortalPathDebugSummary,
   type VisiblePortalPathLookupResult,
 } from "./visiblePortalPaths";
-import { rigidTransformToThreeMatrix, threePointToWorld, worldPointToThree } from "./worldAxes";
+import { rigidTransformToThreeMatrix, threeDirectionToWorld, threePointToWorld, worldPointToThree } from "./worldAxes";
 import { createXrControls } from "./xrControls";
 import { createXrEntryUi } from "./xrEntryUi";
 import { resolveXrPortalEyeRenderRoot, type XrPortalEyeRenderRoot } from "./xrPortalEye";
@@ -417,6 +418,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onGeodesicCannonRotateRequested(cannonId) {
       startGeodesicCannonRotation(cannonId);
     },
+    onGeodesicCannonAimRequested(cannonId) {
+      startGeodesicCannonAim(cannonId);
+    },
     onSignKeyboardCharacter(character) {
       appendEditingSignCharacter(character);
     },
@@ -595,11 +599,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameBeforeInputMs = performance.now();
     const frame = xrActive ? getXrInputFrame(deltaSeconds) : getDesktopInputFrame(deltaSeconds);
     const rotatingGeodesicCannon = menuState.selectedTool === "geodesic-cannon-rotate";
+    const aimingGeodesicCannon = menuState.selectedTool === "geodesic-cannon-aim";
     const effectiveHeadLocalMeters = rotatingGeodesicCannon && xrActive
       ? freezeXrHeadHeightDuringGeodesicCannonRotation(headLocalMeters)
       : headLocalMeters;
     if (!rotatingGeodesicCannon) {
       geodesicCannonRotationHeadHeightMeters = undefined;
+    }
+    if (!rotatingGeodesicCannon && !aimingGeodesicCannon) {
       geodesicCannonRotationTargetLengthMeters = undefined;
     }
     const frameAfterInputMs = performance.now();
@@ -653,6 +660,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     if (menuState.selectedTool === "geodesic-cannon-rotate") {
       updateActiveGeodesicCannonRotation(frame.yawDeltaRadians, frame.primaryActionRequested);
+    } else if (menuState.selectedTool === "geodesic-cannon-aim") {
+      updateActiveGeodesicCannonAim(frame.primaryActionRequested, xrActive, xrFrame, xrReferenceSpace);
     } else if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "place-flag") {
       tryPlaceFlagFromDesktopAim();
     }
@@ -2293,6 +2302,28 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     void controls.requestPointerLock();
   }
 
+  function startGeodesicCannonAim(cannonId: string): void {
+    const cannon = runtimeObjectRegistry.get(cannonId);
+    if (cannon?.kind !== "geodesic-cannon") {
+      menuState = closeRuntimeMenu(menuState);
+      syncDesktopPalette();
+      return;
+    }
+
+    activeGeodesicCannonToolState = {
+      selectedCannonId: cannon.id,
+      activeGeodesicId: cannon.activeGeodesicId,
+    };
+    geodesicCannonRotationTargetLengthMeters = cannon.activeGeodesicId
+      ? getGeodesicTotalLengthMeters(cannon.activeGeodesicId)
+      : undefined;
+    menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "geodesic-cannon-aim"));
+    syncDesktopPalette();
+    if (!renderer.xr.isPresenting) {
+      void controls.requestPointerLock();
+    }
+  }
+
   function updateActiveGeodesicCannonRotation(yawDeltaRadians: number, finishRequested: boolean): void {
     const cannonId = activeGeodesicCannonToolState.selectedCannonId;
     const cannon = cannonId ? runtimeObjectRegistry.get(cannonId) : undefined;
@@ -2325,6 +2356,72 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       menuState = setRuntimeMenuSelectedTool(menuState, "aim");
       syncDesktopPalette();
     }
+  }
+
+  function updateActiveGeodesicCannonAim(
+    finishRequested: boolean,
+    xrActive: boolean,
+    xrFrame: XRFrame | undefined,
+    xrReferenceSpace: XRReferenceSpace | null,
+  ): void {
+    const cannonId = activeGeodesicCannonToolState.selectedCannonId;
+    const cannon = cannonId ? runtimeObjectRegistry.get(cannonId) : undefined;
+
+    if (!cannon || cannon.kind !== "geodesic-cannon") {
+      activeGeodesicCannonToolState = {};
+      finishGeodesicCannonAimMode();
+      return;
+    }
+
+    if (!playerIsWithinGeodesicCannonAimRange(cannon)) {
+      finishGeodesicCannonAimMode();
+      return;
+    }
+
+    const targetPoint = resolveCurrentEuclideanCrosshairFloorPoint(xrActive, xrFrame, xrReferenceSpace);
+    const nextYaw = targetPoint
+      ? resolveGeodesicCannonAimYawRadians(cannon, targetPoint)
+      : undefined;
+    if (nextYaw !== undefined) {
+      const yawDelta = Math.atan2(
+        Math.sin(nextYaw - cannon.aimYawRadians),
+        Math.cos(nextYaw - cannon.aimYawRadians),
+      );
+      if (Math.abs(yawDelta) > 1e-6) {
+        const nextCannon = {
+          ...cannon,
+          aimYawRadians: nextYaw,
+          localPose: yawRigidTransform3(nextYaw, cannon.localPose.translation),
+        };
+        runtimeObjectRegistry.update(nextCannon);
+        rebuildActiveGeodesicFromCannon(nextCannon);
+        syncRuntimeObjectPortalInstances();
+        syncSelectableHitboxDebug();
+      }
+    }
+
+    if (finishRequested) {
+      finishGeodesicCannonAimMode();
+    }
+  }
+
+  function playerIsWithinGeodesicCannonAimRange(
+    cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+  ): boolean {
+    if (playerPose.cellId !== cannon.cellId) {
+      return false;
+    }
+
+    const rangeMeters = getRuntimeObjectInteractionRangeMeters(cannon);
+    const dx = playerPose.position.x - cannon.localPose.translation.x;
+    const dy = playerPose.position.y - cannon.localPose.translation.y;
+    return Math.hypot(dx, dy) <= rangeMeters;
+  }
+
+  function finishGeodesicCannonAimMode(): void {
+    geodesicCannonRotationTargetLengthMeters = undefined;
+    menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+    syncDesktopPalette();
   }
 
   function rebuildActiveGeodesicFromCannon(cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>): void {
@@ -2383,7 +2480,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function updateAimCrossMarker(xrActive: boolean): void {
     if (
       xrActive ||
-      (menuState.selectedTool !== "aim" && menuState.selectedTool !== "place-flag" && menuState.selectedTool !== "geodesic-cannon") ||
+      (
+        menuState.selectedTool !== "aim" &&
+        menuState.selectedTool !== "place-flag" &&
+        menuState.selectedTool !== "geodesic-cannon" &&
+        menuState.selectedTool !== "geodesic-cannon-aim"
+      ) ||
       menuState.isOpen ||
       desktopFlagEditor.isOpen()
     ) {
@@ -2395,13 +2497,91 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function resolveCurrentAimTarget() {
+    const ignoredGeodesicIds = menuState.selectedTool === "geodesic-cannon-aim" &&
+        activeGeodesicCannonToolState.activeGeodesicId
+      ? [activeGeodesicCannonToolState.activeGeodesicId]
+      : undefined;
+
     return resolveAimTarget({
       world: appState.world,
       registry: runtimeObjectRegistry,
       camera,
       visiblePortalPaths: getRuntimeObjectVisiblePaths(),
       maxDistanceMeters: 24,
+      ignoredGeodesicIds,
     });
+  }
+
+  function resolveCurrentEuclideanCrosshairFloorPoint(
+    xrActive: boolean,
+    xrFrame: XRFrame | undefined,
+    xrReferenceSpace: XRReferenceSpace | null,
+  ): Vec3 | undefined {
+    const ray = xrActive
+      ? resolveXrControllerRootRay(xrFrame, xrReferenceSpace) ?? resolveCameraRootRay()
+      : resolveCameraRootRay();
+    if (!ray) {
+      return undefined;
+    }
+
+    return intersectRootRayWithFloor(ray.origin, ray.direction);
+  }
+
+  function resolveCameraRootRay(): { readonly origin: THREE.Vector3; readonly direction: THREE.Vector3 } {
+    camera.updateMatrixWorld(true);
+    const origin = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+    const cameraQuaternion = new THREE.Quaternion();
+    camera.getWorldQuaternion(cameraQuaternion);
+    const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuaternion).normalize();
+    return { origin, direction };
+  }
+
+  function resolveXrControllerRootRay(
+    xrFrame: XRFrame | undefined,
+    xrReferenceSpace: XRReferenceSpace | null,
+  ): {
+    readonly origin: THREE.Vector3;
+    readonly direction: THREE.Vector3;
+  } | undefined {
+    const session = renderer.xr.getSession();
+    if (!xrFrame || !xrReferenceSpace || !session) {
+      return undefined;
+    }
+
+    const sources = [...session.inputSources].filter((source) => source.targetRaySpace && !source.hand);
+    const source = sources.find((candidate) => candidate.handedness === "right") ?? sources[0];
+    if (!source) {
+      return undefined;
+    }
+
+    const pose = xrFrame.getPose(source.targetRaySpace, xrReferenceSpace);
+    if (!pose) {
+      return undefined;
+    }
+
+    const worldMatrix = xrRig.root.matrixWorld.clone().multiply(xrRigidTransformLocalMatrix(pose.transform));
+    const origin = new THREE.Vector3().setFromMatrixPosition(worldMatrix);
+    const direction = new THREE.Vector3(0, 0, -1).transformDirection(worldMatrix).normalize();
+    return { origin, direction };
+  }
+
+  function intersectRootRayWithFloor(originThree: THREE.Vector3, directionThree: THREE.Vector3): Vec3 | undefined {
+    const origin = threePointToWorld(originThree);
+    const direction = threeDirectionToWorld(directionThree);
+    if (Math.abs(direction.z) <= 1e-6) {
+      return undefined;
+    }
+
+    const t = -origin.z / direction.z;
+    if (!Number.isFinite(t) || t <= 0) {
+      return undefined;
+    }
+
+    return {
+      x: origin.x + direction.x * t,
+      y: origin.y + direction.y * t,
+      z: 0,
+    };
   }
 
   function logVerboseAimClick(target: ReturnType<typeof resolveCurrentAimTarget>): void {

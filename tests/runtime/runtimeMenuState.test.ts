@@ -81,7 +81,7 @@ describe("runtimeMenuState", () => {
     expect(definition.rightAction.id).toBe("close");
   });
 
-  it("creates a geodesic ray emitter action menu with aim disabled", () => {
+  it("creates a geodesic ray emitter action menu with aim enabled", () => {
     const definition = createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(createRuntimeMenuState({
       selectedWorldId: "cube",
     }), {
@@ -96,7 +96,7 @@ describe("runtimeMenuState", () => {
     }
     expect(definition.content.actions).toEqual([
       { id: "rotate", label: "Rotate", disabled: false },
-      { id: "aim", label: "Aim", disabled: true },
+      { id: "aim", label: "Aim", disabled: false },
     ]);
   });
 });

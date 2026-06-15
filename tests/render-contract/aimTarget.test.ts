@@ -123,6 +123,43 @@ describe("resolveAimTarget", () => {
     expect(target?.localPoint.z).toBeCloseTo(1.08);
   });
 
+  it("ignores geodesic ray segments for a selected geodesic when requested", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const segment = createGeodesicSegment({ geodesicId: "g-active" });
+    const registry = createRuntimeObjectRegistry([segment]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0, y: -2, z: 1.08 }, { x: 0, y: 0, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+      ignoredGeodesicIds: ["g-active"],
+    });
+
+    expect(target).toBeUndefined();
+  });
+
+  it("still resolves geodesic ray segments from other geodesics while one geodesic is ignored", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const segment = createGeodesicSegment({ geodesicId: "g-other" });
+    const registry = createRuntimeObjectRegistry([segment]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0, y: -2, z: 1.08 }, { x: 0, y: 0, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+      ignoredGeodesicIds: ["g-active"],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("segment-a");
+  });
+
   it("resolves the tail geodesic ray segment before the floor below it", () => {
     const world = compileCellComplex(singleRoomWorld());
     const first = createGeodesicSegment({ id: "segment-a", start: { x: -0.9, y: 0, z: 1.08 }, lengthMeters: 0.6 });

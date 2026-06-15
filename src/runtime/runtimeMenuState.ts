@@ -13,7 +13,13 @@ export type RuntimeMenuPageId =
   | "geodesic-cannon-actions";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
-export type RuntimeToolId = "none" | "aim" | "place-flag" | "geodesic-cannon" | "geodesic-cannon-rotate";
+export type RuntimeToolId =
+  | "none"
+  | "aim"
+  | "place-flag"
+  | "geodesic-cannon"
+  | "geodesic-cannon-rotate"
+  | "geodesic-cannon-aim";
 export type RuntimeDesktopToolId = RuntimeToolId;
 
 const defaultRuntimeDebugOverlayItems = ["fps", "location", "portal-quantities"] as const;
