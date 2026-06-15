@@ -11,7 +11,14 @@ export interface GeodesicCannonObject extends RuntimeWorldObjectBase {
   readonly activeGeodesicId?: string;
   readonly geodesicIds: readonly string[];
   readonly geodesicEmitterYawRadiansById?: Readonly<Record<string, number>>;
+  readonly geodesicConnectionsById?: Readonly<Record<string, GeodesicEmitterConnection>>;
   readonly aimYawRadians: number;
+}
+
+export interface GeodesicEmitterConnection {
+  readonly outgoingEmitterId: string;
+  readonly incomingEmitterId?: string;
+  readonly state: "open" | "connected";
 }
 
 export interface GeodesicSegmentObject extends RuntimeWorldObjectBase {
@@ -23,6 +30,7 @@ export interface GeodesicSegmentObject extends RuntimeWorldObjectBase {
   readonly direction: Vec3;
   readonly lengthMeters: number;
   readonly terminal: GeodesicSegmentTerminal;
+  readonly connectionState?: "open" | "connected";
 }
 
 export interface GeodesicIntersectionObject extends RuntimeWorldObjectBase {
@@ -33,6 +41,7 @@ export interface GeodesicIntersectionObject extends RuntimeWorldObjectBase {
 
 export type GeodesicSegmentTerminal =
   | { readonly kind: "open" }
+  | { readonly kind: "emitter-hit"; readonly emitterId: string }
   | {
       readonly kind: "portal-hit";
       readonly portalId: string;
@@ -51,6 +60,7 @@ export interface CreateGeodesicCannonOptions {
   readonly activeGeodesicId?: string;
   readonly geodesicIds?: readonly string[];
   readonly geodesicEmitterYawRadiansById?: Readonly<Record<string, number>>;
+  readonly geodesicConnectionsById?: Readonly<Record<string, GeodesicEmitterConnection>>;
   readonly aimYawRadians?: number;
   readonly collision?: SimpleCollisionCylinder;
 }
@@ -61,6 +71,12 @@ export interface TraceGeodesicSegmentInput {
   readonly start: Vec3;
   readonly direction: Vec3;
   readonly maxLengthMeters: number;
+}
+
+export interface TraceGeodesicSegmentWithEmittersInput extends TraceGeodesicSegmentInput {
+  readonly registry: RuntimeObjectRegistry;
+  readonly geodesicId: string;
+  readonly sourceEmitterId: string;
 }
 
 export interface TraceGeodesicSegmentResult {
@@ -103,6 +119,24 @@ export interface PlaceGeodesicCannonAtFloorPointRequest {
   readonly id: string;
 }
 
+export interface PlaceGeodesicCannonOnGeodesicRequest {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly geodesicId: string;
+  readonly segmentId: string;
+  readonly distanceAlongSegmentMeters: number;
+  readonly aimYawRadians: number;
+  readonly id: string;
+}
+
+export interface ConnectGeodesicToEmitterRequest {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly geodesicId: string;
+  readonly incomingEmitterId: string;
+  readonly totalLengthMeters: number;
+}
+
 export interface PlaceGeodesicCannonResult {
   readonly placed: boolean;
   readonly object?: GeodesicCannonObject;
@@ -119,6 +153,7 @@ export const geodesicRayBeamStartOffsetMeters = 0.2;
 const defaultTraceLengthMeters = 2;
 const portalStartEpsilonMeters = 1e-4;
 const intersectionTolerance = 1e-7;
+const emitterConnectionToleranceMeters = 0.3;
 const geodesicIntersectionEmitterExclusionRadiusMeters = 0.55;
 const geodesicIntersectionBalloonHeightOffsetMeters = 0.25;
 
@@ -144,6 +179,7 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
     activeGeodesicId: options.activeGeodesicId,
     geodesicIds: options.geodesicIds ?? (options.activeGeodesicId ? [options.activeGeodesicId] : []),
     geodesicEmitterYawRadiansById: options.geodesicEmitterYawRadiansById,
+    geodesicConnectionsById: options.geodesicConnectionsById,
     aimYawRadians,
   };
 }
@@ -215,14 +251,40 @@ export function getGeodesicTail(
   return getGeodesicSegments(registry, geodesicId).at(-1);
 }
 
+export function getGeodesicConnection(
+  registry: RuntimeObjectRegistry,
+  geodesicId: string,
+): GeodesicEmitterConnection | undefined {
+  for (const object of registry.getAll()) {
+    if (object.kind !== "geodesic-cannon") {
+      continue;
+    }
+
+    const connection = object.geodesicConnectionsById?.[geodesicId];
+    if (connection) {
+      return connection;
+    }
+  }
+
+  const source = findSourceEmitterForGeodesic(registry, geodesicId);
+  return source ? { outgoingEmitterId: source.id, state: "open" } : undefined;
+}
+
+export function isGeodesicLocked(registry: RuntimeObjectRegistry, geodesicId: string): boolean {
+  if (getGeodesicConnection(registry, geodesicId)?.state === "connected") {
+    return true;
+  }
+
+  return getGeodesicTail(registry, geodesicId)?.terminal.kind === "emitter-hit";
+}
+
 export function resolveGeodesicNumber(registry: RuntimeObjectRegistry, geodesicId: string): number {
   return getGlobalGeodesicNumbers(registry, geodesicId).get(geodesicId) ?? 1;
 }
 
 export function removeGeodesic(registry: RuntimeObjectRegistry, geodesicId: string): void {
-  for (const segment of getGeodesicSegments(registry, geodesicId)) {
-    registry.remove(segment.id);
-  }
+  removeGeodesicSegments(registry, geodesicId);
+  removeGeodesicAssociations(registry, geodesicId);
   updateGeodesicIntersectionObjects(registry);
 }
 
@@ -237,6 +299,21 @@ export function removeGeodesicCannonAndSegments(registry: RuntimeObjectRegistry,
       removeGeodesic(registry, geodesicId);
     }
   }
+  for (const object of registry.getAll()) {
+    if (
+      object.kind === "geodesic-cannon" &&
+      object.id !== cannonId &&
+      object.geodesicIds.some((geodesicId) =>
+        getGeodesicConnection(registry, geodesicId)?.incomingEmitterId === cannonId
+      )
+    ) {
+      for (const geodesicId of object.geodesicIds) {
+        if (getGeodesicConnection(registry, geodesicId)?.incomingEmitterId === cannonId) {
+          removeGeodesic(registry, geodesicId);
+        }
+      }
+    }
+  }
   registry.remove(cannonId);
   updateGeodesicIntersectionObjects(registry);
 }
@@ -246,7 +323,9 @@ export function getGeodesicSegmentEnd(segment: GeodesicSegmentObject): Vec3 {
 }
 
 export function canExtendGeodesicSegment(segment: GeodesicSegmentObject): boolean {
-  return segment.terminal.kind !== "wall-hit" && segment.terminal.kind !== "forbidden-zone-hit";
+  return segment.terminal.kind !== "wall-hit" &&
+    segment.terminal.kind !== "forbidden-zone-hit" &&
+    segment.terminal.kind !== "emitter-hit";
 }
 
 export function resolveGeodesicCannonAimYawRadians(
@@ -367,6 +446,75 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
   };
 }
 
+export function traceGeodesicSegmentWithEmitters(
+  input: TraceGeodesicSegmentWithEmittersInput,
+): TraceGeodesicSegmentResult {
+  const traced = traceGeodesicSegment(input);
+  const hit = findNearestEmitterHitOnTrace({
+    registry: input.registry,
+    sourceEmitterId: input.sourceEmitterId,
+    geodesicId: input.geodesicId,
+    cellId: traced.cellId,
+    start: traced.start,
+    direction: traced.direction,
+    maxLengthMeters: traced.lengthMeters,
+  });
+
+  if (!hit) {
+    return traced;
+  }
+
+  return {
+    ...traced,
+    lengthMeters: hit.distanceMeters,
+    terminal: { kind: "emitter-hit", emitterId: hit.emitter.id },
+  };
+}
+
+export function findNearestEmitterHitOnTrace(input: {
+  readonly registry: RuntimeObjectRegistry;
+  readonly sourceEmitterId: string;
+  readonly geodesicId?: string;
+  readonly cellId: string;
+  readonly start: Vec3;
+  readonly direction: Vec3;
+  readonly maxLengthMeters: number;
+}): { readonly emitter: GeodesicCannonObject; readonly distanceMeters: number } | undefined {
+  const direction = normalizeHorizontalDirection(input.direction);
+  let nearest: { readonly emitter: GeodesicCannonObject; readonly distanceMeters: number } | undefined;
+
+  for (const object of input.registry.getObjectsInCell(input.cellId)) {
+    if (object.kind !== "geodesic-cannon" || object.id === input.sourceEmitterId) {
+      continue;
+    }
+    if (input.geodesicId && object.geodesicIds.includes(input.geodesicId)) {
+      continue;
+    }
+
+    const offsetX = object.localPose.translation.x - input.start.x;
+    const offsetY = object.localPose.translation.y - input.start.y;
+    const projected = offsetX * direction.x + offsetY * direction.y;
+    if (
+      projected <= intersectionTolerance ||
+      projected > input.maxLengthMeters + intersectionTolerance
+    ) {
+      continue;
+    }
+
+    const perpendicularX = offsetX - direction.x * projected;
+    const perpendicularY = offsetY - direction.y * projected;
+    if (Math.hypot(perpendicularX, perpendicularY) > emitterConnectionToleranceMeters) {
+      continue;
+    }
+
+    if (!nearest || projected < nearest.distanceMeters) {
+      nearest = { emitter: object, distanceMeters: Math.min(projected, input.maxLengthMeters) };
+    }
+  }
+
+  return nearest;
+}
+
 export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject {
   const direction = directionFromYaw(input.cannon.aimYawRadians);
   const geodesicNumber = resolveGeodesicNumber(input.registry, input.geodesicId);
@@ -383,8 +531,11 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
     geodesicId: input.geodesicId,
     geodesicNumber,
     segmentIndex: 0,
-    trace: traceGeodesicSegment({
+    trace: traceGeodesicSegmentWithEmitters({
       world: input.world,
+      registry: input.registry,
+      geodesicId: input.geodesicId,
+      sourceEmitterId: input.cannon.id,
       cellId: input.cannon.cellId,
       start,
       direction,
@@ -403,27 +554,49 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
       ...input.cannon.geodesicEmitterYawRadiansById,
       [input.geodesicId]: input.cannon.aimYawRadians,
     },
+    geodesicConnectionsById: {
+      ...input.cannon.geodesicConnectionsById,
+      [input.geodesicId]: {
+        outgoingEmitterId: input.cannon.id,
+        state: segment.terminal.kind === "emitter-hit" ? "connected" : "open",
+        incomingEmitterId: segment.terminal.kind === "emitter-hit" ? segment.terminal.emitterId : undefined,
+      },
+    },
   });
+  if (segment.terminal.kind === "emitter-hit") {
+    markGeodesicConnected(input.registry, input.geodesicId, input.cannon.id, segment.terminal.emitterId);
+  }
   updateGeodesicIntersectionObjects(input.registry);
   return segment;
 }
 
 export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObject | undefined {
   const tail = getGeodesicTail(input.registry, input.geodesicId);
-  if (!tail || !canExtendGeodesicSegment(tail)) {
+  if (!tail || !canExtendGeodesicSegment(tail) || isGeodesicLocked(input.registry, input.geodesicId)) {
+    return undefined;
+  }
+  const sourceEmitterId = getGeodesicConnection(input.registry, input.geodesicId)?.outgoingEmitterId ??
+    findSourceEmitterForGeodesic(input.registry, input.geodesicId)?.id;
+  if (!sourceEmitterId) {
     return undefined;
   }
 
   const trace = tail.terminal.kind === "portal-hit"
-    ? traceGeodesicSegment({
+    ? traceGeodesicSegmentWithEmitters({
         world: input.world,
+        registry: input.registry,
+        geodesicId: input.geodesicId,
+        sourceEmitterId,
         cellId: tail.terminal.targetCellId,
         start: tail.terminal.targetStart,
         direction: tail.terminal.targetDirection,
         maxLengthMeters: input.maxLengthMeters ?? defaultTraceLengthMeters,
       })
-    : traceGeodesicSegment({
+    : traceGeodesicSegmentWithEmitters({
         world: input.world,
+        registry: input.registry,
+        geodesicId: input.geodesicId,
+        sourceEmitterId,
         cellId: tail.cellId,
         start: getGeodesicSegmentEnd(tail),
         direction: tail.direction,
@@ -438,17 +611,28 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
     trace,
   });
   input.registry.add(next);
+  if (next.terminal.kind === "emitter-hit") {
+    markGeodesicConnected(input.registry, input.geodesicId, sourceEmitterId, next.terminal.emitterId);
+  }
   updateGeodesicIntersectionObjects(input.registry);
   return next;
 }
 
 export function rebuildGeodesicToLength(input: RebuildGeodesicToLengthInput): readonly GeodesicSegmentObject[] {
+  if (isGeodesicLocked(input.registry, input.geodesicId)) {
+    return getGeodesicSegments(input.registry, input.geodesicId);
+  }
+
+  return rebuildUnlockedGeodesicToLength(input);
+}
+
+function rebuildUnlockedGeodesicToLength(input: RebuildGeodesicToLengthInput): readonly GeodesicSegmentObject[] {
   if (!(input.totalLengthMeters > 0) || !Number.isFinite(input.totalLengthMeters)) {
-    removeGeodesic(input.registry, input.geodesicId);
+    removeGeodesicSegments(input.registry, input.geodesicId);
     return [];
   }
 
-  removeGeodesic(input.registry, input.geodesicId);
+  removeGeodesicSegments(input.registry, input.geodesicId);
   const segments: GeodesicSegmentObject[] = [];
   let remainingLengthMeters = input.totalLengthMeters;
   const first = shootGeodesic({
@@ -478,6 +662,80 @@ export function rebuildGeodesicToLength(input: RebuildGeodesicToLengthInput): re
 
   updateGeodesicIntersectionObjects(input.registry);
   return segments;
+}
+
+export function connectGeodesicToEmitter(
+  request: ConnectGeodesicToEmitterRequest,
+): readonly GeodesicSegmentObject[] {
+  const source = findSourceEmitterForGeodesic(request.registry, request.geodesicId);
+  const incoming = request.registry.get(request.incomingEmitterId);
+  if (!source || incoming?.kind !== "geodesic-cannon") {
+    return getGeodesicSegments(request.registry, request.geodesicId);
+  }
+
+  removeGeodesicSegments(request.registry, request.geodesicId);
+  const rebuilt = rebuildUnlockedGeodesicToLength({
+    world: request.world,
+    registry: request.registry,
+    cannon: source,
+    geodesicId: request.geodesicId,
+    totalLengthMeters: request.totalLengthMeters,
+  });
+  const tail = rebuilt.at(-1);
+  if (!tail) {
+    return rebuilt;
+  }
+
+  request.registry.update({
+    ...tail,
+    lengthMeters: Math.max(0, request.totalLengthMeters - rebuilt.slice(0, -1).reduce((total, segment) => total + segment.lengthMeters, 0)),
+    terminal: { kind: "emitter-hit", emitterId: request.incomingEmitterId },
+    connectionState: "connected",
+  });
+  markGeodesicConnected(request.registry, request.geodesicId, source.id, request.incomingEmitterId);
+  updateGeodesicIntersectionObjects(request.registry);
+  return getGeodesicSegments(request.registry, request.geodesicId);
+}
+
+export function placeGeodesicCannonOnGeodesic(
+  request: PlaceGeodesicCannonOnGeodesicRequest,
+): PlaceGeodesicCannonResult {
+  const segment = request.registry.get(request.segmentId);
+  if (segment?.kind !== "geodesic-segment" || segment.geodesicId !== request.geodesicId) {
+    return { placed: false, reason: "missing-cell" };
+  }
+
+  const clampedDistance = Math.min(segment.lengthMeters, Math.max(0, request.distanceAlongSegmentMeters));
+  const floorPoint = {
+    x: segment.start.x + segment.direction.x * clampedDistance,
+    y: segment.start.y + segment.direction.y * clampedDistance,
+    z: 0,
+  };
+  const result = placeGeodesicCannonAtFloorPoint({
+    world: request.world,
+    registry: request.registry,
+    cellId: segment.cellId,
+    floorPoint,
+    aimYawRadians: request.aimYawRadians,
+    id: request.id,
+  });
+  if (!result.placed || !result.object) {
+    return result;
+  }
+
+  const totalLengthMeters = getGeodesicSegments(request.registry, request.geodesicId)
+    .filter((entry) => entry.segmentIndex < segment.segmentIndex)
+    .reduce((total, entry) => total + entry.lengthMeters, 0) + clampedDistance;
+  connectGeodesicToEmitter({
+    world: request.world,
+    registry: request.registry,
+    geodesicId: request.geodesicId,
+    incomingEmitterId: result.object.id,
+    totalLengthMeters,
+  });
+
+  const placed = request.registry.get(result.object.id);
+  return placed?.kind === "geodesic-cannon" ? { placed: true, object: placed } : result;
 }
 
 export function updateGeodesicIntersectionObjects(registry: RuntimeObjectRegistry): readonly GeodesicIntersectionObject[] {
@@ -522,7 +780,111 @@ function createSegmentFromTrace(options: {
     direction: options.trace.direction,
     lengthMeters: options.trace.lengthMeters,
     terminal: options.trace.terminal,
+    connectionState: options.trace.terminal.kind === "emitter-hit" ? "connected" : "open",
   };
+}
+
+function removeGeodesicSegments(registry: RuntimeObjectRegistry, geodesicId: string): void {
+  for (const segment of getGeodesicSegments(registry, geodesicId)) {
+    registry.remove(segment.id);
+  }
+  updateGeodesicIntersectionObjects(registry);
+}
+
+function removeGeodesicAssociations(registry: RuntimeObjectRegistry, geodesicId: string): void {
+  for (const object of registry.getAll()) {
+    if (object.kind !== "geodesic-cannon" || !object.geodesicIds.includes(geodesicId)) {
+      continue;
+    }
+
+    const { [geodesicId]: _removedYaw, ...remainingYaws } = object.geodesicEmitterYawRadiansById ?? {};
+    const { [geodesicId]: _removedConnection, ...remainingConnections } = object.geodesicConnectionsById ?? {};
+    const geodesicIds = object.geodesicIds.filter((id) => id !== geodesicId);
+    registry.update({
+      ...object,
+      activeGeodesicId: object.activeGeodesicId === geodesicId ? geodesicIds[0] : object.activeGeodesicId,
+      geodesicIds,
+      geodesicEmitterYawRadiansById: remainingYaws,
+      geodesicConnectionsById: remainingConnections,
+    });
+  }
+}
+
+function markGeodesicConnected(
+  registry: RuntimeObjectRegistry,
+  geodesicId: string,
+  sourceEmitterId: string,
+  incomingEmitterId: string,
+): void {
+  const source = registry.get(sourceEmitterId);
+  const incoming = registry.get(incomingEmitterId);
+  const tail = getGeodesicTail(registry, geodesicId);
+  const incomingYawRadians = tail
+    ? sanitizeYaw(Math.atan2(tail.direction.y, tail.direction.x) + Math.PI)
+    : undefined;
+  if (source?.kind === "geodesic-cannon") {
+    registry.update({
+      ...source,
+      geodesicIds: source.geodesicIds.includes(geodesicId)
+        ? source.geodesicIds
+        : [...source.geodesicIds, geodesicId],
+      geodesicConnectionsById: {
+        ...source.geodesicConnectionsById,
+        [geodesicId]: {
+          outgoingEmitterId: sourceEmitterId,
+          incomingEmitterId,
+          state: "connected",
+        },
+      },
+    });
+  }
+
+  if (incoming?.kind === "geodesic-cannon") {
+    registry.update({
+      ...incoming,
+      geodesicIds: incoming.geodesicIds.includes(geodesicId)
+        ? incoming.geodesicIds
+        : [...incoming.geodesicIds, geodesicId],
+      geodesicEmitterYawRadiansById: incomingYawRadians === undefined
+        ? incoming.geodesicEmitterYawRadiansById
+        : {
+            ...incoming.geodesicEmitterYawRadiansById,
+            [geodesicId]: incomingYawRadians,
+          },
+    });
+  }
+
+  for (const segment of getGeodesicSegments(registry, geodesicId)) {
+    registry.update({
+      ...segment,
+      connectionState: "connected",
+    });
+  }
+}
+
+function findSourceEmitterForGeodesic(
+  registry: RuntimeObjectRegistry,
+  geodesicId: string,
+): GeodesicCannonObject | undefined {
+  for (const object of registry.getAll()) {
+    if (object.kind !== "geodesic-cannon") {
+      continue;
+    }
+    const connection = object.geodesicConnectionsById?.[geodesicId];
+    if (connection?.outgoingEmitterId === object.id) {
+      return object;
+    }
+  }
+
+  return registry.getAll().find((object): object is GeodesicCannonObject =>
+    object.kind === "geodesic-cannon" &&
+    object.geodesicIds.includes(geodesicId) &&
+    object.geodesicEmitterYawRadiansById?.[geodesicId] !== undefined
+  ) ?? registry.getAll().find((object): object is GeodesicCannonObject =>
+    object.kind === "geodesic-cannon" && object.activeGeodesicId === geodesicId
+  ) ?? registry.getAll().find((object): object is GeodesicCannonObject =>
+    object.kind === "geodesic-cannon" && object.geodesicIds.includes(geodesicId)
+  );
 }
 
 function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly GeodesicIntersectionObject[] {

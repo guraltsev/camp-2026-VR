@@ -3,6 +3,7 @@ import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex"
 import type { CompiledPrismCell } from "../../cell-complex/prismCells";
 import { distanceVec3, dotVec3, normalizeVec3, subVec3, type Vec3 } from "../../math/vec3";
 import { getDynamicObjectCollisionBounds, signedDistanceToSide, type SimpleCylinderBounds } from "../../movement/collision";
+import { geodesicRayBeamHeightMeters } from "../../world-objects/geodesicCannon";
 import { runtimeObjectToDynamicObjectState, type RuntimeObjectRegistry, type RuntimeWorldObject } from "../../world-objects/runtimeObjectRegistry";
 import type { VisiblePortalPath } from "./visiblePortalPaths";
 import { threeDirectionToWorld, threePointToWorld, worldPointToThree } from "./worldAxes";
@@ -20,6 +21,7 @@ export interface AimTarget {
   readonly distanceMeters: number;
   readonly portalPathId: number;
   readonly object?: RuntimeWorldObject;
+  readonly geodesicSegmentDistanceMeters?: number;
 }
 
 export interface ResolveAimTargetRequest {
@@ -28,6 +30,7 @@ export interface ResolveAimTargetRequest {
   readonly camera: THREE.Camera;
   readonly visiblePortalPaths: readonly VisiblePortalPath[];
   readonly maxDistanceMeters?: number;
+  readonly maxEmitterDistanceMeters?: number;
   readonly ignoredGeodesicIds?: readonly string[];
 }
 
@@ -42,12 +45,17 @@ interface ObjectAimHit {
   readonly distance: number;
   readonly normal: Vec3;
   readonly point?: Vec3;
+  readonly targetPoint?: Vec3;
+  readonly geodesicSegmentDistanceMeters?: number;
 }
 
 const centerNdc = { x: 0, y: 0 };
 const aimPointToleranceMeters = 1e-5;
 const aimTargetPriorityDistanceToleranceMeters = 0.4;
+const geodesicSegmentVsEmitterPriorityDistanceToleranceMeters = 3;
 const fallbackObjectRadiusMeters = 0.25;
+const geodesicEmitterStickyAimRadiusMeters = 0.8;
+const defaultMaxEmitterAimDistanceMeters = 200;
 export const geodesicSegmentAimRadiusMeters = 0.28;
 export const geodesicSegmentEmitterSuppressionRadiusMeters = 1;
 export const geodesicSegmentAlwaysSelectableTailMeters = 0.1;
@@ -69,6 +77,7 @@ export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | 
     ndcPoint: centerNdc,
     visiblePortalPaths: request.visiblePortalPaths,
     maxDistanceMeters,
+    maxEmitterDistanceMeters: request.maxEmitterDistanceMeters ?? defaultMaxEmitterAimDistanceMeters,
     ignoredGeodesicIds: new Set(request.ignoredGeodesicIds ?? []),
   });
 }
@@ -81,6 +90,7 @@ function resolveAimTargetFromRootThreeRay(request: {
   readonly ndcPoint: { readonly x: number; readonly y: number };
   readonly visiblePortalPaths: readonly VisiblePortalPath[];
   readonly maxDistanceMeters: number;
+  readonly maxEmitterDistanceMeters: number;
   readonly ignoredGeodesicIds: ReadonlySet<string>;
 }): AimTarget | undefined {
   const rootDirectionThree = request.rootDirectionThree.clone().normalize();
@@ -99,7 +109,14 @@ function resolveAimTargetFromRootThreeRay(request: {
 
     const ray = buildCellRayFromRootThreeRay(request.rootOriginThree, rootDirectionThree, path);
     const candidates = [
-      ...resolveObjectAimTargets(request.registry, cell, ray, request.maxDistanceMeters, request.ignoredGeodesicIds),
+      ...resolveObjectAimTargets(
+        request.registry,
+        cell,
+        ray,
+        request.maxDistanceMeters,
+        request.maxEmitterDistanceMeters,
+        request.ignoredGeodesicIds,
+      ),
       ...resolveFloorAimTarget(cell, ray, request.maxDistanceMeters),
     ];
 
@@ -135,6 +152,7 @@ function resolveObjectAimTargets(
   cell: CompiledPrismCell,
   ray: CellRay,
   maxDistanceMeters: number,
+  maxEmitterDistanceMeters: number,
   ignoredGeodesicIds: ReadonlySet<string>,
 ): readonly AimTarget[] {
   const hits: AimTarget[] = [];
@@ -147,16 +165,19 @@ function resolveObjectAimTargets(
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
     const hit = object.kind === "geodesic-segment"
       ? intersectRayWithSelectableSegment(registry, object, ray.origin, ray.direction)
+      : object.kind === "geodesic-cannon"
+        ? intersectRayWithStickyGeodesicEmitter(ray.origin, ray.direction, object.localPose.translation)
       : bounds
         ? intersectRayWithVerticalCylinder(ray.origin, ray.direction, bounds)
         : intersectRayWithSphere(ray.origin, ray.direction, object.localPose.translation, fallbackObjectRadiusMeters);
 
-    if (!hit || hit.distance > maxDistanceMeters) {
+    const targetMaxDistanceMeters = object.kind === "geodesic-cannon" ? maxEmitterDistanceMeters : maxDistanceMeters;
+    if (!hit || hit.distance > targetMaxDistanceMeters) {
       continue;
     }
 
     const localPoint = hit.point ?? pointOnRay(ray.origin, ray.direction, hit.distance);
-    const targetLocalPoint = object.aimStickyTarget?.localPoint ?? localPoint;
+    const targetLocalPoint = object.aimStickyTarget?.localPoint ?? hit.targetPoint ?? localPoint;
     hits.push({
       kind: "object",
       cellId: cell.id,
@@ -168,6 +189,7 @@ function resolveObjectAimTargets(
       distanceMeters: rootDistance(ray, localPoint),
       portalPathId: ray.path.pathId,
       object,
+      geodesicSegmentDistanceMeters: hit.geodesicSegmentDistanceMeters,
     });
   }
 
@@ -175,6 +197,13 @@ function resolveObjectAimTargets(
 }
 
 function isBetterAimTarget(candidate: AimTarget, current: AimTarget): boolean {
+  if (isGeodesicSegmentVsEmitterChoice(candidate, current)) {
+    const distanceDelta = Math.abs(candidate.distanceMeters - current.distanceMeters);
+    if (distanceDelta <= geodesicSegmentVsEmitterPriorityDistanceToleranceMeters) {
+      return getAimTargetPriority(candidate) > getAimTargetPriority(current);
+    }
+  }
+
   if (candidate.distanceMeters < current.distanceMeters - aimPointToleranceMeters) {
     return true;
   }
@@ -186,12 +215,23 @@ function isBetterAimTarget(candidate: AimTarget, current: AimTarget): boolean {
   return getAimTargetPriority(candidate) > getAimTargetPriority(current);
 }
 
+function isGeodesicSegmentVsEmitterChoice(left: AimTarget, right: AimTarget): boolean {
+  const leftKind = left.object?.kind;
+  const rightKind = right.object?.kind;
+  return (leftKind === "geodesic-segment" && rightKind === "geodesic-cannon") ||
+    (leftKind === "geodesic-cannon" && rightKind === "geodesic-segment");
+}
+
 function getAimTargetPriority(target: AimTarget): number {
   if (target.object?.kind === "geodesic-intersection") {
-    return 2;
+    return 3;
   }
 
   if (target.object?.kind === "geodesic-segment") {
+    return 2;
+  }
+
+  if (target.object?.kind === "geodesic-cannon") {
     return 1;
   }
 
@@ -210,13 +250,26 @@ function intersectRayWithSelectableSegment(
   }
 
   const clippedStart = pointOnSegmentCenterline(segment.start, segment.direction, selectableStartMeters);
-  return intersectRayWithSegmentCapsule(
+  const hit = intersectRayWithSegmentCapsule(
     rayOrigin,
     rayDirection,
     clippedStart,
     segment.direction,
     segment.lengthMeters - selectableStartMeters,
   );
+  if (!hit || hit.geodesicSegmentDistanceMeters === undefined) {
+    return hit;
+  }
+
+  const segmentDistanceMeters = Math.min(
+    segment.lengthMeters,
+    Math.max(0, selectableStartMeters + hit.geodesicSegmentDistanceMeters),
+  );
+  return {
+    ...hit,
+    geodesicSegmentDistanceMeters: segmentDistanceMeters,
+    targetPoint: pointOnSegmentCenterline(segment.start, segment.direction, segmentDistanceMeters),
+  };
 }
 
 function getSelectableSegmentStartMeters(
@@ -308,9 +361,43 @@ function intersectRayWithSegmentCapsule(
     segmentLengthMeters,
   );
 
-  return hits.length > 0
-    ? hits.reduce((best, hit) => hit.distance < best.distance ? hit : best)
-    : undefined;
+  if (hits.length === 0) {
+    return undefined;
+  }
+
+  const best = hits.reduce((currentBest, hit) => hit.distance < currentBest.distance ? hit : currentBest);
+  const closestSegmentDistance = resolveClosestSegmentDistanceOnRay(
+    localOrigin,
+    localDirection,
+    segmentLengthMeters,
+  );
+  const targetDistance = closestSegmentDistance ?? best.geodesicSegmentDistanceMeters;
+  return targetDistance === undefined
+    ? best
+    : {
+        ...best,
+        geodesicSegmentDistanceMeters: targetDistance,
+        targetPoint: pointOnSegmentCenterline(segmentStart, segmentDirection, targetDistance),
+      };
+}
+
+function resolveClosestSegmentDistanceOnRay(
+  localOrigin: Vec3,
+  localDirection: Vec3,
+  segmentLengthMeters: number,
+): number | undefined {
+  const lateralMagnitudeSquared = localDirection.y * localDirection.y + localDirection.z * localDirection.z;
+  if (lateralMagnitudeSquared <= aimPointToleranceMeters) {
+    return Math.min(segmentLengthMeters, Math.max(0, localOrigin.x));
+  }
+
+  const rayDistance = -(localOrigin.y * localDirection.y + localOrigin.z * localDirection.z) /
+    lateralMagnitudeSquared;
+  if (!Number.isFinite(rayDistance) || rayDistance < 0) {
+    return undefined;
+  }
+
+  return Math.min(segmentLengthMeters, Math.max(0, localOrigin.x + localDirection.x * rayDistance));
 }
 
 function pushSegmentCylinderHit(
@@ -387,6 +474,8 @@ function pushSegmentCylinderDistance(
     distance,
     normal: normalizeVec3OrFallback(subVec3(point, centerlinePoint)),
     point,
+    targetPoint: centerlinePoint,
+    geodesicSegmentDistanceMeters: segmentDistance,
   });
 }
 
@@ -431,6 +520,8 @@ function pushSegmentSphereHit(
     distance,
     normal: normalizeVec3OrFallback(subVec3(point, center)),
     point,
+    targetPoint: center,
+    geodesicSegmentDistanceMeters: segmentDistance,
   });
 }
 
@@ -515,6 +606,25 @@ function intersectRayWithVerticalCylinder(
   return positiveHits.length > 0
     ? positiveHits.reduce((best, hit) => hit.distance < best.distance ? hit : best)
     : undefined;
+}
+
+function intersectRayWithStickyGeodesicEmitter(
+  origin: Vec3,
+  direction: Vec3,
+  emitterPoint: Vec3,
+): ObjectAimHit | undefined {
+  const center = { x: emitterPoint.x, y: emitterPoint.y, z: emitterPoint.z + geodesicRayBeamHeightMeters };
+  const hit = intersectRayWithSphere(origin, direction, center, geodesicEmitterStickyAimRadiusMeters);
+  if (!hit) {
+    return undefined;
+  }
+
+  return {
+    ...hit,
+    point: center,
+    targetPoint: center,
+    normal: normalizeVec3OrFallback(subVec3(pointOnRay(origin, direction, hit.distance), center)),
+  };
 }
 
 function pushCylinderSideHit(

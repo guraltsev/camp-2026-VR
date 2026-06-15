@@ -6,6 +6,7 @@ import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { rigidTransformToThreeMatrix } from "./worldAxes";
 
 export const geodesicSegmentArchetypeKey = "geodesic-segment:ribbon-cross";
+export const geodesicSegmentConnectedArchetypeKey = "geodesic-segment:ribbon-cross:connected";
 export const geodesicRayPostArchetypePrefix = "geodesic-ray:post";
 export const geodesicRayHeadArchetypePrefix = "geodesic-ray:head";
 export const geodesicIntersectionArchetypePrefix = "geodesic-intersection:balloon";
@@ -24,6 +25,11 @@ export function createGeodesicRuntimeRenderSources(
 ): readonly RuntimeObjectRenderSourceMesh[] {
   return [
     createSegmentSource(),
+    createSegmentSource({
+      archetypeKey: geodesicSegmentConnectedArchetypeKey,
+      color: 0xf6c445,
+      opacity: 0.92,
+    }),
     ...createRayEmitterOnPostSources(assets),
     ...createIntersectionBalloonSources(assets),
   ];
@@ -84,7 +90,9 @@ export function collectGeodesicRuntimeRenderRecords(
     {
       objectId: object.id,
       cellId: object.cellId,
-      archetypeKey: geodesicSegmentArchetypeKey,
+      archetypeKey: object.connectionState === "connected"
+        ? geodesicSegmentConnectedArchetypeKey
+        : geodesicSegmentArchetypeKey,
       localMatrix: composeSegmentMatrix(object),
     },
   ];
@@ -113,11 +121,15 @@ export function composeSegmentMatrix(segment: GeodesicSegmentObject): THREE.Matr
   }).multiply(new THREE.Matrix4().makeScale(segment.lengthMeters, 1, 1));
 }
 
-function createSegmentSource(): RuntimeObjectRenderSourceMesh {
+function createSegmentSource(options: {
+  readonly archetypeKey?: string;
+  readonly color?: number;
+  readonly opacity?: number;
+} = {}): RuntimeObjectRenderSourceMesh {
   const segmentMaterial = new THREE.MeshBasicMaterial({
-    color: 0x38f2ff,
+    color: options.color ?? 0x38f2ff,
     transparent: true,
-    opacity: 0.88,
+    opacity: options.opacity ?? 0.88,
     side: THREE.DoubleSide,
     depthWrite: false,
   });
@@ -130,7 +142,7 @@ function createSegmentSource(): RuntimeObjectRenderSourceMesh {
 
   return {
     objectId: "geodesic-segment:source",
-    archetypeKey: geodesicSegmentArchetypeKey,
+    archetypeKey: options.archetypeKey ?? geodesicSegmentArchetypeKey,
     mesh: segment,
     root,
   };

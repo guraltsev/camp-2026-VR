@@ -73,8 +73,8 @@ export interface GeodesicCannonActionsPaletteContent {
   readonly geodesics: readonly {
     readonly id: string;
     readonly label: string;
-    readonly rotateDisabled: boolean;
-    readonly aimDisabled: boolean;
+    readonly locked: boolean;
+    readonly connectionSymbolLabel?: string;
     readonly deleteDisabled: boolean;
   }[];
 }
@@ -185,6 +185,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
         geodesics: createGeodesicCannonEntries(
           state.geodesicCannonOptions.geodesicIds,
           state.geodesicCannonOptions.geodesicLabelsById,
+          state.geodesicCannonOptions.lockedGeodesicIds,
         ),
       },
     };
@@ -205,12 +206,14 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
 function createGeodesicCannonEntries(
   geodesicIds: readonly string[],
   geodesicLabelsById: Readonly<Record<string, string>> | undefined,
+  lockedGeodesicIds: readonly string[] | undefined,
 ): GeodesicCannonActionsPaletteContent["geodesics"] {
+  const lockedIds = new Set(lockedGeodesicIds ?? []);
   return geodesicIds.map((geodesicId, index) => ({
     id: geodesicId,
     label: geodesicLabelsById?.[geodesicId] ?? `G${index + 1}`,
-    rotateDisabled: false,
-    aimDisabled: false,
+    locked: lockedIds.has(geodesicId),
+    connectionSymbolLabel: lockedIds.has(geodesicId) ? "| - lock - |" : undefined,
     deleteDisabled: false,
   }));
 }

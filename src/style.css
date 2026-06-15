@@ -346,7 +346,7 @@ body {
 
 .desktop-tool-palette-geodesic-row {
   display: grid;
-  grid-template-columns: minmax(44px, 1fr) minmax(92px, auto) minmax(92px, auto);
+  grid-template-columns: minmax(44px, 1fr) minmax(92px, auto) minmax(92px, auto) minmax(84px, auto);
   align-items: center;
   gap: 10px;
   min-height: 58px;
@@ -354,6 +354,25 @@ body {
   border: 1px solid rgb(143 184 192 / 38%);
   border-radius: 12px;
   background: rgb(16 24 32 / 78%);
+}
+
+.desktop-tool-palette-connection-symbol {
+  grid-column: span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid rgb(246 196 69 / 45%);
+  border-radius: 10px;
+  color: #f6c445;
+  font: 700 0.82rem/1 system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.desktop-tool-palette-connection-symbol .desktop-tool-palette-button-icon {
+  filter: invert(84%) sepia(50%) saturate(829%) hue-rotate(344deg) brightness(101%) contrast(93%);
 }
 
 .desktop-tool-palette-select {

@@ -384,32 +384,6 @@ function buildGeodesicCannonActionsContent(
     });
     row.add(createButtonText(geodesic.label, 18));
 
-    const rotateButton = createInteractiveSurface({
-      width: 132,
-      height: 42,
-      label: "Rotate",
-      labelFontSize: 16,
-      disabled: geodesic.rotateDisabled,
-      backgroundColor: geodesic.rotateDisabled ? "#334155" : actionColor,
-      onClick: () => options.onGeodesicCannonRotateRequested?.(content.cannonId, geodesic.id),
-    });
-    rotateButton.userData.xrPaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
-    rotateButton.userData.scenePaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
-    rotateButton.add(createGeodesicCannonActionIcon("rotate"));
-
-    const aimButton = createInteractiveSurface({
-      width: 112,
-      height: 42,
-      label: "Aim",
-      labelFontSize: 16,
-      disabled: geodesic.aimDisabled,
-      backgroundColor: geodesic.aimDisabled ? "#334155" : actionColor,
-      onClick: () => options.onGeodesicCannonAimRequested?.(content.cannonId, geodesic.id),
-    });
-    aimButton.userData.xrPaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
-    aimButton.userData.scenePaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
-    aimButton.add(createGeodesicCannonActionIcon("aim"));
-
     const deleteButton = createInteractiveSurface({
       width: 46,
       height: 42,
@@ -427,7 +401,46 @@ function buildGeodesicCannonActionsContent(
       fill: textColor,
     }));
 
-    row.add(rotateButton, aimButton, deleteButton);
+    if (geodesic.locked) {
+      const status = createInteractiveSurface({
+        width: 252,
+        height: 42,
+        label: geodesic.connectionSymbolLabel ?? "| - lock - |",
+        labelFontSize: 15,
+        disabled: true,
+        backgroundColor: "#334155",
+        onClick: () => {},
+      });
+      row.add(status, deleteButton);
+    } else {
+      const rotateButton = createInteractiveSurface({
+        width: 132,
+        height: 42,
+        label: "Rotate",
+        labelFontSize: 16,
+        disabled: false,
+        backgroundColor: actionColor,
+        onClick: () => options.onGeodesicCannonRotateRequested?.(content.cannonId, geodesic.id),
+      });
+      rotateButton.userData.xrPaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
+      rotateButton.userData.scenePaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
+      rotateButton.add(createGeodesicCannonActionIcon("rotate"));
+
+      const aimButton = createInteractiveSurface({
+        width: 112,
+        height: 42,
+        label: "Aim",
+        labelFontSize: 16,
+        disabled: false,
+        backgroundColor: actionColor,
+        onClick: () => options.onGeodesicCannonAimRequested?.(content.cannonId, geodesic.id),
+      });
+      aimButton.userData.xrPaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
+      aimButton.userData.scenePaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
+      aimButton.add(createGeodesicCannonActionIcon("aim"));
+
+      row.add(rotateButton, aimButton, deleteButton);
+    }
     list.add(row);
   }
 

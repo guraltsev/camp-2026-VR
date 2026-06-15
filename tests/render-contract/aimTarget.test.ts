@@ -62,6 +62,31 @@ describe("resolveAimTarget", () => {
     expect(target?.localNormal.z).toBeCloseTo(0);
   });
 
+  it("selects geodesic emitters beyond the ordinary aim distance", () => {
+    const world = compileCellComplex(largeRoomWorld());
+    const emitter = createGeodesicCannonObject({
+      id: "emitter-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 40, y: 0, z: 0 }),
+    });
+    const registry = createRuntimeObjectRegistry([emitter]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0, y: 0, z: 1.08 }, { x: 40, y: 0.35, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+      maxDistanceMeters: 24,
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("emitter-a");
+    expect(target?.localPoint).toEqual({ x: 40, y: 0, z: 1.08 });
+    expect(target?.distanceMeters).toBeGreaterThan(39);
+  });
+
   it("resolves a floor point in a visible destination cell", () => {
     const world = compileCellComplex(twoRoomPortalWorld());
     const registry = createRuntimeObjectRegistry();
@@ -123,7 +148,7 @@ describe("resolveAimTarget", () => {
     expect(target?.localPoint.z).toBeCloseTo(1.08);
   });
 
-  it("does not resolve or tooltip geodesic ray segments within one meter of their emitter", () => {
+  it("suppresses geodesic ray segments within one meter of their emitter while keeping the emitter selectable", () => {
     const world = compileCellComplex(singleRoomWorld());
     const cannon = createGeodesicCannonObject({
       id: "cannon-a",
@@ -147,7 +172,8 @@ describe("resolveAimTarget", () => {
       visiblePortalPaths: [visiblePath(rootPath)],
     });
 
-    expect(target).toBeUndefined();
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("cannon-a");
   });
 
   it("resolves the selectable part of a geodesic ray while standing near its emitter", () => {
@@ -343,6 +369,30 @@ describe("resolveAimTarget", () => {
     expect(target?.object?.id).toBe("segment-a");
   });
 
+  it("reports the geodesic centerline point for shallow far segment hits", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const segment = createGeodesicSegment({
+      start: { x: -0.8, y: 0, z: 1.08 },
+      lengthMeters: 1.8,
+    });
+    const registry = createRuntimeObjectRegistry([segment]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: -3.5, y: -0.9, z: 1.08 }, { x: 0.55, y: 0, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("segment-a");
+    expect(target?.localPoint.x).toBeCloseTo(0.55, 1);
+    expect(target?.localPoint.y).toBeCloseTo(0);
+    expect(target?.geodesicSegmentDistanceMeters).toBeCloseTo(1.35, 1);
+  });
+
   it("resolves geodesic ray segment instances through visible portal paths", () => {
     const world = compileCellComplex(twoRoomPortalWorld());
     const segment = createGeodesicSegment({
@@ -422,6 +472,24 @@ function singleRoomWorld(): CellComplexSpec {
         id: "room",
         heightMeters: 3,
         baseVertices: squareBase(),
+        portals: [],
+      },
+    ],
+  };
+}
+
+function largeRoomWorld(): CellComplexSpec {
+  return {
+    cells: [
+      {
+        id: "room",
+        heightMeters: 3,
+        baseVertices: [
+          { x: -100, y: -100 },
+          { x: 100, y: -100 },
+          { x: 100, y: 100 },
+          { x: -100, y: 100 },
+        ],
         portals: [],
       },
     ],

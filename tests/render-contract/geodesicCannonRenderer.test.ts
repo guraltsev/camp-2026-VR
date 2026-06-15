@@ -9,6 +9,7 @@ import {
   geodesicRayAssetPaths,
   geodesicRayHeadArchetypePrefix,
   geodesicRayPostArchetypePrefix,
+  geodesicSegmentConnectedArchetypeKey,
   geodesicSegmentArchetypeKey,
   getGeodesicRayArchetypeKeys,
 } from "../../src/render/three/geodesicCannonRenderer";
@@ -25,6 +26,15 @@ describe("geodesic cannon renderer", () => {
     expect(records[0].objectId).toBe(segment.id);
     expect(records[0].cellId).toBe("cell-b");
     expect(records[0].archetypeKey).toBe(geodesicSegmentArchetypeKey);
+  });
+
+  it("publishes connected geodesic segments with the connected archetype", () => {
+    const records = collectGeodesicRuntimeRenderRecords(createSegment({
+      connectionState: "connected",
+      terminal: { kind: "emitter-hit", emitterId: "ray-emitter-b" },
+    }));
+
+    expect(records[0].archetypeKey).toBe(geodesicSegmentConnectedArchetypeKey);
   });
 
   it("scales the segment record matrix by segment length", () => {

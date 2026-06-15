@@ -97,8 +97,8 @@ describe("runtimeMenuState", () => {
     }
     expect(definition.content.addAction).toEqual({ label: "Add geodesic", disabled: false });
     expect(definition.content.geodesics).toEqual([
-      { id: "g-a", label: "G1", rotateDisabled: false, aimDisabled: false, deleteDisabled: false },
-      { id: "g-b", label: "G2", rotateDisabled: false, aimDisabled: false, deleteDisabled: false },
+      { id: "g-a", label: "G1", locked: false, connectionSymbolLabel: undefined, deleteDisabled: false },
+      { id: "g-b", label: "G2", locked: false, connectionSymbolLabel: undefined, deleteDisabled: false },
     ]);
   });
 
@@ -116,7 +116,25 @@ describe("runtimeMenuState", () => {
       throw new Error("Expected geodesic cannon actions.");
     }
     expect(definition.content.geodesics).toEqual([
-      { id: "g-b", label: "G2", rotateDisabled: false, aimDisabled: false, deleteDisabled: false },
+      { id: "g-b", label: "G2", locked: false, connectionSymbolLabel: undefined, deleteDisabled: false },
+    ]);
+  });
+
+  it("marks locked geodesic rows with a connection symbol", () => {
+    const definition = createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), {
+      cannonId: "cannon-b",
+      geodesicIds: ["g-b"],
+      lockedGeodesicIds: ["g-b"],
+    }));
+
+    expect(definition.content.kind).toBe("geodesic-cannon-actions");
+    if (definition.content.kind !== "geodesic-cannon-actions") {
+      throw new Error("Expected geodesic cannon actions.");
+    }
+    expect(definition.content.geodesics).toEqual([
+      { id: "g-b", label: "G1", locked: true, connectionSymbolLabel: "| - lock - |", deleteDisabled: false },
     ]);
   });
 });

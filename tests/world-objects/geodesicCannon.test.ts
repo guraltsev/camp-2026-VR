@@ -3,12 +3,16 @@ import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
 import {
   createGeodesicCannonObject,
+  connectGeodesicToEmitter,
   extendGeodesic,
   geodesicRayBeamHeightMeters,
   geodesicRayBeamStartOffsetMeters,
+  getGeodesicConnection,
   getGeodesicSegmentEnd,
   getGeodesicSegments,
   getGeodesicTail,
+  isGeodesicLocked,
+  placeGeodesicCannonOnGeodesic,
   rebuildGeodesicToLength,
   removeGeodesic,
   resolveGeodesicCannonAimYawRadians,
@@ -340,6 +344,126 @@ describe("geodesic cannon world objects", () => {
     expect(extendGeodesic({ world, registry, geodesicId: "g-a" })).toBeUndefined();
   });
 
+  it("places an incoming emitter on a segment, truncates the geodesic, and locks it", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    registry.add(cannon);
+    const first = shootGeodesic({ world, registry, cannon, geodesicId: "g-a" });
+
+    const result = placeGeodesicCannonOnGeodesic({
+      world,
+      registry,
+      geodesicId: "g-a",
+      segmentId: first.id,
+      distanceAlongSegmentMeters: 1,
+      aimYawRadians: Math.PI / 2,
+      id: "cannon-b",
+    });
+
+    expect(result.placed).toBe(true);
+    expect(getGeodesicSegments(registry, "g-a")).toHaveLength(1);
+    expect(getGeodesicTail(registry, "g-a")).toMatchObject({
+      lengthMeters: 1,
+      terminal: { kind: "emitter-hit", emitterId: "cannon-b" },
+      connectionState: "connected",
+    });
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+    expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-a"]);
+    expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(Math.PI);
+    expect(extendGeodesic({ world, registry, geodesicId: "g-a" })).toBeUndefined();
+  });
+
+  it("connects immediately when an aimed geodesic reaches an emitter", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+
+    const first = shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 4 });
+
+    expect(first.lengthMeters).toBeCloseTo(2.3);
+    expect(first.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-b" });
+    expect(getGeodesicConnection(registry, "g-a")).toEqual({
+      outgoingEmitterId: "cannon-a",
+      incomingEmitterId: "cannon-b",
+      state: "connected",
+    });
+    expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-a"]);
+    expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(Math.PI);
+  });
+
+  it("does not connect until extension reaches the target emitter", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+
+    const first = shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 1 });
+    const second = extendGeodesic({ world, registry, geodesicId: "g-a", maxLengthMeters: 3 });
+
+    expect(first.terminal.kind).toBe("open");
+    expect(second?.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-b" });
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+  });
+
+  it("deleting a connected geodesic removes association from both emitters", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      activeGeodesicId: "g-a",
+      geodesicIds: ["g-a"],
+      geodesicEmitterYawRadiansById: { "g-a": 0 },
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    connectGeodesicToEmitter({
+      world,
+      registry,
+      geodesicId: "g-a",
+      incomingEmitterId: "cannon-b",
+      totalLengthMeters: 2.3,
+    });
+
+    removeGeodesic(registry, "g-a");
+
+    expect(getGeodesicSegments(registry, "g-a")).toHaveLength(0);
+    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual([]);
+    expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual([]);
+  });
+
   it("looks up tails and removes segment chains", () => {
     const world = compileWorld(false);
     const registry = createRuntimeObjectRegistry();
@@ -502,6 +626,20 @@ function compileWorld(withPortal: boolean) {
 function totalGeodesicLength(registry: ReturnType<typeof createRuntimeObjectRegistry>, geodesicId: string): number {
   return getGeodesicSegments(registry, geodesicId)
     .reduce((total, segment) => total + segment.lengthMeters, 0);
+}
+
+function getCannonGeodesicIds(registry: ReturnType<typeof createRuntimeObjectRegistry>, cannonId: string): readonly string[] {
+  const cannon = registry.get(cannonId);
+  return cannon?.kind === "geodesic-cannon" ? cannon.geodesicIds : [];
+}
+
+function getCannonGeodesicYaw(
+  registry: ReturnType<typeof createRuntimeObjectRegistry>,
+  cannonId: string,
+  geodesicId: string,
+): number | undefined {
+  const cannon = registry.get(cannonId);
+  return cannon?.kind === "geodesic-cannon" ? cannon.geodesicEmitterYawRadiansById?.[geodesicId] : undefined;
 }
 
 function compileLargeWorld() {
