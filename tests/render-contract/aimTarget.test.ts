@@ -6,7 +6,7 @@ import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 import { createPlacedFlagObject } from "../../src/world-objects/placedFlags";
 import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
-import { createGeodesicCannonObject, type GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
+import { createGeodesicCannonObject, type GeodesicIntersectionObject, type GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
 import { resolveAimTarget } from "../../src/render/three/aimTarget";
 import type { VisiblePortalPath } from "../../src/render/three/visiblePortalPaths";
 import { rigidTransformToThreeMatrix, worldPointToThree } from "../../src/render/three/worldAxes";
@@ -177,6 +177,60 @@ describe("resolveAimTarget", () => {
     expect(target?.kind).toBe("object");
     expect(target?.object?.id).toBe("segment-a");
     expect(target?.localPoint.x).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps the last ten centimeters of a geodesic ray selectable inside the emitter buffer", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+      activeGeodesicId: "g-a",
+      geodesicIds: ["g-a"],
+    });
+    const segment = createGeodesicSegment({
+      start: { x: 0.2, y: 0, z: 1.08 },
+      lengthMeters: 0.8,
+    });
+    const registry = createRuntimeObjectRegistry([cannon, segment]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0.95, y: -2, z: 1.08 }, { x: 0.95, y: 0, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("segment-a");
+    expect(target?.localPoint.x).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("prioritizes geodesic intersection balloons over overlapping geodesic ray segments", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const segment = createGeodesicSegment({
+      start: { x: -0.5, y: 0, z: 1.08 },
+      lengthMeters: 1,
+    });
+    const vertex = createGeodesicIntersection({
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 1.23 }),
+    });
+    const registry = createRuntimeObjectRegistry([segment, vertex]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0, y: -2, z: 1.23 }, { x: 0, y: 0, z: 1.23 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("vertex-a");
+    expect(target?.object?.kind).toBe("geodesic-intersection");
   });
 
   it("ignores geodesic ray segments for a selected geodesic when requested", () => {
@@ -408,6 +462,23 @@ function createGeodesicSegment(overrides: Partial<GeodesicSegmentObject> = {}): 
     direction: { x: 1, y: 0, z: 0 },
     lengthMeters: 1,
     terminal: { kind: "open" },
+    ...overrides,
+  };
+}
+
+function createGeodesicIntersection(overrides: Partial<GeodesicIntersectionObject> = {}): GeodesicIntersectionObject {
+  return {
+    id: "vertex-a",
+    kind: "geodesic-intersection",
+    cellId: "room",
+    localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 1.23 }),
+    portalRenderable: true,
+    tooltip: {
+      label: "vertex",
+      rangeMeters: 3,
+    },
+    geodesicIds: ["g-a", "g-b"],
+    segmentIds: ["segment-a", "segment-b"],
     ...overrides,
   };
 }

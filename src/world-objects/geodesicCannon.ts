@@ -25,6 +25,12 @@ export interface GeodesicSegmentObject extends RuntimeWorldObjectBase {
   readonly terminal: GeodesicSegmentTerminal;
 }
 
+export interface GeodesicIntersectionObject extends RuntimeWorldObjectBase {
+  readonly kind: "geodesic-intersection";
+  readonly geodesicIds: readonly [string, string];
+  readonly segmentIds: readonly [string, string];
+}
+
 export type GeodesicSegmentTerminal =
   | { readonly kind: "open" }
   | {
@@ -113,6 +119,8 @@ export const geodesicRayBeamStartOffsetMeters = 0.2;
 const defaultTraceLengthMeters = 2;
 const portalStartEpsilonMeters = 1e-4;
 const intersectionTolerance = 1e-7;
+const geodesicIntersectionEmitterExclusionRadiusMeters = 0.55;
+const geodesicIntersectionBalloonHeightOffsetMeters = 0.25;
 
 export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions): GeodesicCannonObject {
   const aimYawRadians = sanitizeYaw(options.aimYawRadians ?? yawFromPose(options.localPose));
@@ -182,6 +190,10 @@ export function isGeodesicSegmentObject(object: { readonly kind: string }): obje
   return object.kind === "geodesic-segment";
 }
 
+export function isGeodesicIntersectionObject(object: { readonly kind: string }): object is GeodesicIntersectionObject {
+  return object.kind === "geodesic-intersection";
+}
+
 export function isGeodesicCannonObject(object: { readonly kind: string }): object is GeodesicCannonObject {
   return object.kind === "geodesic-cannon";
 }
@@ -207,6 +219,7 @@ export function removeGeodesic(registry: RuntimeObjectRegistry, geodesicId: stri
   for (const segment of getGeodesicSegments(registry, geodesicId)) {
     registry.remove(segment.id);
   }
+  updateGeodesicIntersectionObjects(registry);
 }
 
 export function removeGeodesicCannonAndSegments(registry: RuntimeObjectRegistry, cannonId: string): void {
@@ -221,6 +234,7 @@ export function removeGeodesicCannonAndSegments(registry: RuntimeObjectRegistry,
     }
   }
   registry.remove(cannonId);
+  updateGeodesicIntersectionObjects(registry);
 }
 
 export function getGeodesicSegmentEnd(segment: GeodesicSegmentObject): Vec3 {
@@ -386,6 +400,7 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
       [input.geodesicId]: input.cannon.aimYawRadians,
     },
   });
+  updateGeodesicIntersectionObjects(input.registry);
   return segment;
 }
 
@@ -419,6 +434,7 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
     trace,
   });
   input.registry.add(next);
+  updateGeodesicIntersectionObjects(input.registry);
   return next;
 }
 
@@ -456,7 +472,23 @@ export function rebuildGeodesicToLength(input: RebuildGeodesicToLengthInput): re
     remainingLengthMeters -= next.lengthMeters;
   }
 
+  updateGeodesicIntersectionObjects(input.registry);
   return segments;
+}
+
+export function updateGeodesicIntersectionObjects(registry: RuntimeObjectRegistry): readonly GeodesicIntersectionObject[] {
+  for (const object of registry.getAll()) {
+    if (object.kind === "geodesic-intersection") {
+      registry.remove(object.id);
+    }
+  }
+
+  const intersections = findGeodesicIntersections(registry);
+  for (const intersection of intersections) {
+    registry.add(intersection);
+  }
+
+  return intersections;
 }
 
 function createSegmentFromTrace(options: {
@@ -487,6 +519,127 @@ function createSegmentFromTrace(options: {
     lengthMeters: options.trace.lengthMeters,
     terminal: options.trace.terminal,
   };
+}
+
+function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly GeodesicIntersectionObject[] {
+  const segments = registry.getAll().filter(isGeodesicSegmentObject);
+  const intersections: GeodesicIntersectionObject[] = [];
+  const seenKeys = new Set<string>();
+
+  for (let leftIndex = 0; leftIndex < segments.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < segments.length; rightIndex += 1) {
+      const left = segments[leftIndex];
+      const right = segments[rightIndex];
+      if (left.geodesicId === right.geodesicId || left.cellId !== right.cellId) {
+        continue;
+      }
+
+      const intersection = intersectHorizontalSegments(left, right);
+      if (!intersection || pointIsInsideEmitterExclusion(registry, left.cellId, intersection.point)) {
+        continue;
+      }
+
+      const pointKey = `${left.cellId}:${intersection.point.x.toFixed(5)}:${intersection.point.y.toFixed(5)}`;
+      const sortedGeodesicIds = [left.geodesicId, right.geodesicId].sort();
+      const geodesicIds: [string, string] = [sortedGeodesicIds[0], sortedGeodesicIds[1]];
+      const key = `${pointKey}:${geodesicIds.join(":")}`;
+      if (seenKeys.has(key)) {
+        continue;
+      }
+
+      seenKeys.add(key);
+      intersections.push(createGeodesicIntersectionObject({
+        id: `geodesic-intersection:${sanitizeIdPart(key)}`,
+        cellId: left.cellId,
+        point: {
+          x: intersection.point.x,
+          y: intersection.point.y,
+          z: geodesicRayBeamHeightMeters + geodesicIntersectionBalloonHeightOffsetMeters,
+        },
+        geodesicIds: [geodesicIds[0], geodesicIds[1]],
+        segmentIds: [left.id, right.id],
+      }));
+    }
+  }
+
+  return intersections;
+}
+
+function createGeodesicIntersectionObject(options: {
+  readonly id: string;
+  readonly cellId: string;
+  readonly point: Vec3;
+  readonly geodesicIds: readonly [string, string];
+  readonly segmentIds: readonly [string, string];
+}): GeodesicIntersectionObject {
+  return {
+    id: options.id,
+    kind: "geodesic-intersection",
+    cellId: options.cellId,
+    localPose: yawRigidTransform3(0, options.point),
+    portalRenderable: true,
+    tooltip: {
+      label: "vertex",
+      rangeMeters: 3,
+    },
+    geodesicIds: options.geodesicIds,
+    segmentIds: options.segmentIds,
+  };
+}
+
+function intersectHorizontalSegments(
+  left: GeodesicSegmentObject,
+  right: GeodesicSegmentObject,
+): { readonly point: Vec3 } | undefined {
+  const leftEnd = getGeodesicSegmentEnd(left);
+  const rightEnd = getGeodesicSegmentEnd(right);
+  const rx = leftEnd.x - left.start.x;
+  const ry = leftEnd.y - left.start.y;
+  const sx = rightEnd.x - right.start.x;
+  const sy = rightEnd.y - right.start.y;
+  const denominator = cross2(rx, ry, sx, sy);
+
+  if (Math.abs(denominator) <= intersectionTolerance) {
+    return undefined;
+  }
+
+  const dx = right.start.x - left.start.x;
+  const dy = right.start.y - left.start.y;
+  const leftT = cross2(dx, dy, sx, sy) / denominator;
+  const rightT = cross2(dx, dy, rx, ry) / denominator;
+
+  if (
+    leftT < -intersectionTolerance ||
+    leftT > 1 + intersectionTolerance ||
+    rightT < -intersectionTolerance ||
+    rightT > 1 + intersectionTolerance
+  ) {
+    return undefined;
+  }
+
+  return {
+    point: {
+      x: left.start.x + rx * Math.min(1, Math.max(0, leftT)),
+      y: left.start.y + ry * Math.min(1, Math.max(0, leftT)),
+      z: geodesicRayBeamHeightMeters,
+    },
+  };
+}
+
+function pointIsInsideEmitterExclusion(registry: RuntimeObjectRegistry, cellId: string, point: Vec3): boolean {
+  return registry.getObjectsInCell(cellId).some((object) => {
+    if (object.kind !== "geodesic-cannon") {
+      return false;
+    }
+
+    const dx = point.x - object.localPose.translation.x;
+    const dy = point.y - object.localPose.translation.y;
+    return Math.hypot(dx, dy) <= geodesicIntersectionEmitterExclusionRadiusMeters;
+  });
+}
+
+function sanitizeIdPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._:-]+/g, "_");
 }
 
 function getGeodesicNumber(geodesicIds: readonly string[], geodesicId: string): number {

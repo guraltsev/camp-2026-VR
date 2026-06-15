@@ -14,6 +14,8 @@ import {
   resolveGeodesicCannonAimYawRadians,
   shootGeodesic,
   traceGeodesicSegment,
+  updateGeodesicIntersectionObjects,
+  type GeodesicSegmentObject,
 } from "../../src/world-objects/geodesicCannon";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 
@@ -315,6 +317,87 @@ describe("geodesic cannon world objects", () => {
     expect(registry.get("cannon-a")?.kind).toBe("geodesic-cannon");
   });
 
+  it("creates a vertex balloon where two geodesics intersect outside an emitter", () => {
+    const registry = createRuntimeObjectRegistry([
+      createSegment({
+        id: "g-a:segment:0",
+        geodesicId: "g-a",
+        start: { x: 0, y: 1, z: geodesicRayBeamHeightMeters },
+        direction: { x: 1, y: 0, z: 0 },
+        lengthMeters: 2,
+      }),
+      createSegment({
+        id: "g-b:segment:0",
+        geodesicId: "g-b",
+        start: { x: 1, y: 0, z: geodesicRayBeamHeightMeters },
+        direction: { x: 0, y: 1, z: 0 },
+        lengthMeters: 2,
+      }),
+    ]);
+
+    const [vertex] = updateGeodesicIntersectionObjects(registry);
+
+    expect(vertex).toMatchObject({
+      kind: "geodesic-intersection",
+      cellId: "a",
+      tooltip: { label: "vertex", rangeMeters: 3 },
+      geodesicIds: ["g-a", "g-b"],
+      segmentIds: ["g-a:segment:0", "g-b:segment:0"],
+    });
+    expect(vertex.localPose.translation).toEqual({ x: 1, y: 1, z: geodesicRayBeamHeightMeters + 0.25 });
+    expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(1);
+  });
+
+  it("does not create a vertex balloon inside an emitter exclusion radius", () => {
+    const registry = createRuntimeObjectRegistry([
+      createGeodesicCannonObject({
+        id: "cannon-a",
+        cellId: "a",
+        localPose: yawRigidTransform3(0, { x: 1, y: 1, z: 0 }),
+      }),
+      createSegment({
+        id: "g-a:segment:0",
+        geodesicId: "g-a",
+        start: { x: 0, y: 1, z: geodesicRayBeamHeightMeters },
+        direction: { x: 1, y: 0, z: 0 },
+        lengthMeters: 2,
+      }),
+      createSegment({
+        id: "g-b:segment:0",
+        geodesicId: "g-b",
+        start: { x: 1, y: 0, z: geodesicRayBeamHeightMeters },
+        direction: { x: 0, y: 1, z: 0 },
+        lengthMeters: 2,
+      }),
+    ]);
+
+    expect(updateGeodesicIntersectionObjects(registry)).toHaveLength(0);
+  });
+
+  it("removes stale vertex balloons when a geodesic is removed", () => {
+    const registry = createRuntimeObjectRegistry([
+      createSegment({
+        id: "g-a:segment:0",
+        geodesicId: "g-a",
+        start: { x: 0, y: 1, z: geodesicRayBeamHeightMeters },
+        direction: { x: 1, y: 0, z: 0 },
+        lengthMeters: 2,
+      }),
+      createSegment({
+        id: "g-b:segment:0",
+        geodesicId: "g-b",
+        start: { x: 1, y: 0, z: geodesicRayBeamHeightMeters },
+        direction: { x: 0, y: 1, z: 0 },
+        lengthMeters: 2,
+      }),
+    ]);
+    updateGeodesicIntersectionObjects(registry);
+
+    removeGeodesic(registry, "g-a");
+
+    expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(0);
+  });
+
   it("rejects zero directions", () => {
     expect(() =>
       traceGeodesicSegment({
@@ -327,6 +410,23 @@ describe("geodesic cannon world objects", () => {
     ).toThrow(/near-zero Vec3/);
   });
 });
+
+function createSegment(overrides: Partial<GeodesicSegmentObject> = {}): GeodesicSegmentObject {
+  return {
+    id: "g-a:segment:0",
+    kind: "geodesic-segment",
+    cellId: "a",
+    localPose: yawRigidTransform3(0, { x: 0, y: 0, z: geodesicRayBeamHeightMeters }),
+    portalRenderable: true,
+    geodesicId: "g-a",
+    segmentIndex: 0,
+    start: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    direction: { x: 1, y: 0, z: 0 },
+    lengthMeters: 1,
+    terminal: { kind: "open" },
+    ...overrides,
+  };
+}
 
 function compileWorld(withPortal: boolean) {
   return compileCellComplex({

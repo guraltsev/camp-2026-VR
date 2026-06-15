@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { GeodesicCannonObject, GeodesicSegmentObject } from "../../world-objects/geodesicCannon";
+import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "../../world-objects/geodesicCannon";
 import { yawRigidTransform3 } from "../../math/rigidTransform3";
 import { collectRuntimeObjectRenderSourceMeshes, type RuntimeObjectRenderRecord, type RuntimeObjectRenderSourceMesh } from "./runtimeObjectRenderRecords";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
@@ -8,12 +8,15 @@ import { rigidTransformToThreeMatrix } from "./worldAxes";
 export const geodesicSegmentArchetypeKey = "geodesic-segment:ribbon-cross";
 export const geodesicRayPostArchetypePrefix = "geodesic-ray:post";
 export const geodesicRayHeadArchetypePrefix = "geodesic-ray:head";
+export const geodesicIntersectionArchetypePrefix = "geodesic-intersection:balloon";
 export const geodesicRayAssetPaths = {
   post: "flashlight/Post.glb",
   lightsaber: "flashlight/Lightsaber.glb",
+  balloon: "baloon/Balloon.glb",
 } as const;
 const geodesicRayAssetScale = 0.42;
 const geodesicRayPostAssetFloorOffsetMeters = 0.74;
+const geodesicIntersectionBalloonScale = 0.825;
 export const geodesicRayEmitterPosition = { x: 0.06, y: 1.08, z: 0 } as const;
 
 export function createGeodesicRuntimeRenderSources(
@@ -22,6 +25,7 @@ export function createGeodesicRuntimeRenderSources(
   return [
     createSegmentSource(),
     ...createRayEmitterOnPostSources(assets),
+    ...createIntersectionBalloonSources(assets),
   ];
 }
 
@@ -37,12 +41,12 @@ export function getGeodesicRayArchetypeKeys(
 }
 
 export function collectGeodesicRuntimeRenderRecords(
-  object: GeodesicCannonObject | GeodesicSegmentObject,
-  rayArchetypeKeys: readonly string[] = [],
+  object: GeodesicCannonObject | GeodesicSegmentObject | GeodesicIntersectionObject,
+  geodesicArchetypeKeys: readonly string[] = [],
 ): readonly RuntimeObjectRenderRecord[] {
   if (object.kind === "geodesic-cannon") {
     const localMatrix = rigidTransformToThreeMatrix(object.localPose);
-    const postRecords = rayArchetypeKeys
+    const postRecords = geodesicArchetypeKeys
       .filter((key) => key.startsWith(`${geodesicRayPostArchetypePrefix}:`))
       .map((archetypeKey) => ({
         objectId: object.id,
@@ -50,7 +54,7 @@ export function collectGeodesicRuntimeRenderRecords(
         archetypeKey,
         localMatrix,
       }));
-    const headKeys = rayArchetypeKeys.filter((key) => key.startsWith(`${geodesicRayHeadArchetypePrefix}:`));
+    const headKeys = geodesicArchetypeKeys.filter((key) => key.startsWith(`${geodesicRayHeadArchetypePrefix}:`));
     const geodesicIds = object.geodesicIds.length > 0
       ? object.geodesicIds
       : object.activeGeodesicId
@@ -63,6 +67,17 @@ export function collectGeodesicRuntimeRenderRecords(
       localMatrix: composeEmitterYawMatrix(object, geodesicId),
     })));
     return [...postRecords, ...headRecords];
+  }
+
+  if (object.kind === "geodesic-intersection") {
+    return geodesicArchetypeKeys
+      .filter((key) => key.startsWith(`${geodesicIntersectionArchetypePrefix}:`))
+      .map((archetypeKey) => ({
+        objectId: object.id,
+        cellId: object.cellId,
+        archetypeKey,
+        localMatrix: rigidTransformToThreeMatrix(object.localPose),
+      }));
   }
 
   return [
@@ -163,6 +178,42 @@ function createRayEmitterOnPostSources(
       geodesicRayHeadArchetypePrefix,
     ),
   ];
+}
+
+function createIntersectionBalloonSources(
+  assets: PreparedWorldAssets | undefined,
+): readonly RuntimeObjectRenderSourceMesh[] {
+  const root = new THREE.Group();
+  root.name = "geodesic-intersection-balloon-source";
+  const balloon = assets?.instantiateGltf(geodesicRayAssetPaths.balloon)?.scene ?? createFallbackBalloon();
+  balloon.name = "asset:geodesic-intersection-balloon";
+  balloon.scale.setScalar(geodesicIntersectionBalloonScale);
+  root.add(balloon);
+  root.updateMatrixWorld(true);
+
+  return collectRuntimeObjectRenderSourceMeshes(
+    "geodesic-intersection:balloon-source",
+    root,
+    geodesicIntersectionArchetypePrefix,
+  );
+}
+
+function createFallbackBalloon(): THREE.Object3D {
+  const root = new THREE.Group();
+  const balloon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 24, 16),
+    new THREE.MeshStandardMaterial({ color: 0xff4d8d, roughness: 0.42, metalness: 0.02 }),
+  );
+  balloon.scale.y = 1.25;
+  balloon.position.y = 0.3;
+  const knot = new THREE.Mesh(
+    new THREE.ConeGeometry(0.055, 0.1, 12),
+    new THREE.MeshStandardMaterial({ color: 0xd61f69, roughness: 0.5 }),
+  );
+  knot.position.y = 0.02;
+  knot.rotation.x = Math.PI;
+  root.add(balloon, knot);
+  return root;
 }
 
 function createCrossRibbonGeometry(width: number): THREE.BufferGeometry {

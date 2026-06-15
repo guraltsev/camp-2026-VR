@@ -5,6 +5,7 @@ import {
   collectGeodesicRuntimeRenderRecords,
   composeSegmentMatrix,
   createGeodesicRuntimeRenderSources,
+  geodesicIntersectionArchetypePrefix,
   geodesicRayAssetPaths,
   geodesicRayHeadArchetypePrefix,
   geodesicRayPostArchetypePrefix,
@@ -12,7 +13,7 @@ import {
   getGeodesicRayArchetypeKeys,
 } from "../../src/render/three/geodesicCannonRenderer";
 import type { PreparedWorldAssets } from "../../src/render/three/preloadWorldAssets";
-import type { GeodesicCannonObject, GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
+import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 
 describe("geodesic cannon renderer", () => {
@@ -71,6 +72,18 @@ describe("geodesic cannon renderer", () => {
 
     expect(records.filter((record) => postKeys.includes(record.archetypeKey))).toHaveLength(postKeys.length);
     expect(records.filter((record) => headKeys.includes(record.archetypeKey))).toHaveLength(headKeys.length * 3);
+  });
+
+  it("publishes balloon records for geodesic intersection vertices", () => {
+    const sources = createGeodesicRuntimeRenderSources();
+    const keys = sources.map((source) => source.archetypeKey);
+    const balloonKeys = keys.filter((key) => key.startsWith(`${geodesicIntersectionArchetypePrefix}:`));
+    const records = collectGeodesicRuntimeRenderRecords(createIntersection(), keys);
+
+    expect(balloonKeys.length).toBeGreaterThan(0);
+    expect(records).toHaveLength(balloonKeys.length);
+    expect(records.every((record) => record.objectId === "vertex-a")).toBe(true);
+    expect(records.every((record) => record.cellId === "cell-a")).toBe(true);
   });
 
   it("raises prepared post assets so the post is not buried below the floor", () => {
@@ -133,8 +146,28 @@ function createPreparedRayAssets(): PreparedWorldAssets {
         return { scene, animations: [] };
       }
 
+      if (assetPath === geodesicRayAssetPaths.balloon) {
+        const scene = new THREE.Group();
+        scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.25), new THREE.MeshBasicMaterial()));
+        return { scene, animations: [] };
+      }
+
       return undefined;
     },
+  };
+}
+
+function createIntersection(overrides: Partial<GeodesicIntersectionObject> = {}): GeodesicIntersectionObject {
+  return {
+    id: "vertex-a",
+    kind: "geodesic-intersection",
+    cellId: "cell-a",
+    localPose: yawRigidTransform3(0, { x: 1, y: 1, z: 1.08 }),
+    portalRenderable: true,
+    tooltip: { label: "vertex", rangeMeters: 3 },
+    geodesicIds: ["g-a", "g-b"],
+    segmentIds: ["g-a:segment:0", "g-b:segment:0"],
+    ...overrides,
   };
 }
 

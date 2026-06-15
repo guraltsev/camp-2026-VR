@@ -1,6 +1,6 @@
 import type { RigidTransform3 } from "../math/rigidTransform3";
 import type { DynamicObjectState, SimpleCollisionCylinder } from "../movement/dynamicObject";
-import type { GeodesicCannonObject, GeodesicSegmentObject } from "./geodesicCannon";
+import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "./geodesicCannon";
 import type { PlacedFlagObject } from "./placedFlags";
 
 export interface RuntimeObjectInteraction {
@@ -34,7 +34,8 @@ export type RuntimeWorldObject =
   | RuntimeCreatureObject
   | PlacedFlagObject
   | GeodesicCannonObject
-  | GeodesicSegmentObject;
+  | GeodesicSegmentObject
+  | GeodesicIntersectionObject;
 
 export interface RuntimeObjectRegistry {
   add(object: RuntimeWorldObject): void;

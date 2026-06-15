@@ -46,9 +46,11 @@ interface ObjectAimHit {
 
 const centerNdc = { x: 0, y: 0 };
 const aimPointToleranceMeters = 1e-5;
+const aimTargetPriorityDistanceToleranceMeters = 0.4;
 const fallbackObjectRadiusMeters = 0.25;
 export const geodesicSegmentAimRadiusMeters = 0.28;
 export const geodesicSegmentEmitterSuppressionRadiusMeters = 1;
+export const geodesicSegmentAlwaysSelectableTailMeters = 0.1;
 
 export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | undefined {
   const maxDistanceMeters = request.maxDistanceMeters ?? 24;
@@ -102,7 +104,7 @@ function resolveAimTargetFromRootThreeRay(request: {
     ];
 
     for (const candidate of candidates) {
-      if (!best || candidate.distanceMeters < best.distanceMeters) {
+      if (!best || isBetterAimTarget(candidate, best)) {
         best = candidate;
       }
     }
@@ -171,6 +173,30 @@ function resolveObjectAimTargets(
   return hits;
 }
 
+function isBetterAimTarget(candidate: AimTarget, current: AimTarget): boolean {
+  if (candidate.distanceMeters < current.distanceMeters - aimPointToleranceMeters) {
+    return true;
+  }
+
+  if (Math.abs(candidate.distanceMeters - current.distanceMeters) > aimTargetPriorityDistanceToleranceMeters) {
+    return false;
+  }
+
+  return getAimTargetPriority(candidate) > getAimTargetPriority(current);
+}
+
+function getAimTargetPriority(target: AimTarget): number {
+  if (target.object?.kind === "geodesic-intersection") {
+    return 2;
+  }
+
+  if (target.object?.kind === "geodesic-segment") {
+    return 1;
+  }
+
+  return 0;
+}
+
 function intersectRayWithSelectableSegment(
   registry: RuntimeObjectRegistry,
   segment: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>,
@@ -203,7 +229,8 @@ function getSelectableSegmentStartMeters(
     return 0;
   }
 
-  return getSegmentExitDistanceFromEmitterSuppressionRadius(segment, cannon.localPose.translation);
+  const suppressedStartMeters = getSegmentExitDistanceFromEmitterSuppressionRadius(segment, cannon.localPose.translation);
+  return Math.min(suppressedStartMeters, Math.max(0, segment.lengthMeters - geodesicSegmentAlwaysSelectableTailMeters));
 }
 
 function getSegmentExitDistanceFromEmitterSuppressionRadius(

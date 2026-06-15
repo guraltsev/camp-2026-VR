@@ -85,7 +85,6 @@ import {
   collectGeodesicRuntimeRenderRecords,
   createGeodesicRuntimeRenderSources,
   geodesicRayEmitterPosition,
-  getGeodesicRayArchetypeKeys,
 } from "./geodesicCannonRenderer";
 import {
   buildCellRenderArchetypes,
@@ -483,7 +482,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     readonly root: THREE.Object3D;
   }>();
   const geodesicRuntimeRenderSources = createGeodesicRuntimeRenderSources(options.assets);
-  const geodesicRayArchetypeKeys = getGeodesicRayArchetypeKeys(geodesicRuntimeRenderSources);
+  const geodesicRuntimeArchetypeKeys = geodesicRuntimeRenderSources.map((source) => source.archetypeKey);
   const runtimeObjectRenderDiagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
   const portalInstanceDiagnostics = createPortalInstanceDiagnostics();
   const portalClipData = createPortalClipData({ maxVisiblePaths });
@@ -1544,7 +1543,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function syncRuntimeObjectRenderSources(): void {
     const activeKeys = new Set<string>();
     const hasGeodesicRuntimeObjects = runtimeObjectRegistry.getAll().some(
-      (object) => object.portalRenderable && (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment"),
+      (object) => object.portalRenderable && isGeodesicRuntimeRenderObject(object),
     );
 
     if (hasGeodesicRuntimeObjects) {
@@ -1561,7 +1560,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         continue;
       }
 
-      if (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment") {
+      if (isGeodesicRuntimeRenderObject(object)) {
         continue;
       }
 
@@ -1624,8 +1623,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function collectRuntimeObjectRenderRecords(): readonly RuntimeObjectRenderRecord[] {
     return runtimeObjectRegistry.getAll().flatMap((object) => {
-      if (object.portalRenderable && (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment")) {
-        return collectGeodesicRuntimeRenderRecords(object, geodesicRayArchetypeKeys);
+      if (object.portalRenderable && isGeodesicRuntimeRenderObject(object)) {
+        return collectGeodesicRuntimeRenderRecords(object, geodesicRuntimeArchetypeKeys);
       }
 
       if (!object.portalRenderable || !runtimeObjectRootsById.has(object.id)) {
@@ -3065,7 +3064,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function removeGeodesicRuntimeObjects(): void {
     for (const object of runtimeObjectRegistry.getAll()) {
-      if (object.kind === "geodesic-cannon" || object.kind === "geodesic-segment") {
+      if (isGeodesicRuntimeRenderObject(object)) {
         runtimeObjectRegistry.remove(object.id);
       }
     }
@@ -3726,6 +3725,14 @@ function createSelectableHitboxDebugMaterial(color: number): THREE.MeshBasicMate
     side: THREE.DoubleSide,
     transparent: true,
   });
+}
+
+function isGeodesicRuntimeRenderObject(
+  object: RuntimeWorldObject,
+): object is Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" | "geodesic-segment" | "geodesic-intersection" }> {
+  return object.kind === "geodesic-cannon" ||
+    object.kind === "geodesic-segment" ||
+    object.kind === "geodesic-intersection";
 }
 
 function disableFrustumCulling(root: THREE.Object3D): void {
