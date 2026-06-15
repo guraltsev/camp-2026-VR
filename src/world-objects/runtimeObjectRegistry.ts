@@ -21,6 +21,9 @@ export interface RuntimeWorldObjectBase {
   readonly cellId: string;
   readonly localPose: RigidTransform3;
   readonly collision?: SimpleCollisionCylinder;
+  readonly aimStickyTarget?: {
+    readonly localPoint: RigidTransform3["translation"];
+  };
   readonly portalRenderable: boolean;
   readonly tooltip?: RuntimeObjectTooltip;
   readonly interactable?: RuntimeObjectInteraction;

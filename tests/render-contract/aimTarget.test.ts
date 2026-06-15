@@ -233,6 +233,31 @@ describe("resolveAimTarget", () => {
     expect(target?.object?.kind).toBe("geodesic-intersection");
   });
 
+  it("snaps sticky object aim targets to their declared local point", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const vertex = createGeodesicIntersection({
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 1.33 }),
+      aimStickyTarget: {
+        localPoint: { x: 0, y: 0, z: 1.08 },
+      },
+    });
+    const registry = createRuntimeObjectRegistry([vertex]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0, y: -2, z: 1.33 }, { x: 0, y: 0, z: 1.33 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("vertex-a");
+    expect(target?.localPoint).toEqual({ x: 0, y: 0, z: 1.08 });
+    expect(target?.rootPoint.z).toBeCloseTo(1.08);
+  });
+
   it("ignores geodesic ray segments for a selected geodesic when requested", () => {
     const world = compileCellComplex(singleRoomWorld());
     const segment = createGeodesicSegment({ geodesicId: "g-active" });

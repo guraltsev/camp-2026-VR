@@ -156,13 +156,14 @@ function resolveObjectAimTargets(
     }
 
     const localPoint = hit.point ?? pointOnRay(ray.origin, ray.direction, hit.distance);
+    const targetLocalPoint = object.aimStickyTarget?.localPoint ?? localPoint;
     hits.push({
       kind: "object",
       cellId: cell.id,
       localEyePosition: ray.origin,
-      localPoint,
+      localPoint: targetLocalPoint,
       localNormal: hit.normal,
-      rootPoint: transformCellPointToRoot(ray.rootFromCellMatrix, localPoint),
+      rootPoint: transformCellPointToRoot(ray.rootFromCellMatrix, targetLocalPoint),
       rootNormal: transformCellDirectionToRoot(ray.rootFromCellMatrix, hit.normal),
       distanceMeters: rootDistance(ray, localPoint),
       portalPathId: ray.path.pathId,

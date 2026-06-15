@@ -345,6 +345,7 @@ describe("geodesic cannon world objects", () => {
       segmentIds: ["g-a:segment:0", "g-b:segment:0"],
     });
     expect(vertex.localPose.translation).toEqual({ x: 1, y: 1, z: geodesicRayBeamHeightMeters + 0.25 });
+    expect(vertex.aimStickyTarget?.localPoint).toEqual({ x: 1, y: 1, z: geodesicRayBeamHeightMeters });
     expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(1);
   });
 

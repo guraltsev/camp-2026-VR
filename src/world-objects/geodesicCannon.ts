@@ -551,11 +551,12 @@ function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly Ge
       intersections.push(createGeodesicIntersectionObject({
         id: `geodesic-intersection:${sanitizeIdPart(key)}`,
         cellId: left.cellId,
-        point: {
+        balloonPoint: {
           x: intersection.point.x,
           y: intersection.point.y,
           z: geodesicRayBeamHeightMeters + geodesicIntersectionBalloonHeightOffsetMeters,
         },
+        targetPoint: intersection.point,
         geodesicIds: [geodesicIds[0], geodesicIds[1]],
         segmentIds: [left.id, right.id],
       }));
@@ -568,7 +569,8 @@ function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly Ge
 function createGeodesicIntersectionObject(options: {
   readonly id: string;
   readonly cellId: string;
-  readonly point: Vec3;
+  readonly balloonPoint: Vec3;
+  readonly targetPoint: Vec3;
   readonly geodesicIds: readonly [string, string];
   readonly segmentIds: readonly [string, string];
 }): GeodesicIntersectionObject {
@@ -576,7 +578,10 @@ function createGeodesicIntersectionObject(options: {
     id: options.id,
     kind: "geodesic-intersection",
     cellId: options.cellId,
-    localPose: yawRigidTransform3(0, options.point),
+    localPose: yawRigidTransform3(0, options.balloonPoint),
+    aimStickyTarget: {
+      localPoint: options.targetPoint,
+    },
     portalRenderable: true,
     tooltip: {
       label: "vertex",
