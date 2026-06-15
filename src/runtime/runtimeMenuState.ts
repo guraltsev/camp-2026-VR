@@ -118,6 +118,7 @@ export function showRuntimeMenuMainPage(state: RuntimeMenuState): RuntimeMenuSta
   return {
     ...state,
     page: "main",
+    selectedTool: "aim",
     editSignOptions: undefined,
     editingFlagId: undefined,
   };
@@ -234,7 +235,7 @@ export function setRuntimeMenuCollisionGeometryWireframesEnabled(
 export function setRuntimeMenuSelectedTool(state: RuntimeMenuState, selectedTool: RuntimeToolId): RuntimeMenuState {
   return {
     ...state,
-    selectedTool,
+    selectedTool: selectedTool === "none" ? "aim" : selectedTool,
   };
 }
 

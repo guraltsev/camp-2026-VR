@@ -1,5 +1,5 @@
 import { Component, Container, Image, Text } from "@pmndrs/uikit";
-import { ArrowLeft, Crosshair, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
+import { ArrowLeft, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -318,7 +318,6 @@ function buildMainContent(
     gap: 12,
   });
   row.add(
-    createToolTile("aim", "Aim", content.selectedTool, options),
     createToolTile("place-flag", "Sign", content.selectedTool, options, content.placeFlagType),
     createToolTile("geodesic-cannon", "Ray", content.selectedTool, options),
   );
@@ -543,14 +542,14 @@ function createToolTile(
 ): Container {
   const selected = toolId === selectedTool;
   const button = createInteractiveSurface({
-    width: "32%",
+    width: "49%",
     height: 150,
     label: "",
     labelFontSize: 18,
     positionType: "relative",
     flexDirection: "column",
     backgroundColor: selected ? activeColor : inactiveColor,
-    onClick: () => options.onToolSelected?.(selected ? "none" : toolId),
+    onClick: () => options.onToolSelected?.(toolId),
   });
   button.userData.xrPaletteItemId = `tool:${toolId}`;
   button.userData.scenePaletteItemId = `tool:${toolId}`;
@@ -565,10 +564,6 @@ function createToolIcon(
   toolId: RuntimeToolId,
   signType: PlacedFlagType | undefined,
 ): Component<any> {
-  if (toolId === "aim") {
-    return new Crosshair(createLucideIconProperties());
-  }
-
   if (toolId === "place-flag") {
     return createSignIcon(signType ?? "WoodenSign1");
   }
@@ -622,15 +617,6 @@ function createSignOptionsButton(options: VrPaletteLibraryAdapterOptions): Conta
   optionsButton.userData.xrPaletteItemId = "tool-options:place-sign";
   optionsButton.userData.scenePaletteItemId = "tool-options:place-sign";
   return optionsButton;
-}
-
-function createLucideIconProperties(): ConstructorParameters<typeof Crosshair>[0] {
-  return {
-    width: 64,
-    height: 64,
-    color: textColor,
-    fill: textColor,
-  };
 }
 
 function createSignImage(signType: PlacedFlagType, size: number): Component<any> {

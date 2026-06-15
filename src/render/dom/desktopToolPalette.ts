@@ -244,24 +244,6 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     const tools = document.createElement("div");
     tools.className = "desktop-tool-palette-tool-grid";
 
-    const aimButton = document.createElement("button");
-    aimButton.type = "button";
-    aimButton.className = "desktop-tool-tile";
-    aimButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "aim");
-    aimButton.ariaLabel = "Aim";
-    aimButton.ariaPressed = String(mainContent.selectedTool === "aim");
-    aimButton.addEventListener("click", () => {
-      options.onToolSelected(mainContent.selectedTool === "aim" ? "none" : "aim");
-    });
-
-    const aimIcon = document.createElement("span");
-    aimIcon.className = "desktop-tool-tile-icon desktop-tool-aim-icon";
-    aimIcon.setAttribute("aria-hidden", "true");
-    const aimLabel = document.createElement("span");
-    aimLabel.className = "desktop-tool-tile-label";
-    aimLabel.textContent = "aim";
-    aimButton.append(aimIcon, aimLabel);
-
     const flagTile = document.createElement("div");
     flagTile.className = "desktop-tool-tile-wrap";
 
@@ -272,7 +254,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     flagButton.ariaLabel = "Place flags";
     flagButton.ariaPressed = String(mainContent.selectedTool === "place-flag");
     flagButton.addEventListener("click", () => {
-      options.onToolSelected(mainContent.selectedTool === "place-flag" ? "none" : "place-flag");
+      options.onToolSelected("place-flag");
     });
 
     const icon = createFlagTileIcon(mainContent.placeFlagType);
@@ -300,7 +282,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     cannonButton.ariaLabel = "Geodesic ray";
     cannonButton.ariaPressed = String(mainContent.selectedTool === "geodesic-cannon");
     cannonButton.addEventListener("click", () => {
-      options.onToolSelected(mainContent.selectedTool === "geodesic-cannon" ? "none" : "geodesic-cannon");
+      options.onToolSelected("geodesic-cannon");
     });
 
     const cannonLabel = document.createElement("span");
@@ -308,7 +290,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     cannonLabel.textContent = "ray";
     cannonButton.append(createCannonTileIcon(), cannonLabel);
 
-    tools.append(aimButton, flagTile, cannonButton);
+    tools.append(flagTile, cannonButton);
     return tools;
   }
 

@@ -4,14 +4,14 @@ import { createScenePaletteLibraryAdapter } from "../../src/render/three/scenePa
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 
 describe("scenePaletteLibraryAdapter", () => {
-  it("renders main tool tiles", () => {
+  it("renders explicit main tool tiles without a default tool tile", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
     adapter.setDefinition(createPaletteDefinition(createRuntimeMenuState({ selectedWorldId: "cube" })));
 
     const itemIds = collectPaletteItemIds(adapter.root);
     const imageSources = collectPaletteImageSources(adapter.root);
 
-    expect(itemIds).toContain("tool:aim");
+    expect(itemIds).not.toContain("tool:aim");
     expect(itemIds).toContain("tool:place-flag");
     expect(itemIds).toContain("tool:geodesic-cannon");
     expect(itemIds).toContain("tool-options:place-sign");

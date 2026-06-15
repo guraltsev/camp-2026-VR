@@ -113,10 +113,10 @@ export function createPlacedFlagObject(options: CreatePlacedFlagOptions): Placed
     collision: options.collision ?? defaultFlagCollision,
     portalRenderable: true,
     tooltip: {
-      label: "sign",
+      label: "Sign",
       rangeMeters: 2.5,
-      desktopPrompt: "RMouse / F: edit sign",
-      xrPrompt: "A / X: edit sign",
+      desktopPrompt: "Sign\nRMouse / F - edit",
+      xrPrompt: "Sign\nA / X - edit",
     },
     interactable: defaultFlagInteraction,
     flagType: options.flagType,

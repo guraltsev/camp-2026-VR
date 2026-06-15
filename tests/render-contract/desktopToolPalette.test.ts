@@ -8,7 +8,7 @@ import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 import { describeDesktopPaletteView } from "../../src/render/dom/desktopToolPalette";
 
 describe("desktopToolPalette", () => {
-  it("describes the main page with aim selected plus place-flag tool controls and settings actions", () => {
+  it("describes the main page with default selection plus place-flag tool controls and settings actions", () => {
     const definition = createPaletteDefinition(createRuntimeMenuState({
       selectedWorldId: "cube",
       debugOverlayEnabled: true,

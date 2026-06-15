@@ -704,7 +704,7 @@ img.desktop-tool-tile-icon {
   text-align: center;
   box-shadow: 0 0.45rem 1.25rem rgb(0 0 0 / 36%);
   pointer-events: none;
-  white-space: nowrap;
+  white-space: pre-line;
 }
 
 .floating-object-tooltip[hidden] {

@@ -3,6 +3,8 @@ import {
   createRuntimeMenuState,
   selectRuntimeMenuPlaceFlagToolType,
   setRuntimeMenuEditingSignMessage,
+  setRuntimeMenuSelectedTool,
+  showRuntimeMenuMainPage,
   showRuntimeMenuEditSign,
   showRuntimeMenuPlaceFlagOptions,
 } from "../../src/runtime/runtimeMenuState";
@@ -17,6 +19,14 @@ describe("runtimeMenuState", () => {
     expect(state.selectedTool).toBe("aim");
   });
 
+  it("keeps the default tool selected when a caller attempts to clear the selection", () => {
+    const state = createRuntimeMenuState({
+      selectedWorldId: "cube",
+    });
+
+    expect(setRuntimeMenuSelectedTool(state, "none").selectedTool).toBe("aim");
+  });
+
   it("selects the place-flag tool when a flag type is selected", () => {
     const state = showRuntimeMenuPlaceFlagOptions(createRuntimeMenuState({
       selectedWorldId: "cube",
@@ -27,6 +37,17 @@ describe("runtimeMenuState", () => {
     expect(next.selectedTool).toBe("place-flag");
     expect(next.placeFlagOptions.flagType).toBe("WoodenSign2");
     expect(next.page).toBe("place-flag-options");
+  });
+
+  it("restores the default tool when backing out to the main menu", () => {
+    const state = setRuntimeMenuSelectedTool(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), "place-flag");
+
+    const next = showRuntimeMenuMainPage(state);
+
+    expect(next.page).toBe("main");
+    expect(next.selectedTool).toBe("aim");
   });
 
   it("tracks the active in-game sign editor message", () => {
