@@ -75,6 +75,7 @@ export interface GeodesicCannonActionsPaletteContent {
     readonly label: string;
     readonly rotateDisabled: boolean;
     readonly aimDisabled: boolean;
+    readonly deleteDisabled: boolean;
   }[];
 }
 
@@ -206,6 +207,7 @@ function createGeodesicCannonEntries(
     label: `G${index + 1}`,
     rotateDisabled: false,
     aimDisabled: false,
+    deleteDisabled: false,
   }));
 }
 

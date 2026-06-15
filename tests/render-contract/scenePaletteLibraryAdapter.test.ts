@@ -57,9 +57,11 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("geodesic-cannon-action:add-geodesic");
     expect(itemIds).toContain("geodesic-cannon-action:rotate:g-a");
     expect(itemIds).toContain("geodesic-cannon-action:aim:g-a");
+    expect(itemIds).toContain("geodesic-cannon-action:delete:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:add-geodesic");
     expect(actionIds).toContain("geodesic-cannon-action:rotate:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:aim:g-a");
+    expect(actionIds).toContain("geodesic-cannon-action:delete:g-a");
     expect(imageSources).toContain("/assets/icons/arrow-circle-inverted.png");
     expect(imageSources).toContain("/assets/icons/aim-inverted.png");
 

@@ -49,17 +49,17 @@ describe("geodesic cannon world objects", () => {
       height: 1.25,
       offset: { x: 0, y: 0, z: 0.625 },
     });
-    expect(cannon.tooltip?.label).toBe("Geodesic ray emitter");
+    expect(cannon.tooltip?.label).toBe("Geodesic emitter");
     expect(cannon.tooltip?.rangeMeters).toBe(2.5);
-    expect(cannon.tooltip?.desktopPrompt).toBe("Geodesic ray emitter\nRMouse / F - menu");
-    expect(cannon.tooltip?.xrPrompt).toBe("Geodesic ray emitter\nA / X - menu");
+    expect(cannon.tooltip?.desktopPrompt).toBe("Geodesic emitter\nRMouse / F - menu");
+    expect(cannon.tooltip?.xrPrompt).toBe("Geodesic emitter\nA / X - menu");
     expect(first.lengthMeters).toBe(2);
     expect(first.geodesicNumber).toBe(1);
-    expect(first.tooltip?.label).toBe("Geodesic segment G1");
+    expect(first.tooltip?.label).toBe("Geodesic G1");
     expect(first.tooltip?.rangeMeters).toBe(6);
     expect(second?.lengthMeters).toBe(2);
     expect(second?.geodesicNumber).toBe(1);
-    expect(second?.tooltip?.label).toBe("Geodesic segment G1");
+    expect(second?.tooltip?.label).toBe("Geodesic G1");
     expect(second?.tooltip?.rangeMeters).toBe(6);
   });
 
@@ -80,9 +80,9 @@ describe("geodesic cannon world objects", () => {
     }
     const second = shootGeodesic({ world, registry, cannon: updatedCannon, geodesicId: "g-b" });
 
-    expect(first.tooltip?.label).toBe("Geodesic segment G1");
+    expect(first.tooltip?.label).toBe("Geodesic G1");
     expect(second.geodesicNumber).toBe(2);
-    expect(second.tooltip?.label).toBe("Geodesic segment G2");
+    expect(second.tooltip?.label).toBe("Geodesic G2");
     expect(second.start.y).toBeCloseTo(0);
     const finalCannon = registry.get("cannon-a");
     expect(finalCannon?.kind === "geodesic-cannon" ? finalCannon.geodesicIds : []).toEqual(["g-a", "g-b"]);

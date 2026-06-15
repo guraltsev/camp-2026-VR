@@ -4,13 +4,18 @@ import { worldPointToThree } from "./worldAxes";
 
 export interface AimCrossMarker {
   readonly root: THREE.Group;
-  update(target: AimTarget | undefined): void;
+  update(target: AimTarget | undefined, orientation?: AimCrossMarkerOrientation): void;
   dispose(): void;
+}
+
+export interface AimCrossMarkerOrientation {
+  readonly quaternion: THREE.Quaternion;
 }
 
 const crossRadiusMeters = 0.16;
 const surfaceLiftMeters = 0.01;
-const markerNormal = new THREE.Vector3(0, 0, 1);
+const fallbackMarkerRight = new THREE.Vector3(1, 0, 0);
+const fallbackMarkerUp = new THREE.Vector3(0, 1, 0);
 
 export function createAimCrossMarker(scene: THREE.Scene): AimCrossMarker {
   const root = new THREE.Group();
@@ -42,7 +47,7 @@ export function createAimCrossMarker(scene: THREE.Scene): AimCrossMarker {
 
   return {
     root,
-    update(target) {
+    update(target, orientation) {
       if (!target) {
         root.visible = false;
         return;
@@ -52,7 +57,7 @@ export function createAimCrossMarker(scene: THREE.Scene): AimCrossMarker {
       const position = worldPointToThree(target.rootPoint).addScaledVector(normal, surfaceLiftMeters);
       root.visible = true;
       root.position.copy(position);
-      root.quaternion.setFromUnitVectors(markerNormal, normal);
+      root.quaternion.copy(resolveAimCrossMarkerQuaternion(normal, orientation?.quaternion));
       root.updateMatrixWorld();
     },
     dispose() {
@@ -61,4 +66,30 @@ export function createAimCrossMarker(scene: THREE.Scene): AimCrossMarker {
       material.dispose();
     },
   };
+}
+
+export function resolveAimCrossMarkerQuaternion(
+  surfaceNormal: THREE.Vector3,
+  sourceQuaternion?: THREE.Quaternion,
+): THREE.Quaternion {
+  const normal = surfaceNormal.clone().normalize();
+  const sourceRight = fallbackMarkerRight.clone();
+  const sourceUp = fallbackMarkerUp.clone();
+  if (sourceQuaternion) {
+    sourceRight.applyQuaternion(sourceQuaternion);
+    sourceUp.applyQuaternion(sourceQuaternion);
+  }
+
+  const right = projectDirectionOntoPlane(sourceRight, normal)
+    ?? projectDirectionOntoPlane(sourceUp.cross(normal), normal)
+    ?? projectDirectionOntoPlane(fallbackMarkerRight, normal)
+    ?? new THREE.Vector3(1, 0, 0);
+  const up = normal.clone().cross(right).normalize();
+  const basis = new THREE.Matrix4().makeBasis(right, up, normal);
+  return new THREE.Quaternion().setFromRotationMatrix(basis);
+}
+
+function projectDirectionOntoPlane(direction: THREE.Vector3, normal: THREE.Vector3): THREE.Vector3 | undefined {
+  const projected = direction.clone().addScaledVector(normal, -direction.dot(normal));
+  return projected.lengthSq() > 1e-8 ? projected.normalize() : undefined;
 }

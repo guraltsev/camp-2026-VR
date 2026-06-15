@@ -24,10 +24,30 @@ export function createFloatingObjectTooltip(container: HTMLElement): FloatingObj
       }
 
       root.textContent = options.text ?? "";
-      root.style.transform = `translate(-50%, -100%) translate(${Math.round(options.xPixels ?? 0)}px, ${Math.round(options.yPixels ?? 0)}px)`;
+      const width = root.offsetWidth;
+      const height = root.offsetHeight;
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+      const marginPixels = 12;
+      const xPixels = clamp(
+        options.xPixels ?? viewportWidth / 2,
+        marginPixels + width / 2,
+        Math.max(marginPixels + width / 2, viewportWidth - marginPixels - width / 2),
+      );
+      const yPixels = clamp(
+        options.yPixels ?? viewportHeight / 2,
+        marginPixels + height,
+        Math.max(marginPixels + height, viewportHeight - marginPixels),
+      );
+
+      root.style.transform = `translate(-50%, -100%) translate(${Math.round(xPixels)}px, ${Math.round(yPixels)}px)`;
     },
     dispose() {
       root.remove();
     },
   };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

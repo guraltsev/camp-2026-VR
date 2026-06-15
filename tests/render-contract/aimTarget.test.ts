@@ -399,7 +399,7 @@ function createGeodesicSegment(overrides: Partial<GeodesicSegmentObject> = {}): 
     localPose: yawRigidTransform3(0, { x: -0.5, y: 0, z: 1.08 }),
     portalRenderable: true,
     tooltip: {
-      label: "Geodesic segment",
+      label: "Geodesic",
       rangeMeters: 6,
     },
     geodesicId: "g-a",

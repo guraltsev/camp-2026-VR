@@ -14,7 +14,7 @@ export const geodesicRayAssetPaths = {
 } as const;
 const geodesicRayAssetScale = 0.42;
 const geodesicRayPostAssetFloorOffsetMeters = 0.74;
-const geodesicRayEmitterPosition = { x: 0.06, y: 1.08, z: 0 } as const;
+export const geodesicRayEmitterPosition = { x: 0.06, y: 1.08, z: 0 } as const;
 
 export function createGeodesicRuntimeRenderSources(
   assets?: PreparedWorldAssets,

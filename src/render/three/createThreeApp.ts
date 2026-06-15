@@ -65,6 +65,7 @@ import {
   extendGeodesic,
   placeGeodesicCannonAtFloorPoint,
   rebuildGeodesicToLength,
+  removeGeodesic,
   resolveGeodesicCannonAimYawRadians,
   shootGeodesic,
 } from "../../world-objects/geodesicCannon";
@@ -83,6 +84,7 @@ import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRen
 import {
   collectGeodesicRuntimeRenderRecords,
   createGeodesicRuntimeRenderSources,
+  geodesicRayEmitterPosition,
   getGeodesicRayArchetypeKeys,
 } from "./geodesicCannonRenderer";
 import {
@@ -222,6 +224,10 @@ const selectableObjectHitboxDebugColor = 0xffc400;
 const selectableGeodesicSegmentHitboxDebugColor = 0xff2bd6;
 const selectableHitboxDebugOpacity = 0.24;
 const selectableHitboxDebugRenderOrder = 930;
+const geodesicEmitterLabelRangeMeters = 3;
+const geodesicEmitterLabelRenderOrder = 940;
+const geodesicEmitterLabelLocalForwardOffsetMeters = 0.12;
+const geodesicEmitterLabelLocalYOffsetMeters = 0.03;
 
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const scene = new THREE.Scene();
@@ -238,6 +244,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     renderCameraNearMeters,
     renderCameraFarMeters,
   );
+  const aimRayCamera = new THREE.PerspectiveCamera(70, 1, renderCameraNearMeters, renderCameraFarMeters);
   const portalCullingCamera = camera.clone();
   const portalCullingEyeCameras = [new THREE.Camera(), new THREE.Camera()];
 
@@ -424,6 +431,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onGeodesicCannonAimRequested(cannonId, geodesicId) {
       startGeodesicCannonAim(cannonId, geodesicId);
     },
+    onGeodesicCannonDeleteRequested(cannonId, geodesicId) {
+      deleteGeodesicFromCannon(cannonId, geodesicId);
+    },
     onSignKeyboardCharacter(character) {
       appendEditingSignCharacter(character);
     },
@@ -468,6 +478,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const runtimeObjectRenderSourcesByKey = new Map<string, RuntimeObjectRenderSourceMesh>();
   const runtimeObjectRenderArchetypesByKey = new Map<string, RuntimeObjectRenderArchetype>();
   const selectableHitboxDebugGroupsByCellId = new Map<string, THREE.Group>();
+  const geodesicEmitterLabelsByKey = new Map<string, {
+    readonly text: string;
+    readonly root: THREE.Object3D;
+  }>();
   const geodesicRuntimeRenderSources = createGeodesicRuntimeRenderSources(options.assets);
   const geodesicRayArchetypeKeys = getGeodesicRayArchetypeKeys(geodesicRuntimeRenderSources);
   const runtimeObjectRenderDiagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
@@ -661,17 +675,20 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
 
+    let primaryActionConsumed = false;
     if (menuState.selectedTool === "geodesic-cannon-rotate") {
       updateActiveGeodesicCannonRotation(frame.yawDeltaRadians, frame.primaryActionRequested);
+      primaryActionConsumed = frame.primaryActionRequested;
     } else if (menuState.selectedTool === "geodesic-cannon-aim") {
       updateActiveGeodesicCannonAim(frame.primaryActionRequested, xrActive, xrFrame, xrReferenceSpace);
+      primaryActionConsumed = frame.primaryActionRequested;
     } else if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "place-flag") {
       tryPlaceFlagFromDesktopAim();
     }
-    if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "aim") {
+    if (!xrActive && frame.primaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "aim") {
       tryExtendFocusedGeodesicFromDesktopAim();
     }
-    if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "geodesic-cannon") {
+    if (!xrActive && frame.primaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "geodesic-cannon") {
       tryUseGeodesicCannonToolFromDesktopAim();
     }
 
@@ -721,7 +738,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameAfterPortalMs = performance.now();
     const frameBeforeUiMs = frameAfterPortalMs;
 
-    updateAimCrossMarker(xrActive);
+    updateAimCrossMarker(xrActive, xrFrame, xrReferenceSpace);
+    updateGeodesicEmitterLabels();
     syncXrDebugState(frame.source, moveResult);
     updateScenePalette(xrActive, xrFrame, xrReferenceSpace, deltaSeconds, frame);
     portalDebugRuntime.updateVisiblePortalPaths();
@@ -861,6 +879,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         disposeObject3D(group);
       }
       selectableHitboxDebugGroupsByCellId.clear();
+      for (const label of geodesicEmitterLabelsByKey.values()) {
+        label.root.removeFromParent();
+        disposeObject3D(label.root);
+      }
+      geodesicEmitterLabelsByKey.clear();
       for (const cellMesh of cellMeshes.values()) {
         disposeObject3D(cellMesh);
       }
@@ -2100,6 +2123,152 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
+  function updateGeodesicEmitterLabels(): void {
+    const activeLabelKeys = new Set<string>();
+    const cameraQuaternion = new THREE.Quaternion();
+    camera.getWorldQuaternion(cameraQuaternion);
+
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind !== "geodesic-cannon") {
+        continue;
+      }
+
+      const inCurrentCell = object.cellId === playerPose.cellId;
+      const distanceMeters = Math.hypot(
+        playerPose.position.x - object.localPose.translation.x,
+        playerPose.position.y - object.localPose.translation.y,
+      );
+      const visible = inCurrentCell && distanceMeters <= geodesicEmitterLabelRangeMeters;
+      object.geodesicIds.forEach((geodesicId, index) => {
+        const key = getGeodesicEmitterLabelKey(object.id, geodesicId);
+        activeLabelKeys.add(key);
+        const text = getGeodesicDisplayName(geodesicId, index);
+        const label = syncGeodesicEmitterLabelObject(key, text);
+        label.root.visible = visible;
+        if (!visible) {
+          return;
+        }
+
+        label.root.position.copy(resolveGeodesicEmitterLabelPosition(object, geodesicId));
+        label.root.quaternion.copy(cameraQuaternion);
+        label.root.updateMatrixWorld(true);
+      });
+    }
+
+    for (const [key, label] of [...geodesicEmitterLabelsByKey]) {
+      if (activeLabelKeys.has(key)) {
+        continue;
+      }
+
+      label.root.removeFromParent();
+      disposeObject3D(label.root);
+      geodesicEmitterLabelsByKey.delete(key);
+    }
+  }
+
+  function syncGeodesicEmitterLabelObject(key: string, text: string): { readonly text: string; readonly root: THREE.Object3D } {
+    const existing = geodesicEmitterLabelsByKey.get(key);
+    if (existing?.text === text) {
+      return existing;
+    }
+
+    if (existing) {
+      existing.root.removeFromParent();
+      disposeObject3D(existing.root);
+    }
+
+    const root = createGeodesicEmitterLabel(text);
+    root.name = `geodesic-emitter-label:${key}`;
+    scene.add(root);
+    const next = { text, root };
+    geodesicEmitterLabelsByKey.set(key, next);
+    return next;
+  }
+
+  function getGeodesicEmitterLabelKey(cannonId: string, geodesicId: string): string {
+    return `${cannonId}:${geodesicId}`;
+  }
+
+  function resolveGeodesicEmitterLabelPosition(
+    cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+    geodesicId: string,
+  ): THREE.Vector3 {
+    const yawRadians = cannon.geodesicEmitterYawRadiansById?.[geodesicId] ?? cannon.aimYawRadians;
+    const emitterMatrix = rigidTransformToThreeMatrix(yawRigidTransform3(yawRadians, cannon.localPose.translation));
+    return new THREE.Vector3(
+      geodesicRayEmitterPosition.x + geodesicEmitterLabelLocalForwardOffsetMeters,
+      geodesicRayEmitterPosition.y + geodesicEmitterLabelLocalYOffsetMeters,
+      geodesicRayEmitterPosition.z,
+    ).applyMatrix4(emitterMatrix);
+  }
+
+  function getGeodesicDisplayName(geodesicId: string, fallbackIndex: number): string {
+    const segment = runtimeObjectRegistry.getAll().find((object) =>
+      object.kind === "geodesic-segment" && object.geodesicId === geodesicId && object.geodesicNumber !== undefined
+    );
+    return segment?.kind === "geodesic-segment" && segment.geodesicNumber !== undefined
+      ? `G${segment.geodesicNumber}`
+      : `G${fallbackIndex + 1}`;
+  }
+
+  function createGeodesicEmitterLabel(text: string): THREE.Object3D {
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 128;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Could not create geodesic emitter label canvas context.");
+    }
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "rgba(10, 17, 20, 0.72)";
+    roundRect(context, 138, 34, canvas.width - 276, 60, 15);
+    context.fill();
+    context.strokeStyle = "rgba(226, 232, 240, 0.58)";
+    context.lineWidth = 4;
+    context.stroke();
+    context.fillStyle = "#f8fafc";
+    context.font = "bold 38px system-ui, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(text, canvas.width / 2, canvas.height / 2 + 2, canvas.width - 300);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.12), material);
+    mesh.renderOrder = geodesicEmitterLabelRenderOrder;
+    mesh.visible = false;
+    return mesh;
+  }
+
+  function roundRect(
+    context: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+  ): void {
+    context.beginPath();
+    context.moveTo(x + radius, y);
+    context.lineTo(x + width - radius, y);
+    context.quadraticCurveTo(x + width, y, x + width, y + radius);
+    context.lineTo(x + width, y + height - radius);
+    context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    context.lineTo(x + radius, y + height);
+    context.quadraticCurveTo(x, y + height, x, y + height - radius);
+    context.lineTo(x, y + radius);
+    context.quadraticCurveTo(x, y, x + radius, y);
+    context.closePath();
+  }
+
   function appendEditingSignCharacter(character: string): void {
     if (!/^[A-Z0-9]$/.test(character) && character !== "\n" && character !== " ") {
       return;
@@ -2179,6 +2348,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function tryUseGeodesicCannonToolFromDesktopAim(): void {
     const target = resolveCurrentAimTarget();
+    if (targetIsWithinInteractionRange(target) && target?.object?.kind === "geodesic-cannon") {
+      addGeodesicToCannon(target.object.id, { afterAdd: "return-to-aim" });
+      return;
+    }
+
     if (target?.kind !== "floor") {
       return;
     }
@@ -2227,14 +2401,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    const geodesicId = target?.object?.kind === "geodesic-cannon"
-      ? target.object.activeGeodesicId
-      : target?.object?.kind === "geodesic-segment"
-        ? target.object.geodesicId
-        : undefined;
-    if (!geodesicId) {
+    if (target?.object?.kind !== "geodesic-segment") {
       return;
     }
+    const geodesicId = target.object.geodesicId;
 
     const segment = extendGeodesic({
       world: appState.world,
@@ -2246,9 +2416,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     activeGeodesicCannonToolState = {
-      selectedCannonId: target?.object?.kind === "geodesic-cannon"
-        ? target.object.id
-        : activeGeodesicCannonToolState.selectedCannonId,
+      selectedCannonId: activeGeodesicCannonToolState.selectedCannonId,
       activeGeodesicId: geodesicId,
     };
     syncRuntimeObjectPortalInstances();
@@ -2286,10 +2454,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return false;
   }
 
-  function addGeodesicToCannon(cannonId: string): void {
+  function addGeodesicToCannon(
+    cannonId: string,
+    options: { readonly afterAdd?: "show-cannon-menu" | "return-to-aim" } = {},
+  ): void {
+    const afterAdd = options.afterAdd ?? "show-cannon-menu";
     const cannon = runtimeObjectRegistry.get(cannonId);
     if (cannon?.kind !== "geodesic-cannon") {
-      menuState = closeRuntimeMenu(menuState);
+      menuState = afterAdd === "return-to-aim"
+        ? closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "aim"))
+        : closeRuntimeMenu(menuState);
       syncDesktopPalette();
       return;
     }
@@ -2313,10 +2487,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         selectedCannonId: updatedCannon.id,
         activeGeodesicId: geodesicId,
       };
-      menuState = showRuntimeMenuGeodesicCannonActions(menuState, {
-        cannonId: updatedCannon.id,
-        geodesicIds: updatedCannon.geodesicIds,
-      });
+      menuState = afterAdd === "return-to-aim"
+        ? closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "aim"))
+        : showRuntimeMenuGeodesicCannonActions(menuState, {
+            cannonId: updatedCannon.id,
+            geodesicIds: updatedCannon.geodesicIds,
+          });
     }
 
     if (segment) {
@@ -2380,6 +2556,40 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     if (!renderer.xr.isPresenting) {
       void controls.requestPointerLock();
     }
+  }
+
+  function deleteGeodesicFromCannon(cannonId: string, geodesicId: string): void {
+    const cannon = runtimeObjectRegistry.get(cannonId);
+    if (cannon?.kind !== "geodesic-cannon") {
+      menuState = closeRuntimeMenu(menuState);
+      syncDesktopPalette();
+      return;
+    }
+
+    removeGeodesic(runtimeObjectRegistry, geodesicId);
+    const geodesicIds = cannon.geodesicIds.filter((id) => id !== geodesicId);
+    const { [geodesicId]: _removedYaw, ...remainingEmitterYaws } = cannon.geodesicEmitterYawRadiansById ?? {};
+    const activeGeodesicId = cannon.activeGeodesicId === geodesicId
+      ? geodesicIds[0]
+      : cannon.activeGeodesicId;
+    const updatedCannon = {
+      ...cannon,
+      activeGeodesicId,
+      geodesicIds,
+      geodesicEmitterYawRadiansById: remainingEmitterYaws,
+    };
+    runtimeObjectRegistry.update(updatedCannon);
+    activeGeodesicCannonToolState = {
+      selectedCannonId: updatedCannon.id,
+      activeGeodesicId,
+    };
+    menuState = showRuntimeMenuGeodesicCannonActions(menuState, {
+      cannonId: updatedCannon.id,
+      geodesicIds: updatedCannon.geodesicIds,
+    });
+    syncDesktopPalette();
+    syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
   }
 
   function resolveCannonGeodesicId(
@@ -2545,10 +2755,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const focused = findFocusedRuntimeObject();
     const text = focused ? getRuntimeObjectTooltipText(focused.object, xrActive ? "xr" : "desktop") : undefined;
-    const anchor = focused && xrActive
-      ? resolveXrTooltipAnchor(xrFrame, xrReferenceSpace) ?? focused.tooltipAnchor
-      : focused?.tooltipAnchor;
-    const screenPosition = anchor ? projectWorldPointToScreen(anchor) : undefined;
+    const screenPosition = focused && xrActive
+      ? projectWorldPointToScreen(resolveXrTooltipAnchor(xrFrame, xrReferenceSpace) ?? focused.tooltipAnchor)
+      : focused ? resolveDesktopTooltipScreenPosition() : undefined;
 
     floatingObjectTooltip.update({
       visible: Boolean(text && screenPosition),
@@ -2558,9 +2767,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
-  function updateAimCrossMarker(xrActive: boolean): void {
+  function updateAimCrossMarker(
+    xrActive: boolean,
+    xrFrame: XRFrame | undefined,
+    xrReferenceSpace: XRReferenceSpace | null,
+  ): void {
     if (
-      xrActive ||
       (
         menuState.selectedTool !== "aim" &&
         menuState.selectedTool !== "place-flag" &&
@@ -2574,23 +2786,46 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    aimCrossMarker.update(resolveCurrentAimTarget());
+    if (xrActive) {
+      const ray = resolveXrControllerRootRay(xrFrame, xrReferenceSpace);
+      aimCrossMarker.update(ray ? resolveCurrentAimTarget(ray) : undefined, ray);
+      return;
+    }
+
+    const cameraQuaternion = new THREE.Quaternion();
+    camera.getWorldQuaternion(cameraQuaternion);
+    aimCrossMarker.update(resolveCurrentAimTarget(), { quaternion: cameraQuaternion });
   }
 
-  function resolveCurrentAimTarget() {
+  function resolveCurrentAimTarget(ray?: {
+    readonly origin: THREE.Vector3;
+    readonly direction: THREE.Vector3;
+    readonly quaternion: THREE.Quaternion;
+  }) {
     const ignoredGeodesicIds = menuState.selectedTool === "geodesic-cannon-aim" &&
         activeGeodesicCannonToolState.activeGeodesicId
       ? [activeGeodesicCannonToolState.activeGeodesicId]
       : undefined;
+    const aimCamera = ray ? syncAimRayCamera(ray) : camera;
 
     return resolveAimTarget({
       world: appState.world,
       registry: runtimeObjectRegistry,
-      camera,
+      camera: aimCamera,
       visiblePortalPaths: getRuntimeObjectVisiblePaths(),
       maxDistanceMeters: 24,
       ignoredGeodesicIds,
     });
+  }
+
+  function syncAimRayCamera(ray: {
+    readonly origin: THREE.Vector3;
+    readonly quaternion: THREE.Quaternion;
+  }): THREE.Camera {
+    aimRayCamera.position.copy(ray.origin);
+    aimRayCamera.quaternion.copy(ray.quaternion);
+    aimRayCamera.updateMatrixWorld(true);
+    return aimRayCamera;
   }
 
   function resolveCurrentEuclideanCrosshairFloorPoint(
@@ -2623,6 +2858,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   ): {
     readonly origin: THREE.Vector3;
     readonly direction: THREE.Vector3;
+    readonly quaternion: THREE.Quaternion;
   } | undefined {
     const session = renderer.xr.getSession();
     if (!xrFrame || !xrReferenceSpace || !session) {
@@ -2642,8 +2878,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const worldMatrix = xrRig.root.matrixWorld.clone().multiply(xrRigidTransformLocalMatrix(pose.transform));
     const origin = new THREE.Vector3().setFromMatrixPosition(worldMatrix);
+    const quaternion = new THREE.Quaternion().setFromRotationMatrix(worldMatrix);
     const direction = new THREE.Vector3(0, 0, -1).transformDirection(worldMatrix).normalize();
-    return { origin, direction };
+    return { origin, direction, quaternion };
   }
 
   function intersectRootRayWithFloor(originThree: THREE.Vector3, directionThree: THREE.Vector3): Vec3 | undefined {
@@ -2737,6 +2974,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return object.tooltip?.rangeMeters ?? object.interactable?.rangeMeters ?? 2.5;
   }
 
+  function resolveDesktopTooltipScreenPosition(): { readonly x: number; readonly y: number } {
+    const rect = renderer.domElement.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2 - 28,
+    };
+  }
+
   function resolveXrTooltipAnchor(
     xrFrame: XRFrame | undefined,
     xrReferenceSpace: XRReferenceSpace | null,
@@ -2746,7 +2991,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return undefined;
     }
 
-    const source = [...session.inputSources].find((candidate) => candidate.targetRaySpace);
+    const source = resolveXrTooltipInputSource([...session.inputSources]);
     if (!source?.targetRaySpace) {
       return undefined;
     }
@@ -2759,8 +3004,20 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const worldMatrix = xrRig.root.matrixWorld.clone().multiply(xrRigidTransformLocalMatrix(pose.transform));
     const origin = new THREE.Vector3().setFromMatrixPosition(worldMatrix);
     const direction = new THREE.Vector3(0, 0, -1).transformDirection(worldMatrix).normalize();
-    const anchor = origin.addScaledVector(direction, 1).add(new THREE.Vector3(0, 0.14, 0));
+    const anchor = origin.addScaledVector(direction, 0.35).add(new THREE.Vector3(0, 0.12, 0));
     return threePointToWorld(anchor);
+  }
+
+  function resolveXrTooltipInputSource(inputSources: readonly XRInputSource[]): XRInputSource | undefined {
+    const targetingSources = inputSources.filter((source) => source.targetRaySpace);
+    return targetingSources.find((source) => isXrSourceSelectPressed(source))
+      ?? targetingSources.find((source) => source.handedness === "right")
+      ?? targetingSources.find((source) => source.targetRayMode === "tracked-pointer")
+      ?? targetingSources[0];
+  }
+
+  function isXrSourceSelectPressed(source: XRInputSource): boolean {
+    return source.gamepad?.buttons?.[0]?.pressed === true;
   }
 
   function getRuntimeObjectTooltipText(object: RuntimeWorldObject, inputMode: "desktop" | "xr"): string | undefined {

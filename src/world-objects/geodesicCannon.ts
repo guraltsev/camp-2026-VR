@@ -128,10 +128,10 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
     collision: options.collision ?? defaultCannonCollision,
     portalRenderable: true,
     tooltip: {
-      label: "Geodesic ray emitter",
+      label: "Geodesic emitter",
       rangeMeters: 2.5,
-      desktopPrompt: "Geodesic ray emitter\nRMouse / F - menu",
-      xrPrompt: "Geodesic ray emitter\nA / X - menu",
+      desktopPrompt: "Geodesic emitter\nRMouse / F - menu",
+      xrPrompt: "Geodesic emitter\nA / X - menu",
     },
     activeGeodesicId: options.activeGeodesicId,
     geodesicIds: options.geodesicIds ?? (options.activeGeodesicId ? [options.activeGeodesicId] : []),
@@ -476,7 +476,7 @@ function createSegmentFromTrace(options: {
     localPose: yawRigidTransform3(yaw, options.trace.start),
     portalRenderable: true,
     tooltip: {
-      label: geodesicLabel ? `Geodesic segment ${geodesicLabel}` : "Geodesic segment",
+      label: geodesicLabel ? `Geodesic ${geodesicLabel}` : "Geodesic",
       rangeMeters: 6,
     },
     geodesicId: options.geodesicId,

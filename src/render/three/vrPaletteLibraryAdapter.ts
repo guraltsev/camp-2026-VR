@@ -29,6 +29,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onGeodesicCannonAddRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
+  readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
   readonly onSignKeyboardCharacter?: (character: string) => void;
   readonly onSignKeyboardBackspace?: () => void;
   readonly onSignDeleteRequested?: () => void;
@@ -350,27 +351,11 @@ function buildGeodesicCannonActionsContent(
     borderColor,
     borderWidth: 2,
   });
-  panel.add(createSectionLabel("Geodesic ray emitter"));
-
-  const addButton = createInteractiveSurface({
-    width: "100%",
-    height: 58,
-    label: content.addAction.label,
-    labelFontSize: 18,
-    justifyContent: "flex-start",
-    paddingLeft: 18,
-    disabled: content.addAction.disabled,
-    backgroundColor: content.addAction.disabled ? "#334155" : actionColor,
-    onClick: () => options.onGeodesicCannonAddRequested?.(content.cannonId),
-  });
-  addButton.userData.xrPaletteItemId = "geodesic-cannon-action:add-geodesic";
-  addButton.userData.scenePaletteItemId = "geodesic-cannon-action:add-geodesic";
-  addButton.add(createGeodesicCannonActionIcon("add-geodesic"));
-  panel.add(addButton);
+  panel.add(createSectionLabel("Geodesic emitter"));
 
   const list = new Container({
     width: "100%",
-    height: 250,
+    height: 316,
     flexDirection: "column",
     gap: 8,
     overflow: "scroll",
@@ -390,7 +375,7 @@ function buildGeodesicCannonActionsContent(
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      gap: 10,
+      gap: 8,
       padding: 8,
       borderRadius: 14,
       backgroundColor: inactiveColor,
@@ -400,7 +385,7 @@ function buildGeodesicCannonActionsContent(
     row.add(createButtonText(geodesic.label, 18));
 
     const rotateButton = createInteractiveSurface({
-      width: 210,
+      width: 132,
       height: 42,
       label: "Rotate",
       labelFontSize: 16,
@@ -413,7 +398,7 @@ function buildGeodesicCannonActionsContent(
     rotateButton.add(createGeodesicCannonActionIcon("rotate"));
 
     const aimButton = createInteractiveSurface({
-      width: 210,
+      width: 112,
       height: 42,
       label: "Aim",
       labelFontSize: 16,
@@ -425,9 +410,42 @@ function buildGeodesicCannonActionsContent(
     aimButton.userData.scenePaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
     aimButton.add(createGeodesicCannonActionIcon("aim"));
 
-    row.add(rotateButton, aimButton);
+    const deleteButton = createInteractiveSurface({
+      width: 46,
+      height: 42,
+      label: "",
+      disabled: geodesic.deleteDisabled,
+      backgroundColor: geodesic.deleteDisabled ? "#334155" : "#7f1d1d",
+      onClick: () => options.onGeodesicCannonDeleteRequested?.(content.cannonId, geodesic.id),
+    });
+    deleteButton.userData.xrPaletteItemId = `geodesic-cannon-action:delete:${geodesic.id}`;
+    deleteButton.userData.scenePaletteItemId = `geodesic-cannon-action:delete:${geodesic.id}`;
+    deleteButton.add(new Trash2({
+      width: 24,
+      height: 24,
+      color: textColor,
+      fill: textColor,
+    }));
+
+    row.add(rotateButton, aimButton, deleteButton);
     list.add(row);
   }
+
+  const addButton = createInteractiveSurface({
+    width: "100%",
+    height: 50,
+    label: content.addAction.label,
+    labelFontSize: 17,
+    justifyContent: "flex-start",
+    paddingLeft: 18,
+    disabled: content.addAction.disabled,
+    backgroundColor: content.addAction.disabled ? "#334155" : "#2563eb",
+    onClick: () => options.onGeodesicCannonAddRequested?.(content.cannonId),
+  });
+  addButton.userData.xrPaletteItemId = "geodesic-cannon-action:add-geodesic";
+  addButton.userData.scenePaletteItemId = "geodesic-cannon-action:add-geodesic";
+  addButton.add(createButtonText("+", 24));
+  list.add(addButton);
 
   panel.add(list);
   return panel;
