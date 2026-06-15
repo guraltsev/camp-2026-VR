@@ -26,6 +26,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onToolSelected?: (toolId: RuntimeToolId) => void;
   readonly onPlaceFlagOptionsRequested?: () => void;
   readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
+  readonly onGeodesicCannonRotateRequested?: (cannonId: string) => void;
   readonly onSignKeyboardCharacter?: (character: string) => void;
   readonly onSignKeyboardBackspace?: () => void;
   readonly onSignDeleteRequested?: () => void;
@@ -59,6 +60,7 @@ const signIconSources: Record<PlacedFlagType, string> = {
   WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
   WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
 };
+const rotateIconSource = "/assets/icons/arrow-circle.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const signTypeLabels: Record<PlacedFlagType, string> = {
   WoodenSign1: "Wooden Sign 1",
@@ -219,6 +221,10 @@ function buildContent(
     return buildEditSignContent(definition.content, options);
   }
 
+  if (definition.content.kind === "geodesic-cannon-actions") {
+    return buildGeodesicCannonActionsContent(definition.content, options);
+  }
+
   if (definition.content.kind === "debug-settings") {
     return buildDebugSettingsContent(definition.content, options);
   }
@@ -323,6 +329,50 @@ function buildMainContent(
   );
 
   panel.add(row);
+  return panel;
+}
+
+function buildGeodesicCannonActionsContent(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "geodesic-cannon-actions" }>,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const panel = new Container({
+    width: "100%",
+    minHeight: 300,
+    flexDirection: "column",
+    gap: 12,
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 2,
+  });
+  panel.add(createSectionLabel("Geodesic ray emitter"));
+
+  for (const action of content.actions) {
+    const button = createInteractiveSurface({
+      width: "100%",
+      height: 56,
+      label: action.label,
+      labelFontSize: 18,
+      justifyContent: "flex-start",
+      paddingLeft: 18,
+      disabled: action.disabled,
+      backgroundColor: action.disabled ? "#334155" : actionColor,
+      onClick: () => {
+        if (action.id === "rotate") {
+          options.onGeodesicCannonRotateRequested?.(content.cannonId);
+        }
+      },
+    });
+    button.userData.xrPaletteItemId = `geodesic-cannon-action:${action.id}`;
+    button.userData.scenePaletteItemId = `geodesic-cannon-action:${action.id}`;
+    if (action.id === "rotate") {
+      button.add(createRotateIcon());
+    }
+    panel.add(button);
+  }
+
   return panel;
 }
 
@@ -587,6 +637,21 @@ function createRayIcon(): Component<any> {
     renderOrder: 1002,
   });
   image.userData.scenePaletteIconSrc = rayToolIconSource;
+  return image;
+}
+
+function createRotateIcon(): Component<any> {
+  const image = new Image({
+    src: rotateIconSource,
+    width: 28,
+    height: 28,
+    objectFit: "fill",
+    keepAspectRatio: true,
+    depthTest: false,
+    depthWrite: false,
+    renderOrder: 1002,
+  });
+  image.userData.scenePaletteIconSrc = rotateIconSource;
   return image;
 }
 

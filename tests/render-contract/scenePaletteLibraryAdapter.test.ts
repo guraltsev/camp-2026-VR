@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createRuntimeMenuState, showRuntimeMenuEditSign, showRuntimeMenuPlaceFlagOptions } from "../../src/runtime/runtimeMenuState";
+import {
+  createRuntimeMenuState,
+  showRuntimeMenuEditSign,
+  showRuntimeMenuGeodesicCannonActions,
+  showRuntimeMenuPlaceFlagOptions,
+} from "../../src/runtime/runtimeMenuState";
 import { createScenePaletteLibraryAdapter } from "../../src/render/three/scenePaletteLibraryAdapter";
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 
@@ -37,6 +42,27 @@ describe("scenePaletteLibraryAdapter", () => {
 
     adapter.dispose();
   });
+
+  it("renders geodesic ray emitter actions and keeps aim disabled", () => {
+    const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
+    adapter.setDefinition(createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(
+      createRuntimeMenuState({ selectedWorldId: "cube" }),
+      { cannonId: "cannon-a" },
+    )));
+
+    const itemIds = collectPaletteItemIds(adapter.root);
+    const actionIds = collectPaletteActionItemIds(adapter.root);
+    const imageSources = collectPaletteImageSources(adapter.root);
+
+    expect(itemIds).toContain("geodesic-cannon-action:rotate");
+    expect(itemIds).toContain("geodesic-cannon-action:aim");
+    expect(actionIds).toContain("geodesic-cannon-action:rotate");
+    expect(actionIds).not.toContain("geodesic-cannon-action:aim");
+    expect(imageSources).toContain("/assets/icons/arrow-circle.png");
+
+    adapter.dispose();
+  });
+
 
   it("renders sign editing with fixed number, QWERTY, space, enter, backspace, cursor, and trash controls", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
@@ -98,6 +124,23 @@ function collectPaletteImageSources(root: { readonly children: readonly any[]; r
   };
   visit(root);
   return sources;
+}
+
+function collectPaletteActionItemIds(root: { readonly children: readonly any[]; readonly userData?: Record<string, unknown> }): string[] {
+  const ids: string[] = [];
+  const visit = (node: { readonly children?: readonly any[]; readonly userData?: Record<string, unknown> }) => {
+    if (
+      typeof node.userData?.scenePaletteItemId === "string" &&
+      typeof node.userData?.scenePaletteAction === "function"
+    ) {
+      ids.push(node.userData.scenePaletteItemId);
+    }
+    for (const child of node.children ?? []) {
+      visit(child);
+    }
+  };
+  visit(root);
+  return ids;
 }
 
 function collectSignPreviewLines(root: { readonly children: readonly any[]; readonly userData?: Record<string, unknown> }): string[] {

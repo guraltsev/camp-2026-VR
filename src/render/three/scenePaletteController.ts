@@ -36,6 +36,7 @@ export interface ScenePaletteControllerOptions {
   readonly onToolSelected: (toolId: RuntimeToolId) => void;
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
+  readonly onGeodesicCannonRotateRequested: (cannonId: string) => void;
   readonly onSignKeyboardCharacter: (character: string) => void;
   readonly onSignKeyboardBackspace: () => void;
   readonly onSignDeleteRequested: () => void;
@@ -100,6 +101,7 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
     onToolSelected: options.onToolSelected,
     onPlaceFlagOptionsRequested: options.onPlaceFlagOptionsRequested,
     onPlaceFlagTypeSelected: options.onPlaceFlagTypeSelected,
+    onGeodesicCannonRotateRequested: options.onGeodesicCannonRotateRequested,
     onSignKeyboardCharacter: options.onSignKeyboardCharacter,
     onSignKeyboardBackspace: options.onSignKeyboardBackspace,
     onSignDeleteRequested: options.onSignDeleteRequested,

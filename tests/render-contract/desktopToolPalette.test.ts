@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createRuntimeMenuState,
+  showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuSettings,
 } from "../../src/runtime/runtimeMenuState";
@@ -44,6 +45,25 @@ describe("desktopToolPalette", () => {
     }
     expect(view.content.flagTypeLabels).toEqual(["WoodenSign1", "WoodenSign2"]);
   });
+
+  it("describes the geodesic ray emitter action menu with disabled aim", () => {
+    const definition = createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(createRuntimeMenuState({
+      selectedWorldId: "cube",
+      debugOverlayEnabled: true,
+    }), {
+      cannonId: "cannon-a",
+    }));
+    const view = describeDesktopPaletteView(definition);
+
+    expect(view.pageId).toBe("geodesic-cannon-actions");
+    expect(view.content.kind).toBe("geodesic-cannon-actions");
+    if (view.content.kind !== "geodesic-cannon-actions") {
+      throw new Error("Expected geodesic cannon actions content.");
+    }
+    expect(view.content.actionLabels).toEqual(["Rotate", "Aim"]);
+    expect(view.content.disabledActionLabels).toEqual(["Aim"]);
+  });
+
 
   it("describes the settings page with compact debug entry", () => {
     const definition = createPaletteDefinition(showRuntimeMenuSettings(createRuntimeMenuState({

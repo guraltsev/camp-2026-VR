@@ -4,6 +4,7 @@ import {
   selectRuntimeMenuPlaceFlagToolType,
   setRuntimeMenuEditingSignMessage,
   setRuntimeMenuSelectedTool,
+  showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuMainPage,
   showRuntimeMenuEditSign,
   showRuntimeMenuPlaceFlagOptions,
@@ -78,5 +79,24 @@ describe("runtimeMenuState", () => {
 
     expect(definition.pageId).toBe("edit-sign");
     expect(definition.rightAction.id).toBe("close");
+  });
+
+  it("creates a geodesic ray emitter action menu with aim disabled", () => {
+    const definition = createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), {
+      cannonId: "cannon-a",
+    }));
+
+    expect(definition.pageId).toBe("geodesic-cannon-actions");
+    expect(definition.rightAction.id).toBe("close");
+    expect(definition.content.kind).toBe("geodesic-cannon-actions");
+    if (definition.content.kind !== "geodesic-cannon-actions") {
+      throw new Error("Expected geodesic cannon actions.");
+    }
+    expect(definition.content.actions).toEqual([
+      { id: "rotate", label: "Rotate", disabled: false },
+      { id: "aim", label: "Aim", disabled: true },
+    ]);
   });
 });

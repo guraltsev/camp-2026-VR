@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createXrInputFrame, isResetPressed, readPrimaryStickAxes } from "../../src/render/three/xrControls";
+import { createXrControls, createXrInputFrame, isResetPressed, readPrimaryStickAxes } from "../../src/render/three/xrControls";
 
 describe("XR controls", () => {
   it("never throws and returns no movement when gamepad data is missing", () => {
@@ -55,5 +55,16 @@ describe("XR controls", () => {
         { gamepad: { buttons: [{ pressed: false }, { pressed: false }, { pressed: false }, { pressed: true }] } },
       ], 1).resetRequested,
     ).toBe(true);
+  });
+
+  it("reports trigger as a primary action edge in stateful controls", () => {
+    const controls = createXrControls();
+    const released = { gamepad: { buttons: [{ pressed: false }] } };
+    const pressed = { gamepad: { buttons: [{ pressed: true }] } };
+
+    expect(controls.consumeFrame([released], 1).primaryActionRequested).toBe(false);
+    expect(controls.consumeFrame([pressed], 1).primaryActionRequested).toBe(true);
+    expect(controls.consumeFrame([pressed], 1).primaryActionRequested).toBe(false);
+    expect(controls.consumeFrame([released], 1).primaryActionRequested).toBe(false);
   });
 });

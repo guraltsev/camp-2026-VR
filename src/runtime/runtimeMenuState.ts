@@ -4,10 +4,16 @@ import type { DebugLevelId } from "../glue/debugLevels";
 import type { PortalPanelModeId } from "../glue/portalPanelMode";
 import type { PlacedFlagType } from "../world-objects/placedFlags";
 
-export type RuntimeMenuPageId = "main" | "settings" | "debug-settings" | "place-flag-options" | "edit-sign";
+export type RuntimeMenuPageId =
+  | "main"
+  | "settings"
+  | "debug-settings"
+  | "place-flag-options"
+  | "edit-sign"
+  | "geodesic-cannon-actions";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
-export type RuntimeToolId = "none" | "aim" | "place-flag" | "geodesic-cannon";
+export type RuntimeToolId = "none" | "aim" | "place-flag" | "geodesic-cannon" | "geodesic-cannon-rotate";
 export type RuntimeDesktopToolId = RuntimeToolId;
 
 const defaultRuntimeDebugOverlayItems = ["fps", "location", "portal-quantities"] as const;
@@ -40,6 +46,9 @@ export interface RuntimeMenuState {
   readonly editSignOptions?: {
     readonly flagId: string;
     readonly message: string;
+  };
+  readonly geodesicCannonOptions?: {
+    readonly cannonId: string;
   };
   readonly editingFlagId?: string;
 }
@@ -89,6 +98,7 @@ export function closeRuntimeMenu(state: RuntimeMenuState): RuntimeMenuState {
     isOpen: false,
     page: "main",
     editSignOptions: undefined,
+    geodesicCannonOptions: undefined,
     editingFlagId: undefined,
   };
 }
@@ -120,6 +130,7 @@ export function showRuntimeMenuMainPage(state: RuntimeMenuState): RuntimeMenuSta
     page: "main",
     selectedTool: "aim",
     editSignOptions: undefined,
+    geodesicCannonOptions: undefined,
     editingFlagId: undefined,
   };
 }
@@ -139,6 +150,22 @@ export function showRuntimeMenuEditSign(
     editSignOptions: {
       flagId: options.flagId,
       message: options.message,
+    },
+  };
+}
+
+export function showRuntimeMenuGeodesicCannonActions(
+  state: RuntimeMenuState,
+  options: {
+    readonly cannonId: string;
+  },
+): RuntimeMenuState {
+  return {
+    ...state,
+    isOpen: true,
+    page: "geodesic-cannon-actions",
+    geodesicCannonOptions: {
+      cannonId: options.cannonId,
     },
   };
 }

@@ -7,6 +7,7 @@ import type {
 } from "../../runtime/runtimeMenuState";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
 
+const rotateIconSource = "/assets/icons/arrow-circle.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 
 export interface DesktopPaletteView {
@@ -38,6 +39,11 @@ export interface DesktopPaletteView {
       readonly kind: "place-flag-options";
       readonly selectedFlagType: PlacedFlagType;
       readonly flagTypeLabels: readonly string[];
+    }
+    | {
+      readonly kind: "geodesic-cannon-actions";
+      readonly actionLabels: readonly string[];
+      readonly disabledActionLabels: readonly string[];
     };
 }
 
@@ -57,6 +63,7 @@ export interface DesktopToolPaletteOptions {
   readonly onToolSelected: (toolId: RuntimeDesktopToolId) => void;
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
+  readonly onGeodesicCannonRotateRequested?: (cannonId: string) => void;
   readonly onResumeRequested: () => void;
 }
 
@@ -217,6 +224,21 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
     };
   }
 
+  if (definition.content.kind === "geodesic-cannon-actions") {
+    return {
+      pageId: definition.pageId,
+      leftAction: definition.leftAction,
+      rightAction: definition.rightAction,
+      content: {
+        kind: "geodesic-cannon-actions",
+        actionLabels: definition.content.actions.map((action) => action.label),
+        disabledActionLabels: definition.content.actions
+          .filter((action) => action.disabled)
+          .map((action) => action.label),
+      },
+    };
+  }
+
   return {
     pageId: definition.pageId,
     leftAction: definition.leftAction,
@@ -317,6 +339,33 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     }
 
     return settings;
+  }
+
+  if (definition.content.kind === "geodesic-cannon-actions") {
+    const geodesicCannonContent = definition.content;
+    const actions = document.createElement("div");
+    actions.className = "desktop-tool-palette-settings";
+
+    for (const action of geodesicCannonContent.actions) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "desktop-tool-palette-button";
+      button.disabled = action.disabled;
+      button.ariaDisabled = String(action.disabled);
+      if (action.id === "rotate") {
+        button.append(createRotateButtonIcon(), document.createTextNode(action.label));
+      } else {
+        button.textContent = action.label;
+      }
+      button.addEventListener("click", () => {
+        if (action.id === "rotate") {
+          options.onGeodesicCannonRotateRequested?.(geodesicCannonContent.cannonId);
+        }
+      });
+      actions.append(button);
+    }
+
+    return actions;
   }
 
   if (definition.content.kind === "settings") {
@@ -562,6 +611,15 @@ function createCannonTileIcon(): HTMLElement {
   const icon = document.createElement("img");
   icon.className = "desktop-tool-tile-icon desktop-tool-ray-icon";
   icon.src = rayToolIconSource;
+  icon.alt = "";
+  icon.decoding = "async";
+  return icon;
+}
+
+function createRotateButtonIcon(): HTMLElement {
+  const icon = document.createElement("img");
+  icon.className = "desktop-tool-palette-button-icon";
+  icon.src = rotateIconSource;
   icon.alt = "";
   icon.decoding = "async";
   return icon;

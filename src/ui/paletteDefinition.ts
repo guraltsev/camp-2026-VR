@@ -63,6 +63,16 @@ export interface EditSignPaletteContent {
   readonly maxLength: number;
 }
 
+export interface GeodesicCannonActionsPaletteContent {
+  readonly kind: "geodesic-cannon-actions";
+  readonly cannonId: string;
+  readonly actions: readonly {
+    readonly id: "rotate" | "aim";
+    readonly label: string;
+    readonly disabled: boolean;
+  }[];
+}
+
 export interface PaletteDefinition {
   readonly pageId: RuntimeMenuPageId;
   readonly leftAction: PaletteHeaderAction;
@@ -72,7 +82,8 @@ export interface PaletteDefinition {
     | SettingsPaletteContent
     | DebugSettingsPaletteContent
     | PlaceFlagOptionsPaletteContent
-    | EditSignPaletteContent;
+    | EditSignPaletteContent
+    | GeodesicCannonActionsPaletteContent;
 }
 
 export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinition {
@@ -152,6 +163,22 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
         flagId: state.editSignOptions.flagId,
         message: state.editSignOptions.message,
         maxLength: placedFlagMaxMessageLength,
+      },
+    };
+  }
+
+  if (state.page === "geodesic-cannon-actions" && state.geodesicCannonOptions) {
+    return {
+      pageId: "geodesic-cannon-actions",
+      leftAction: createHeaderAction("none"),
+      rightAction: createHeaderAction("close"),
+      content: {
+        kind: "geodesic-cannon-actions",
+        cannonId: state.geodesicCannonOptions.cannonId,
+        actions: [
+          { id: "rotate", label: "Rotate", disabled: false },
+          { id: "aim", label: "Aim", disabled: true },
+        ],
       },
     };
   }

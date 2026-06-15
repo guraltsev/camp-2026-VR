@@ -7,7 +7,9 @@ import {
   geodesicRayBeamHeightMeters,
   geodesicRayBeamStartOffsetMeters,
   getGeodesicSegmentEnd,
+  getGeodesicSegments,
   getGeodesicTail,
+  rebuildGeodesicToLength,
   removeGeodesic,
   shootGeodesic,
   traceGeodesicSegment,
@@ -48,6 +50,8 @@ describe("geodesic cannon world objects", () => {
     });
     expect(cannon.tooltip?.label).toBe("Geodesic ray emitter");
     expect(cannon.tooltip?.rangeMeters).toBe(2.5);
+    expect(cannon.tooltip?.desktopPrompt).toBe("Geodesic ray emitter\nRMouse / F - menu");
+    expect(cannon.tooltip?.xrPrompt).toBe("Geodesic ray emitter\nA / X - menu");
     expect(first.lengthMeters).toBe(2);
     expect(first.tooltip?.rangeMeters).toBe(6);
     expect(second?.lengthMeters).toBe(2);
@@ -82,6 +86,117 @@ describe("geodesic cannon world objects", () => {
 
     expect(result.lengthMeters).toBeCloseTo(0.5);
     expect(result.terminal).toEqual({ kind: "wall-hit", sideIndex: 1 });
+  });
+
+  it("shortens a segment at a forbidden zone hit and refuses to extend it", () => {
+    const world = compileWorld(true);
+    const directionLength = Math.hypot(1, -1);
+    const direction = { x: 1 / directionLength, y: -1 / directionLength, z: 0 };
+    const result = traceGeodesicSegment({
+      world,
+      cellId: "a",
+      start: { x: 1, y: 1, z: geodesicRayBeamHeightMeters },
+      direction,
+      maxLengthMeters: 2,
+    });
+
+    expect(result.lengthMeters).toBeCloseTo(Math.SQRT2 - 0.15);
+    expect(result.terminal).toEqual({ kind: "forbidden-zone-hit", junctionId: "a:vertex-1" });
+
+    const registry = createRuntimeObjectRegistry();
+    registry.add(createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.atan2(direction.y, direction.x), { x: 1, y: 1, z: 0 }),
+    }));
+    registry.add({
+      id: "g-a:segment:0",
+      kind: "geodesic-segment",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.atan2(direction.y, direction.x), result.start),
+      portalRenderable: true,
+      geodesicId: "g-a",
+      segmentIndex: 0,
+      start: result.start,
+      direction: result.direction,
+      lengthMeters: result.lengthMeters,
+      terminal: result.terminal,
+    });
+
+    expect(extendGeodesic({ world, registry, geodesicId: "g-a" })).toBeUndefined();
+  });
+
+  it("rebuilds rotated geodesics to the remembered total length after moving past a forbidden zone", () => {
+    const world = compileLargePortalWorld();
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 1, y: 2.5, z: 0 }),
+    });
+    registry.add(cannon);
+    rebuildGeodesicToLength({
+      world,
+      registry,
+      cannon,
+      geodesicId: "g-a",
+      totalLengthMeters: 4.7,
+    });
+    const rememberedLength = totalGeodesicLength(registry, "g-a");
+
+    const blockedCannon = createGeodesicCannonObject({
+      ...cannon,
+      aimYawRadians: Math.atan2(-2.5, 4),
+    });
+    rebuildGeodesicToLength({
+      world,
+      registry,
+      cannon: blockedCannon,
+      geodesicId: "g-a",
+      totalLengthMeters: rememberedLength,
+    });
+
+    expect(totalGeodesicLength(registry, "g-a")).toBeLessThan(rememberedLength);
+    expect(getGeodesicSegments(registry, "g-a").at(-1)?.terminal.kind).toBe("forbidden-zone-hit");
+
+    const clearCannon = createGeodesicCannonObject({
+      ...cannon,
+      aimYawRadians: 0,
+    });
+    rebuildGeodesicToLength({
+      world,
+      registry,
+      cannon: clearCannon,
+      geodesicId: "g-a",
+      totalLengthMeters: rememberedLength,
+    });
+
+    expect(totalGeodesicLength(registry, "g-a")).toBeCloseTo(rememberedLength);
+  });
+
+  it("rebuilds total length as one segment per crossed cell piece", () => {
+    const world = compileLargePortalWorld();
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 4, y: 2.5, z: 0 }),
+    });
+    registry.add(cannon);
+
+    rebuildGeodesicToLength({
+      world,
+      registry,
+      cannon,
+      geodesicId: "g-a",
+      totalLengthMeters: 2,
+    });
+
+    const segments = getGeodesicSegments(registry, "g-a");
+    expect(segments.map((segment) => segment.cellId)).toEqual(["a", "b"]);
+    expect(segments[0]?.terminal.kind).toBe("portal-hit");
+    expect(segments.at(-1)?.terminal.kind).toBe("open");
+    expect(totalGeodesicLength(registry, "g-a")).toBeCloseTo(2);
   });
 
   it("records portal target data and extends in the target cell", () => {
@@ -191,6 +306,11 @@ function compileWorld(withPortal: boolean) {
   });
 }
 
+function totalGeodesicLength(registry: ReturnType<typeof createRuntimeObjectRegistry>, geodesicId: string): number {
+  return getGeodesicSegments(registry, geodesicId)
+    .reduce((total, segment) => total + segment.lengthMeters, 0);
+}
+
 function compileLargeWorld() {
   return compileCellComplex({
     cells: [
@@ -204,6 +324,35 @@ function compileLargeWorld() {
           { x: -3, y: 3 },
         ],
         portals: [],
+      },
+    ],
+  });
+}
+
+function compileLargePortalWorld() {
+  return compileCellComplex({
+    cells: [
+      {
+        id: "a",
+        heightMeters: 3,
+        baseVertices: [
+          { x: 0, y: 0 },
+          { x: 5, y: 0 },
+          { x: 5, y: 5 },
+          { x: 0, y: 5 },
+        ],
+        portals: [{ id: "ab", sideIndex: 1, targetCellId: "b", targetPortalId: "ba" }],
+      },
+      {
+        id: "b",
+        heightMeters: 3,
+        baseVertices: [
+          { x: 0, y: 0 },
+          { x: 5, y: 0 },
+          { x: 5, y: 5 },
+          { x: 0, y: 5 },
+        ],
+        portals: [{ id: "ba", sideIndex: 3, targetCellId: "a", targetPortalId: "ab" }],
       },
     ],
   });

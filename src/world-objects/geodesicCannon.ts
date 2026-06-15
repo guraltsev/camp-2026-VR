@@ -33,7 +33,8 @@ export type GeodesicSegmentTerminal =
       readonly targetStart: Vec3;
       readonly targetDirection: Vec3;
     }
-  | { readonly kind: "wall-hit"; readonly sideIndex: number };
+  | { readonly kind: "wall-hit"; readonly sideIndex: number }
+  | { readonly kind: "forbidden-zone-hit"; readonly junctionId: string };
 
 export interface CreateGeodesicCannonOptions {
   readonly id: string;
@@ -74,6 +75,14 @@ export interface ExtendGeodesicInput {
   readonly registry: RuntimeObjectRegistry;
   readonly geodesicId: string;
   readonly maxLengthMeters?: number;
+}
+
+export interface RebuildGeodesicToLengthInput {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly cannon: GeodesicCannonObject;
+  readonly geodesicId: string;
+  readonly totalLengthMeters: number;
 }
 
 export interface PlaceGeodesicCannonAtFloorPointRequest {
@@ -118,6 +127,8 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
     tooltip: {
       label: "Geodesic ray emitter",
       rangeMeters: 2.5,
+      desktopPrompt: "Geodesic ray emitter\nRMouse / F - menu",
+      xrPrompt: "Geodesic ray emitter\nA / X - menu",
     },
     activeGeodesicId: options.activeGeodesicId,
     geodesicIds: options.geodesicIds ?? (options.activeGeodesicId ? [options.activeGeodesicId] : []),
@@ -213,7 +224,7 @@ export function getGeodesicSegmentEnd(segment: GeodesicSegmentObject): Vec3 {
 }
 
 export function canExtendGeodesicSegment(segment: GeodesicSegmentObject): boolean {
-  return segment.terminal.kind !== "wall-hit";
+  return segment.terminal.kind !== "wall-hit" && segment.terminal.kind !== "forbidden-zone-hit";
 }
 
 export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeodesicSegmentResult {
@@ -226,7 +237,10 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
   }
 
   const direction = normalizeHorizontalDirection(input.direction);
-  let nearest: { readonly sideIndex: number; readonly t: number; readonly portal?: NonNullable<typeof cell.sides[number]["portal"]> } | undefined;
+  let nearest:
+    | { readonly kind: "side"; readonly sideIndex: number; readonly t: number; readonly portal?: NonNullable<typeof cell.sides[number]["portal"]> }
+    | { readonly kind: "forbidden-zone"; readonly junctionId: string; readonly t: number }
+    | undefined;
 
   for (const side of cell.sides) {
     const edgeX = side.end.x - side.start.x;
@@ -252,7 +266,18 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
     }
 
     if (!nearest || t < nearest.t) {
-      nearest = { sideIndex: side.sideIndex, t: Math.min(t, input.maxLengthMeters), portal: side.portal };
+      nearest = { kind: "side", sideIndex: side.sideIndex, t: Math.min(t, input.maxLengthMeters), portal: side.portal };
+    }
+  }
+
+  for (const zone of cell.forbiddenZones) {
+    const t = intersectRayWithForbiddenZone(input.start, direction, zone.collision);
+    if (t === undefined || t > input.maxLengthMeters + intersectionTolerance) {
+      continue;
+    }
+
+    if (!nearest || t < nearest.t) {
+      nearest = { kind: "forbidden-zone", junctionId: zone.junctionId, t: Math.min(t, input.maxLengthMeters) };
     }
   }
 
@@ -263,6 +288,16 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
       direction,
       lengthMeters: input.maxLengthMeters,
       terminal: { kind: "open" },
+    };
+  }
+
+  if (nearest.kind === "forbidden-zone") {
+    return {
+      cellId: input.cellId,
+      start: input.start,
+      direction,
+      lengthMeters: nearest.t,
+      terminal: { kind: "forbidden-zone-hit", junctionId: nearest.junctionId },
     };
   }
 
@@ -333,7 +368,7 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
 
 export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObject | undefined {
   const tail = getGeodesicTail(input.registry, input.geodesicId);
-  if (!tail || tail.terminal.kind === "wall-hit") {
+  if (!tail || !canExtendGeodesicSegment(tail)) {
     return undefined;
   }
 
@@ -361,6 +396,43 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
   });
   input.registry.add(next);
   return next;
+}
+
+export function rebuildGeodesicToLength(input: RebuildGeodesicToLengthInput): readonly GeodesicSegmentObject[] {
+  if (!(input.totalLengthMeters > 0) || !Number.isFinite(input.totalLengthMeters)) {
+    removeGeodesic(input.registry, input.geodesicId);
+    return [];
+  }
+
+  removeGeodesic(input.registry, input.geodesicId);
+  const segments: GeodesicSegmentObject[] = [];
+  let remainingLengthMeters = input.totalLengthMeters;
+  const first = shootGeodesic({
+    world: input.world,
+    registry: input.registry,
+    cannon: input.cannon,
+    geodesicId: input.geodesicId,
+    maxLengthMeters: remainingLengthMeters,
+  });
+  segments.push(first);
+  remainingLengthMeters -= first.lengthMeters;
+
+  while (remainingLengthMeters > intersectionTolerance && canExtendGeodesicSegment(segments[segments.length - 1])) {
+    const next = extendGeodesic({
+      world: input.world,
+      registry: input.registry,
+      geodesicId: input.geodesicId,
+      maxLengthMeters: remainingLengthMeters,
+    });
+    if (!next) {
+      break;
+    }
+
+    segments.push(next);
+    remainingLengthMeters -= next.lengthMeters;
+  }
+
+  return segments;
 }
 
 function createSegmentFromTrace(options: {
@@ -397,6 +469,37 @@ function directionFromYaw(yawRadians: number): Vec3 {
 function normalizeHorizontalDirection(direction: Vec3): Vec3 {
   const normalized = normalizeVec3({ x: direction.x, y: direction.y, z: 0 });
   return { x: normalized.x, y: normalized.y, z: 0 };
+}
+
+function intersectRayWithForbiddenZone(
+  start: Vec3,
+  direction: Vec3,
+  zone: { readonly center: Vec3; readonly radius: number; readonly height: number },
+): number | undefined {
+  const dz = Math.abs(start.z - zone.center.z);
+  if (Number.isFinite(zone.height) && dz > zone.height / 2) {
+    return undefined;
+  }
+
+  const offsetX = start.x - zone.center.x;
+  const offsetY = start.y - zone.center.y;
+  const b = 2 * (offsetX * direction.x + offsetY * direction.y);
+  const c = offsetX * offsetX + offsetY * offsetY - zone.radius * zone.radius;
+
+  if (c <= 0) {
+    return undefined;
+  }
+
+  const discriminant = b * b - 4 * c;
+  if (discriminant < 0) {
+    return undefined;
+  }
+
+  const sqrtDiscriminant = Math.sqrt(discriminant);
+  const first = (-b - sqrtDiscriminant) / 2;
+  const second = (-b + sqrtDiscriminant) / 2;
+  const t = first > intersectionTolerance ? first : second > intersectionTolerance ? second : undefined;
+  return t;
 }
 
 function yawFromPose(pose: RigidTransform3): number {

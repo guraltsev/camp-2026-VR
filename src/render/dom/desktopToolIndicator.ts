@@ -55,15 +55,26 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
       root.hidden = toolId === "none" || toolId === "aim";
       root.classList.toggle("desktop-tool-indicator-aim", toolId === "aim");
       root.classList.toggle("desktop-tool-indicator-place-flag", toolId === "place-flag");
-      root.classList.toggle("desktop-tool-indicator-geodesic-cannon", toolId === "geodesic-cannon");
+      root.classList.toggle(
+        "desktop-tool-indicator-geodesic-cannon",
+        toolId === "geodesic-cannon" || toolId === "geodesic-cannon-rotate",
+      );
       root.classList.toggle("desktop-tool-indicator-WoodenSign1", flagType === "WoodenSign1");
       root.classList.toggle("desktop-tool-indicator-WoodenSign2", flagType === "WoodenSign2");
       signIcon.src = signIconSources[flagType];
-      label.textContent = toolId === "geodesic-cannon" ? "Ray" : toolId === "place-flag" ? "Sign" : "";
+      label.textContent = toolId === "geodesic-cannon-rotate"
+        ? "Rotate"
+        : toolId === "geodesic-cannon"
+          ? "Ray"
+          : toolId === "place-flag"
+            ? "Sign"
+            : "";
       root.ariaLabel = toolId === "place-flag"
         ? "Selected tool: sign"
         : toolId === "geodesic-cannon"
           ? "Selected tool: geodesic ray"
+          : toolId === "geodesic-cannon-rotate"
+            ? "Selected tool: rotate geodesic ray emitter"
           : "No selected tool";
     },
     dispose() {

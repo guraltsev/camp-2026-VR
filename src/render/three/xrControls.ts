@@ -20,10 +20,19 @@ export interface XrControls {
 
 export function createXrControls(options: Partial<VrComfortOptions> = {}): XrControls {
   const comfort = { ...defaultVrComfortOptions, ...options };
+  let previousPrimaryActionPressed = false;
 
   return {
     consumeFrame(inputSources, deltaSeconds) {
-      return createXrInputFrame(inputSources, deltaSeconds, comfort);
+      const sources = [...inputSources];
+      const frame = createXrInputFrame(sources, deltaSeconds, comfort);
+      const primaryActionPressed = sources.some((source) => isPrimaryActionPressed(source.gamepad));
+      const primaryActionRequested = primaryActionPressed && !previousPrimaryActionPressed;
+      previousPrimaryActionPressed = primaryActionPressed;
+      return {
+        ...frame,
+        primaryActionRequested,
+      };
     },
   };
 }
@@ -49,7 +58,7 @@ export function createXrInputFrame(
     yawDeltaRadians,
     pitchDeltaRadians: 0,
     resetRequested: sources.some((source) => isResetPressed(source.gamepad)),
-    primaryActionRequested: false,
+    primaryActionRequested: sources.some((source) => isPrimaryActionPressed(source.gamepad)),
     interactRequested: false,
     source: "xr",
   };
@@ -87,6 +96,10 @@ export function isResetPressed(gamepad: GamepadLike | undefined): boolean {
   }
 
   return buttons[3]?.pressed === true;
+}
+
+export function isPrimaryActionPressed(gamepad: GamepadLike | undefined): boolean {
+  return gamepad?.buttons?.[0]?.pressed === true;
 }
 
 export function emptyXrInputFrame(): RuntimeInputFrame {
