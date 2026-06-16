@@ -386,6 +386,56 @@ describe("geodesic cannon world objects", () => {
     expect(extendGeodesic({ world, registry, geodesicId: "g-a" })).toBeUndefined();
   });
 
+  it("places an incoming emitter on the selected geodesic when the source owns multiple geodesics", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    registry.add(cannon);
+    const first = shootGeodesic({ world, registry, cannon, geodesicId: "g-a" });
+    const updatedCannon = registry.get("cannon-a");
+    if (updatedCannon?.kind !== "geodesic-cannon") {
+      throw new Error("Expected updated geodesic cannon.");
+    }
+
+    shootGeodesic({
+      world,
+      registry,
+      cannon: {
+        ...updatedCannon,
+        aimYawRadians: Math.PI / 2,
+        localPose: yawRigidTransform3(Math.PI / 2, updatedCannon.localPose.translation),
+      },
+      geodesicId: "g-b",
+    });
+
+    const result = placeGeodesicCannonOnGeodesic({
+      world,
+      registry,
+      geodesicId: "g-a",
+      segmentId: first.id,
+      distanceAlongSegmentMeters: 1,
+      aimYawRadians: Math.PI / 2,
+      id: "cannon-b",
+    });
+
+    expect(result.placed).toBe(true);
+    const tail = getGeodesicTail(registry, "g-a");
+    expect(tail).toMatchObject({
+      start: { x: -1.5 + geodesicRayBeamStartOffsetMeters, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 1, y: 0, z: 0 },
+      lengthMeters: 1,
+      terminal: { kind: "emitter-hit", emitterId: "cannon-b" },
+      connectionState: "connected",
+    });
+    expect(getCannonGeodesicYaw(registry, "cannon-a", "g-a")).toBeCloseTo(0);
+    expect(getCannonGeodesicYaw(registry, "cannon-a", "g-b")).toBeCloseTo(Math.PI / 2);
+    expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(Math.PI);
+  });
+
   it("connects immediately when an aimed geodesic reaches an emitter", () => {
     const world = compileLargeWorld();
     const registry = createRuntimeObjectRegistry();

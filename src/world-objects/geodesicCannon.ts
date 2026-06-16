@@ -527,7 +527,8 @@ function traceGeodesicSegmentForConnectionMode(
 }
 
 export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject {
-  const direction = directionFromYaw(input.cannon.aimYawRadians);
+  const aimYawRadians = resolveEmitterYawForGeodesic(input.cannon, input.geodesicId);
+  const direction = directionFromYaw(aimYawRadians);
   const geodesicNumber = resolveGeodesicNumber(input.registry, input.geodesicId);
   const start = addVec3(
     {
@@ -564,7 +565,7 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
       : [...input.cannon.geodesicIds, input.geodesicId],
     geodesicEmitterYawRadiansById: {
       ...input.cannon.geodesicEmitterYawRadiansById,
-      [input.geodesicId]: input.cannon.aimYawRadians,
+      [input.geodesicId]: aimYawRadians,
     },
     geodesicConnectionsById: {
       ...input.cannon.geodesicConnectionsById,
@@ -661,9 +662,10 @@ function rebuildUnlockedGeodesicToLength(input: RebuildGeodesicToLengthInput): r
     return [];
   }
 
+  const yawAdjustedCannon = resolveCannonForGeodesic(input.cannon, input.geodesicId);
   const cannon = input.snapToEmitter
-    ? resolveCannonSnappedToEmitter(input) ?? input.cannon
-    : input.cannon;
+    ? resolveCannonSnappedToEmitter({ ...input, cannon: yawAdjustedCannon }) ?? yawAdjustedCannon
+    : yawAdjustedCannon;
 
   if (cannon !== input.cannon) {
     input.registry.update(cannon);
@@ -753,6 +755,23 @@ function resolveCannonSnappedToEmitter(input: RebuildGeodesicToLengthInput): Geo
       ...input.cannon.geodesicEmitterYawRadiansById,
       [input.geodesicId]: nextYaw,
     },
+  };
+}
+
+function resolveEmitterYawForGeodesic(cannon: GeodesicCannonObject, geodesicId: string): number {
+  return sanitizeYaw(cannon.geodesicEmitterYawRadiansById?.[geodesicId] ?? cannon.aimYawRadians);
+}
+
+function resolveCannonForGeodesic(cannon: GeodesicCannonObject, geodesicId: string): GeodesicCannonObject {
+  const aimYawRadians = resolveEmitterYawForGeodesic(cannon, geodesicId);
+  if (Math.abs(sanitizeYaw(cannon.aimYawRadians - aimYawRadians)) <= intersectionTolerance) {
+    return cannon;
+  }
+
+  return {
+    ...cannon,
+    aimYawRadians,
+    localPose: yawRigidTransform3(aimYawRadians, cannon.localPose.translation),
   };
 }
 
