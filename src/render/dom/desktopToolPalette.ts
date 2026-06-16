@@ -36,6 +36,7 @@ export interface DesktopPaletteView {
       readonly portalPanelMode: string;
       readonly portalInspectionEnabled: boolean;
       readonly collisionGeometryWireframesEnabled: boolean;
+      readonly aimCollisionOutlinesEnabled: boolean;
     }
     | {
       readonly kind: "place-flag-options";
@@ -63,6 +64,7 @@ export interface DesktopToolPaletteOptions {
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
+  readonly onAimCollisionOutlinesToggled: (enabled: boolean) => void;
   readonly onToolSelected: (toolId: RuntimeDesktopToolId) => void;
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
@@ -213,6 +215,7 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
         portalPanelMode: content.portalPanelMode,
         portalInspectionEnabled: content.portalInspectionEnabled,
         collisionGeometryWireframesEnabled: content.collisionGeometryWireframesEnabled,
+        aimCollisionOutlinesEnabled: content.aimCollisionOutlinesEnabled,
       },
     };
   }
@@ -319,7 +322,22 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     cannonLabel.textContent = "ray";
     cannonButton.append(createCannonTileIcon(), cannonLabel);
 
-    tools.append(flagTile, cannonButton);
+    const protractorButton = document.createElement("button");
+    protractorButton.type = "button";
+    protractorButton.className = "desktop-tool-tile";
+    protractorButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "protractor");
+    protractorButton.ariaLabel = "Protractor";
+    protractorButton.ariaPressed = String(mainContent.selectedTool === "protractor");
+    protractorButton.addEventListener("click", () => {
+      options.onToolSelected("protractor");
+    });
+
+    const protractorLabel = document.createElement("span");
+    protractorLabel.className = "desktop-tool-tile-label";
+    protractorLabel.textContent = "angle";
+    protractorButton.append(createProtractorTileIcon(), protractorLabel);
+
+    tools.append(flagTile, cannonButton, protractorButton);
     return tools;
   }
 
@@ -631,6 +649,22 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
       collisionGeometryToggle.append(collisionGeometryCheckbox, collisionGeometryText);
       debugSection.append(collisionGeometryToggle);
 
+      const aimCollisionToggle = document.createElement("label");
+      aimCollisionToggle.className = "desktop-tool-palette-toggle";
+
+      const aimCollisionCheckbox = document.createElement("input");
+      aimCollisionCheckbox.type = "checkbox";
+      aimCollisionCheckbox.checked = definition.content.aimCollisionOutlinesEnabled;
+      aimCollisionCheckbox.addEventListener("change", () => {
+        options.onAimCollisionOutlinesToggled(aimCollisionCheckbox.checked);
+      });
+
+      const aimCollisionText = document.createElement("span");
+      aimCollisionText.textContent = "Aim collision outlines";
+
+      aimCollisionToggle.append(aimCollisionCheckbox, aimCollisionText);
+      debugSection.append(aimCollisionToggle);
+
     settings.append(debugSection);
     return settings;
   }
@@ -661,6 +695,14 @@ function createCannonTileIcon(): HTMLElement {
   icon.src = rayToolIconSource;
   icon.alt = "";
   icon.decoding = "async";
+  return icon;
+}
+
+function createProtractorTileIcon(): HTMLElement {
+  const icon = document.createElement("span");
+  icon.className = "desktop-tool-tile-icon";
+  icon.textContent = "\u2220";
+  icon.setAttribute("aria-hidden", "true");
   return icon;
 }
 

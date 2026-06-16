@@ -44,6 +44,11 @@ export const debugOptionDefinitions = [
     label: "Selectable Hitboxes",
     description: "Render colored volumes used by the aimer for selectable objects.",
   },
+  {
+    id: "aim-collision-outlines",
+    label: "Aim Collision Outlines",
+    description: "Render wireframe outlines around the volumes used by object aiming.",
+  },
 ] as const;
 
 export type DebugOptionId = (typeof debugOptionDefinitions)[number]["id"];

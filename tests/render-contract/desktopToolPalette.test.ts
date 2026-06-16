@@ -104,6 +104,7 @@ describe("desktopToolPalette", () => {
           "portal-path-overlays",
           "forbidden-zone-wireframes",
           "object-collision-wireframes",
+          "aim-collision-outlines",
         ],
       },
     })));
@@ -123,5 +124,6 @@ describe("desktopToolPalette", () => {
     expect(view.content.portalPanelMode).toBe("text-only");
     expect(view.content.portalInspectionEnabled).toBe(true);
     expect(view.content.collisionGeometryWireframesEnabled).toBe(true);
+    expect(view.content.aimCollisionOutlinesEnabled).toBe(true);
   });
 });

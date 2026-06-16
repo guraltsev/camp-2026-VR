@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   createRuntimeMenuState,
+  createDebugSettingsFromRuntimeMenuState,
   selectRuntimeMenuPlaceFlagToolType,
+  setRuntimeMenuAimCollisionOutlinesEnabled,
   setRuntimeMenuEditingSignMessage,
   setRuntimeMenuSelectedTool,
+  showRuntimeMenuDebugSettings,
   showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuMainPage,
   showRuntimeMenuEditSign,
@@ -38,6 +41,37 @@ describe("runtimeMenuState", () => {
     expect(next.selectedTool).toBe("place-flag");
     expect(next.placeFlagOptions.flagType).toBe("WoodenSign2");
     expect(next.page).toBe("place-flag-options");
+  });
+
+  it("selects the protractor tool from the main palette", () => {
+    const state = setRuntimeMenuSelectedTool(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), "protractor");
+    const definition = createPaletteDefinition(state);
+
+    expect(state.selectedTool).toBe("protractor");
+    expect(definition.content.kind).toBe("main");
+    if (definition.content.kind !== "main") {
+      throw new Error("Expected main palette.");
+    }
+    expect(definition.content.selectedTool).toBe("protractor");
+  });
+
+  it("serializes the aim collision outline debug toggle", () => {
+    const state = setRuntimeMenuAimCollisionOutlinesEnabled(createRuntimeMenuState({
+      selectedWorldId: "cube",
+      debugSettings: {
+        debugLevel: "basic",
+        portalPanelMode: "none",
+        debugOptions: [],
+      },
+    }), true);
+
+    expect(createDebugSettingsFromRuntimeMenuState(state).debugOptions).toContain("aim-collision-outlines");
+    expect(createPaletteDefinition(showRuntimeMenuDebugSettings(state)).content).toMatchObject({
+      kind: "debug-settings",
+      aimCollisionOutlinesEnabled: true,
+    });
   });
 
   it("restores the default tool when backing out to the main menu", () => {

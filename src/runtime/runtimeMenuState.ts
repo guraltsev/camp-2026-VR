@@ -18,6 +18,7 @@ export type RuntimeToolId =
   | "aim"
   | "place-flag"
   | "geodesic-cannon"
+  | "protractor"
   | "geodesic-cannon-rotate"
   | "geodesic-cannon-aim";
 export type RuntimeDesktopToolId = RuntimeToolId;
@@ -33,6 +34,9 @@ const collisionGeometryDebugOptions = [
   "forbidden-zone-wireframes",
   "object-collision-wireframes",
 ] as const satisfies readonly DebugOptionId[];
+const aimCollisionDebugOptions = [
+  "aim-collision-outlines",
+] as const satisfies readonly DebugOptionId[];
 
 export interface RuntimeMenuState {
   readonly isOpen: boolean;
@@ -45,6 +49,7 @@ export interface RuntimeMenuState {
   readonly portalPanelMode: PortalPanelModeId;
   readonly portalInspectionEnabled: boolean;
   readonly collisionGeometryWireframesEnabled: boolean;
+  readonly aimCollisionOutlinesEnabled: boolean;
   readonly selectedTool: RuntimeToolId;
   readonly placeFlagOptions: {
     readonly flagType: PlacedFlagType;
@@ -86,6 +91,7 @@ export function createRuntimeMenuState(options: CreateRuntimeMenuStateOptions): 
       debugSettings?.debugOptions,
       collisionGeometryDebugOptions,
     ),
+    aimCollisionOutlinesEnabled: hasAnyDebugOption(debugSettings?.debugOptions, aimCollisionDebugOptions),
     selectedTool: "aim",
     placeFlagOptions: {
       flagType: "WoodenSign1",
@@ -274,6 +280,16 @@ export function setRuntimeMenuCollisionGeometryWireframesEnabled(
   };
 }
 
+export function setRuntimeMenuAimCollisionOutlinesEnabled(
+  state: RuntimeMenuState,
+  enabled: boolean,
+): RuntimeMenuState {
+  return {
+    ...state,
+    aimCollisionOutlinesEnabled: enabled,
+  };
+}
+
 export function setRuntimeMenuSelectedTool(state: RuntimeMenuState, selectedTool: RuntimeToolId): RuntimeMenuState {
   return {
     ...state,
@@ -314,6 +330,10 @@ export function createDebugSettingsFromRuntimeMenuState(state: RuntimeMenuState)
 
     if (state.collisionGeometryWireframesEnabled) {
       debugOptions.push(...collisionGeometryDebugOptions);
+    }
+
+    if (state.aimCollisionOutlinesEnabled) {
+      debugOptions.push(...aimCollisionDebugOptions);
     }
 
     if (state.debugOverlayEnabled && state.debugOverlayItems.includes("portal-quantities")) {

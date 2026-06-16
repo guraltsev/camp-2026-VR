@@ -23,6 +23,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
+  readonly onAimCollisionOutlinesToggled: (enabled: boolean) => void;
   readonly onToolSelected?: (toolId: RuntimeToolId) => void;
   readonly onPlaceFlagOptionsRequested?: () => void;
   readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
@@ -330,6 +331,7 @@ function buildMainContent(
   row.add(
     createToolTile("place-flag", "Sign", content.selectedTool, options, content.placeFlagType),
     createToolTile("geodesic-cannon", "Ray", content.selectedTool, options),
+    createToolTile("protractor", "Angle", content.selectedTool, options),
   );
 
   panel.add(row);
@@ -710,6 +712,10 @@ function createToolIcon(
     return createRayIcon();
   }
 
+  if (toolId === "protractor") {
+    return createButtonText("\u2220", 32);
+  }
+
   return new Container({ width: 64, height: 64, opacity: 0 });
 }
 
@@ -841,6 +847,14 @@ function buildDebugSettingsContent(
         options.onCollisionGeometryWireframesToggled(enabled);
       },
       "collision-geometry-wireframes-toggle",
+    ));
+    debugSection.add(createToggleRow(
+      "Aim collision outlines",
+      content.aimCollisionOutlinesEnabled,
+      (enabled) => {
+        options.onAimCollisionOutlinesToggled(enabled);
+      },
+      "aim-collision-outlines-toggle",
     ));
 
   settings.add(debugSection);

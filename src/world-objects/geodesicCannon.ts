@@ -93,6 +93,7 @@ export interface ShootGeodesicInput {
   readonly cannon: GeodesicCannonObject;
   readonly geodesicId: string;
   readonly maxLengthMeters?: number;
+  readonly connectEmitters?: boolean;
 }
 
 export interface ExtendGeodesicInput {
@@ -100,6 +101,7 @@ export interface ExtendGeodesicInput {
   readonly registry: RuntimeObjectRegistry;
   readonly geodesicId: string;
   readonly maxLengthMeters?: number;
+  readonly connectEmitters?: boolean;
 }
 
 export interface RebuildGeodesicToLengthInput {
@@ -108,6 +110,8 @@ export interface RebuildGeodesicToLengthInput {
   readonly cannon: GeodesicCannonObject;
   readonly geodesicId: string;
   readonly totalLengthMeters: number;
+  readonly connectEmitters?: boolean;
+  readonly snapToEmitter?: boolean;
 }
 
 export interface PlaceGeodesicCannonAtFloorPointRequest {
@@ -154,7 +158,6 @@ const defaultTraceLengthMeters = 2;
 const portalStartEpsilonMeters = 1e-4;
 const intersectionTolerance = 1e-7;
 const emitterConnectionToleranceMeters = 0.3;
-const geodesicIntersectionEmitterExclusionRadiusMeters = 0.55;
 const geodesicIntersectionBalloonHeightOffsetMeters = 0.25;
 
 export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions): GeodesicCannonObject {
@@ -515,6 +518,14 @@ export function findNearestEmitterHitOnTrace(input: {
   return nearest;
 }
 
+function traceGeodesicSegmentForConnectionMode(
+  input: TraceGeodesicSegmentWithEmittersInput & { readonly connectEmitters: boolean },
+): TraceGeodesicSegmentResult {
+  return input.connectEmitters
+    ? traceGeodesicSegmentWithEmitters(input)
+    : traceGeodesicSegment(input);
+}
+
 export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject {
   const direction = directionFromYaw(input.cannon.aimYawRadians);
   const geodesicNumber = resolveGeodesicNumber(input.registry, input.geodesicId);
@@ -531,7 +542,8 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
     geodesicId: input.geodesicId,
     geodesicNumber,
     segmentIndex: 0,
-    trace: traceGeodesicSegmentWithEmitters({
+    trace: traceGeodesicSegmentForConnectionMode({
+      connectEmitters: input.connectEmitters ?? true,
       world: input.world,
       registry: input.registry,
       geodesicId: input.geodesicId,
@@ -563,7 +575,7 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
       },
     },
   });
-  if (segment.terminal.kind === "emitter-hit") {
+  if ((input.connectEmitters ?? true) && segment.terminal.kind === "emitter-hit") {
     markGeodesicConnected(input.registry, input.geodesicId, input.cannon.id, segment.terminal.emitterId);
   }
   updateGeodesicIntersectionObjects(input.registry);
@@ -582,7 +594,8 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
   }
 
   const trace = tail.terminal.kind === "portal-hit"
-    ? traceGeodesicSegmentWithEmitters({
+    ? traceGeodesicSegmentForConnectionMode({
+        connectEmitters: input.connectEmitters ?? true,
         world: input.world,
         registry: input.registry,
         geodesicId: input.geodesicId,
@@ -592,7 +605,8 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
         direction: tail.terminal.targetDirection,
         maxLengthMeters: input.maxLengthMeters ?? defaultTraceLengthMeters,
       })
-    : traceGeodesicSegmentWithEmitters({
+    : traceGeodesicSegmentForConnectionMode({
+        connectEmitters: input.connectEmitters ?? true,
         world: input.world,
         registry: input.registry,
         geodesicId: input.geodesicId,
@@ -610,8 +624,23 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
     segmentIndex: tail.segmentIndex + 1,
     trace,
   });
+  if (canMergeGeodesicSegments(tail, next)) {
+    const merged = {
+      ...tail,
+      lengthMeters: tail.lengthMeters + next.lengthMeters,
+      terminal: next.terminal,
+      connectionState: next.connectionState,
+    };
+    input.registry.update(merged);
+    if ((input.connectEmitters ?? true) && merged.terminal.kind === "emitter-hit") {
+      markGeodesicConnected(input.registry, input.geodesicId, sourceEmitterId, merged.terminal.emitterId);
+    }
+    updateGeodesicIntersectionObjects(input.registry);
+    return merged;
+  }
+
   input.registry.add(next);
-  if (next.terminal.kind === "emitter-hit") {
+  if ((input.connectEmitters ?? true) && next.terminal.kind === "emitter-hit") {
     markGeodesicConnected(input.registry, input.geodesicId, sourceEmitterId, next.terminal.emitterId);
   }
   updateGeodesicIntersectionObjects(input.registry);
@@ -632,15 +661,24 @@ function rebuildUnlockedGeodesicToLength(input: RebuildGeodesicToLengthInput): r
     return [];
   }
 
+  const cannon = input.snapToEmitter
+    ? resolveCannonSnappedToEmitter(input) ?? input.cannon
+    : input.cannon;
+
+  if (cannon !== input.cannon) {
+    input.registry.update(cannon);
+  }
+
   removeGeodesicSegments(input.registry, input.geodesicId);
   const segments: GeodesicSegmentObject[] = [];
   let remainingLengthMeters = input.totalLengthMeters;
   const first = shootGeodesic({
     world: input.world,
     registry: input.registry,
-    cannon: input.cannon,
+    cannon,
     geodesicId: input.geodesicId,
     maxLengthMeters: remainingLengthMeters,
+    connectEmitters: input.connectEmitters ?? true,
   });
   segments.push(first);
   remainingLengthMeters -= first.lengthMeters;
@@ -651,17 +689,71 @@ function rebuildUnlockedGeodesicToLength(input: RebuildGeodesicToLengthInput): r
       registry: input.registry,
       geodesicId: input.geodesicId,
       maxLengthMeters: remainingLengthMeters,
+      connectEmitters: input.connectEmitters ?? true,
     });
     if (!next) {
       break;
     }
 
-    segments.push(next);
-    remainingLengthMeters -= next.lengthMeters;
+    segments.splice(0, segments.length, ...getGeodesicSegments(input.registry, input.geodesicId));
+    remainingLengthMeters = input.totalLengthMeters - segments.reduce((total, segment) => total + segment.lengthMeters, 0);
   }
 
   updateGeodesicIntersectionObjects(input.registry);
   return segments;
+}
+
+function resolveCannonSnappedToEmitter(input: RebuildGeodesicToLengthInput): GeodesicCannonObject | undefined {
+  if (!(input.totalLengthMeters > 0) || !Number.isFinite(input.totalLengthMeters)) {
+    return undefined;
+  }
+
+  const direction = directionFromYaw(input.cannon.aimYawRadians);
+  const start = addVec3(
+    {
+      x: input.cannon.localPose.translation.x,
+      y: input.cannon.localPose.translation.y,
+      z: geodesicRayBeamHeightMeters,
+    },
+    scaleVec3(direction, geodesicRayBeamStartOffsetMeters),
+  );
+  const unconnectedTrace = traceGeodesicSegment({
+    world: input.world,
+    cellId: input.cannon.cellId,
+    start,
+    direction,
+    maxLengthMeters: input.totalLengthMeters,
+  });
+  const hit = findNearestEmitterHitOnTrace({
+    registry: input.registry,
+    sourceEmitterId: input.cannon.id,
+    geodesicId: input.geodesicId,
+    cellId: unconnectedTrace.cellId,
+    start: unconnectedTrace.start,
+    direction: unconnectedTrace.direction,
+    maxLengthMeters: unconnectedTrace.lengthMeters,
+  });
+  if (!hit) {
+    return undefined;
+  }
+
+  const nextYaw = sanitizeYaw(Math.atan2(
+    hit.emitter.localPose.translation.y - input.cannon.localPose.translation.y,
+    hit.emitter.localPose.translation.x - input.cannon.localPose.translation.x,
+  ));
+  return {
+    ...input.cannon,
+    aimYawRadians: nextYaw,
+    localPose: yawRigidTransform3(nextYaw, input.cannon.localPose.translation),
+    activeGeodesicId: input.geodesicId,
+    geodesicIds: input.cannon.geodesicIds.includes(input.geodesicId)
+      ? input.cannon.geodesicIds
+      : [...input.cannon.geodesicIds, input.geodesicId],
+    geodesicEmitterYawRadiansById: {
+      ...input.cannon.geodesicEmitterYawRadiansById,
+      [input.geodesicId]: nextYaw,
+    },
+  };
 }
 
 export function connectGeodesicToEmitter(
@@ -784,6 +876,21 @@ function createSegmentFromTrace(options: {
   };
 }
 
+function canMergeGeodesicSegments(left: GeodesicSegmentObject, right: GeodesicSegmentObject): boolean {
+  if (
+    left.geodesicId !== right.geodesicId ||
+    left.cellId !== right.cellId ||
+    left.terminal.kind !== "open" ||
+    right.segmentIndex !== left.segmentIndex + 1
+  ) {
+    return false;
+  }
+
+  const leftEnd = getGeodesicSegmentEnd(left);
+  return distanceSquared(leftEnd, right.start) <= intersectionTolerance * intersectionTolerance &&
+    distanceSquared(left.direction, right.direction) <= intersectionTolerance * intersectionTolerance;
+}
+
 function removeGeodesicSegments(registry: RuntimeObjectRegistry, geodesicId: string): void {
   for (const segment of getGeodesicSegments(registry, geodesicId)) {
     registry.remove(segment.id);
@@ -901,7 +1008,7 @@ function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly Ge
       }
 
       const intersection = intersectHorizontalSegments(left, right);
-      if (!intersection || pointIsInsideEmitterExclusion(registry, left.cellId, intersection.point)) {
+      if (!intersection) {
         continue;
       }
 
@@ -995,18 +1102,6 @@ function intersectHorizontalSegments(
       z: geodesicRayBeamHeightMeters,
     },
   };
-}
-
-function pointIsInsideEmitterExclusion(registry: RuntimeObjectRegistry, cellId: string, point: Vec3): boolean {
-  return registry.getObjectsInCell(cellId).some((object) => {
-    if (object.kind !== "geodesic-cannon") {
-      return false;
-    }
-
-    const dx = point.x - object.localPose.translation.x;
-    const dy = point.y - object.localPose.translation.y;
-    return Math.hypot(dx, dy) <= geodesicIntersectionEmitterExclusionRadiusMeters;
-  });
 }
 
 function sanitizeIdPart(value: string): string {
@@ -1123,6 +1218,13 @@ function sanitizeYaw(yawRadians: number): number {
   }
 
   return Math.atan2(Math.sin(yawRadians), Math.cos(yawRadians));
+}
+
+function distanceSquared(left: Vec3, right: Vec3): number {
+  const dx = left.x - right.x;
+  const dy = left.y - right.y;
+  const dz = left.z - right.z;
+  return dx * dx + dy * dy + dz * dz;
 }
 
 function cross2(ax: number, ay: number, bx: number, by: number): number {

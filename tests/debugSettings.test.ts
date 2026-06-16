@@ -71,14 +71,22 @@ describe("canApplyDebugSettingsAtRuntime", () => {
     ).toBe(true);
   });
 
-  it("parses and allows collision and selectable hitbox debug options at runtime", () => {
-    const parsed = parseDebugOptions("forbidden-zone-wireframes,object-collision-wireframes,selectable-hitboxes");
+  it("parses and allows collision and aim debug options at runtime", () => {
+    const parsed = parseDebugOptions(
+      "forbidden-zone-wireframes,object-collision-wireframes,selectable-hitboxes,aim-collision-outlines",
+    );
 
-    expect(parsed).toEqual(["forbidden-zone-wireframes", "object-collision-wireframes", "selectable-hitboxes"]);
+    expect(parsed).toEqual([
+      "forbidden-zone-wireframes",
+      "object-collision-wireframes",
+      "selectable-hitboxes",
+      "aim-collision-outlines",
+    ]);
     expect(hasActiveDebugOption("basic", parsed, "forbidden-zone-wireframes")).toBe(true);
     expect(hasActiveDebugOption("basic", parsed, "selectable-hitboxes")).toBe(true);
+    expect(hasActiveDebugOption("basic", parsed, "aim-collision-outlines")).toBe(true);
     expect(serializeDebugOptions(parsed)).toBe(
-      "forbidden-zone-wireframes,object-collision-wireframes,selectable-hitboxes",
+      "forbidden-zone-wireframes,object-collision-wireframes,selectable-hitboxes,aim-collision-outlines",
     );
     expect(
       canApplyDebugSettingsAtRuntime({

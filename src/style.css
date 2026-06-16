@@ -703,7 +703,8 @@ img.desktop-tool-tile-icon {
 
 .desktop-tool-indicator-svg,
 .desktop-tool-indicator-sign-icon,
-.desktop-tool-indicator-ray-icon {
+.desktop-tool-indicator-ray-icon,
+.desktop-tool-indicator-protractor-icon {
   display: none;
   width: 2rem;
   height: 2rem;
@@ -720,9 +721,15 @@ img.desktop-tool-tile-icon {
 }
 
 .desktop-tool-indicator-place-flag .desktop-tool-indicator-sign-icon,
-.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-ray-icon {
+.desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-ray-icon,
+.desktop-tool-indicator-protractor .desktop-tool-indicator-protractor-icon {
   display: block;
   color: #f8fafc;
+}
+
+.desktop-tool-indicator-protractor-icon {
+  font: 900 1.85rem/2rem system-ui, sans-serif;
+  text-align: center;
 }
 
 .desktop-tool-indicator-label {

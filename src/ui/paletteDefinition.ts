@@ -48,6 +48,7 @@ export interface DebugSettingsPaletteContent {
   readonly portalPanelModeOptions: readonly PaletteSelectOption[];
   readonly portalInspectionEnabled: boolean;
   readonly collisionGeometryWireframesEnabled: boolean;
+  readonly aimCollisionOutlinesEnabled: boolean;
 }
 
 export interface PlaceFlagOptionsPaletteContent {
@@ -122,6 +123,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
         })),
         portalInspectionEnabled: state.portalInspectionEnabled,
         collisionGeometryWireframesEnabled: state.collisionGeometryWireframesEnabled,
+        aimCollisionOutlinesEnabled: state.aimCollisionOutlinesEnabled,
       },
     };
   }

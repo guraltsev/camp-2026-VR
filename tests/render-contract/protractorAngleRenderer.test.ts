@@ -1,0 +1,46 @@
+import { describe, expect, it } from "vitest";
+import { createProtractorAngleRuntime } from "../../src/render/three/protractorAngleRenderer";
+import { createProtractorAngleObject, resolveProtractorCenterSelection } from "../../src/world-objects/protractorTool";
+import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
+import type { GeodesicCannonObject } from "../../src/world-objects/geodesicCannon";
+
+describe("protractor angle renderer", () => {
+  it("creates portal-renderable source meshes for the highlighted angle", () => {
+    const object = createProtractorAngleObject({
+      id: "angle-a",
+      center: resolveProtractorCenterSelection(createEmitter()),
+      first: { geodesicId: "g-a", segmentId: "segment-a", yawRadians: 0 },
+      second: { geodesicId: "g-b", segmentId: "segment-b", yawRadians: Math.PI / 2 },
+    });
+
+    const runtime = createProtractorAngleRuntime(object);
+    const meshNames: string[] = [];
+    runtime.root.traverse((child) => {
+      if (child.type === "Mesh" || child.type === "Sprite") {
+        meshNames.push(child.name);
+      }
+    });
+
+    expect(runtime.objectId).toBe("angle-a");
+    expect(runtime.cellId).toBe("cell-a");
+    expect(meshNames).toContain("protractor-angle-fill");
+    expect(meshNames).toContain("protractor-angle-arc");
+    expect(meshNames).toContain("protractor-angle-boundary:first");
+    expect(meshNames).toContain("protractor-angle-boundary:second");
+
+    runtime.dispose();
+  });
+});
+
+function createEmitter(overrides: Partial<GeodesicCannonObject> = {}): GeodesicCannonObject {
+  return {
+    id: "emitter-a",
+    kind: "geodesic-cannon",
+    cellId: "cell-a",
+    localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+    portalRenderable: true,
+    geodesicIds: ["g-a", "g-b"],
+    aimYawRadians: 0,
+    ...overrides,
+  };
+}

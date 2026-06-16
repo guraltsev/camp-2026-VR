@@ -182,6 +182,7 @@ function createNoopOptions(): Parameters<typeof createScenePaletteLibraryAdapter
     onPortalPanelModeSelected: () => undefined,
     onPortalInspectionToggled: () => undefined,
     onCollisionGeometryWireframesToggled: () => undefined,
+    onAimCollisionOutlinesToggled: () => undefined,
     onToolSelected: () => undefined,
     onPlaceFlagOptionsRequested: () => undefined,
     onPlaceFlagTypeSelected: () => undefined,

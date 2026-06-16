@@ -23,6 +23,7 @@ const defaultDebugSettingsSupport: DebugSettingsSupport = {
     "forbidden-zone-wireframes",
     "object-collision-wireframes",
     "selectable-hitboxes",
+    "aim-collision-outlines",
   ],
 };
 

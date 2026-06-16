@@ -32,6 +32,7 @@ import {
   setRuntimeMenuSelectedWorldId,
   setRuntimeMenuPortalInspectionEnabled,
   setRuntimeMenuPortalPanelMode,
+  setRuntimeMenuAimCollisionOutlinesEnabled,
   setRuntimeMenuEditingFlagId,
   setRuntimeMenuEditingSignMessage,
   showRuntimeMenuGeodesicCannonActions,
@@ -73,6 +74,13 @@ import {
   geodesicRayBeamHeightMeters,
 } from "../../world-objects/geodesicCannon";
 import {
+  createProtractorAngleObject,
+  resolveProtractorCenterSelection,
+  resolveProtractorDirectedGeodesicSelection,
+  type ProtractorCenterSelection,
+  type ProtractorDirectedGeodesic,
+} from "../../world-objects/protractorTool";
+import {
   createRuntimeObjectRegistry,
   runtimeObjectToDynamicObjectState,
   type RuntimeWorldObject,
@@ -82,9 +90,10 @@ import { createDesktopFlagEditor } from "../dom/desktopFlagEditor";
 import { createDesktopToolIndicator } from "../dom/desktopToolIndicator";
 import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
 import { createAimCrossMarker } from "./aimCrossMarker";
-import { geodesicSegmentAimRadiusMeters, resolveAimTarget } from "./aimTarget";
+import { getGeodesicEmitterAimCylinderBounds, geodesicSegmentAimRadiusMeters, resolveAimTarget } from "./aimTarget";
 import { resolveGeodesicCannonAimYawFromAbsolutePoints } from "./geodesicCannonAimTarget";
 import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRenderer";
+import { createProtractorAngleRuntime, type ProtractorAngleRuntime } from "./protractorAngleRenderer";
 import {
   collectGeodesicRuntimeRenderRecords,
   createGeodesicRuntimeRenderSources,
@@ -226,10 +235,14 @@ interface PortalEyeRenderState {
 
 const underCellInfinityFloorSizeMeters = 1_000;
 const underCellInfinityFloorWorldZMeters = -1;
+const fallbackObjectAimCollisionRadiusMeters = 0.25;
 const selectableObjectHitboxDebugColor = 0xffc400;
 const selectableGeodesicSegmentHitboxDebugColor = 0xff2bd6;
+const aimCollisionOutlineDebugColor = 0xff44ff;
 const selectableHitboxDebugOpacity = 0.24;
+const aimCollisionOutlineDebugOpacity = 0.82;
 const selectableHitboxDebugRenderOrder = 930;
+const aimCollisionOutlineDebugRenderOrder = 935;
 const geodesicEmitterLabelRangeMeters = 3;
 const geodesicEmitterLabelRenderOrder = 940;
 const geodesicEmitterLabelLocalForwardOffsetMeters = 0.12;
@@ -418,7 +431,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onCollisionGeometryWireframesToggled(enabled) {
       applyMenuDebugState(setRuntimeMenuCollisionGeometryWireframesEnabled(menuState, enabled));
     },
+    onAimCollisionOutlinesToggled(enabled) {
+      applyMenuDebugState(setRuntimeMenuAimCollisionOutlinesEnabled(menuState, enabled));
+    },
     onToolSelected(toolId) {
+      if (toolId !== "protractor") {
+        activeProtractorToolState = {};
+      }
       menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, toolId));
       syncDesktopPalette();
     },
@@ -472,12 +491,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   );
   const dynamicObjectRuntimes: Array<GeodesciMarmotRuntime | SimpleGeoCreatureRuntime> = [];
   const placedFlagRuntimes = new Map<string, PlacedFlagRuntime>();
+  const protractorAngleRuntimes = new Map<string, ProtractorAngleRuntime>();
   let placedFlagIdCounter = 0;
   let geodesicCannonIdCounter = 0;
   let geodesicIdCounter = 0;
+  let protractorAngleIdCounter = 0;
   let activeGeodesicCannonToolState: {
     readonly selectedCannonId?: string;
     readonly activeGeodesicId?: string;
+  } = {};
+  let activeProtractorToolState: {
+    readonly center?: ProtractorCenterSelection;
+    readonly first?: ProtractorDirectedGeodesic;
   } = {};
   let geodesicCreatureDebugElapsedSeconds = 0;
   let geodesicCreatureHealthyLogElapsedSeconds = geodesicCreatureHealthyLogIntervalSeconds;
@@ -488,6 +513,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const runtimeObjectRenderSourcesByKey = new Map<string, RuntimeObjectRenderSourceMesh>();
   const runtimeObjectRenderArchetypesByKey = new Map<string, RuntimeObjectRenderArchetype>();
   const selectableHitboxDebugGroupsByCellId = new Map<string, THREE.Group>();
+  const aimCollisionOutlineDebugGroupsByCellId = new Map<string, THREE.Group>();
   const geodesicEmitterLabelsByKey = new Map<string, {
     readonly text: string;
     readonly root: THREE.Object3D;
@@ -653,6 +679,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
       removePlacedFlags();
       removeGeodesicRuntimeObjects();
+      removeProtractorAngles();
     } else {
       const yawDeltaRadians = xrActive
         ? xrRig.resolveCameraYawRadians(headLocalYawRadians) - playerPose.yawRadians + frame.yawDeltaRadians
@@ -704,6 +731,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     if (!xrActive && frame.primaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "geodesic-cannon") {
       tryUseGeodesicCannonToolFromDesktopAim();
+    }
+    if (!xrActive && frame.primaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "protractor") {
+      tryUseProtractorToolFromDesktopAim();
     }
 
     if (!xrActive && frame.interactRequested) {
@@ -1104,6 +1134,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     event.preventDefault();
+    if (!menuState.isOpen && tryRemoveFocusedProtractorAngle()) {
+      return;
+    }
+
     if (!menuState.isOpen && tryOpenFocusedObjectMenu()) {
       return;
     }
@@ -2200,6 +2234,37 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
+  function syncProtractorAngleRuntime(object: RuntimeWorldObject): void {
+    if (object.kind !== "protractor-angle") {
+      return;
+    }
+
+    let runtime = protractorAngleRuntimes.get(object.id);
+    if (!runtime) {
+      runtime = createProtractorAngleRuntime(object);
+      protractorAngleRuntimes.set(object.id, runtime);
+      runtimeObjectRootsById.set(object.id, runtime.root);
+    }
+
+    runtime.syncFromObject(object);
+    syncRuntimeObjectPortalInstances();
+  }
+
+  function removeProtractorAngleRuntime(objectId: string): void {
+    const runtime = protractorAngleRuntimes.get(objectId);
+    if (runtime) {
+      runtime.dispose();
+      protractorAngleRuntimes.delete(objectId);
+    }
+
+    runtimeObjectRootsById.delete(objectId);
+    for (const [key, source] of [...runtimeObjectRenderSourcesByKey]) {
+      if (source.objectId === objectId) {
+        runtimeObjectRenderSourcesByKey.delete(key);
+      }
+    }
+  }
+
   function updateGeodesicEmitterLabels(): void {
     const activeLabelKeys = new Set<string>();
     const cameraQuaternion = new THREE.Quaternion();
@@ -2534,6 +2599,72 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncSelectableHitboxDebug();
   }
 
+  function tryUseProtractorToolFromDesktopAim(): void {
+    const target = resolveCurrentAimTarget();
+    logVerboseAimClick(target);
+    if (!targetIsWithinInteractionRange(target)) {
+      return;
+    }
+
+    if (!activeProtractorToolState.center) {
+      if (target?.object?.kind !== "geodesic-cannon" && target?.object?.kind !== "geodesic-intersection") {
+        return;
+      }
+
+      activeProtractorToolState = {
+        center: resolveProtractorCenterSelection(target.object),
+      };
+      return;
+    }
+
+    if (target?.object?.kind !== "geodesic-segment") {
+      return;
+    }
+
+    const selected = resolveProtractorDirectedGeodesicSelection({
+      center: activeProtractorToolState.center,
+      segment: target.object,
+      hitPoint: target.localPoint,
+    });
+    if (!selected) {
+      return;
+    }
+
+    if (!activeProtractorToolState.first) {
+      activeProtractorToolState = {
+        center: activeProtractorToolState.center,
+        first: selected,
+      };
+      return;
+    }
+
+    const angle = createProtractorAngleObject({
+      id: `protractor-angle:${Date.now()}:${protractorAngleIdCounter++}`,
+      center: activeProtractorToolState.center,
+      first: activeProtractorToolState.first,
+      second: selected,
+    });
+    runtimeObjectRegistry.add(angle);
+    syncProtractorAngleRuntime(angle);
+    activeProtractorToolState = {};
+    menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+    syncDesktopPalette();
+    syncSelectableHitboxDebug();
+  }
+
+  function tryRemoveFocusedProtractorAngle(): boolean {
+    const focused = findFocusedRuntimeObject();
+    if (focused?.object.kind !== "protractor-angle") {
+      return false;
+    }
+
+    runtimeObjectRegistry.remove(focused.object.id);
+    removeProtractorAngleRuntime(focused.object.id);
+    syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
+    return true;
+  }
+
   function tryOpenFocusedObjectMenu(): boolean {
     const focused = findFocusedRuntimeObject();
     if (!focused) {
@@ -2689,6 +2820,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
+    removeProtractorAnglesForGeodesic(geodesicId);
     removeGeodesic(runtimeObjectRegistry, geodesicId);
     const refreshed = runtimeObjectRegistry.get(cannonId);
     const updatedCannon = refreshed?.kind === "geodesic-cannon" ? refreshed : cannon;
@@ -2747,12 +2879,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           : cannon.geodesicEmitterYawRadiansById,
       };
       runtimeObjectRegistry.update(nextCannon);
-      rebuildActiveGeodesicFromCannon(nextCannon);
+      rebuildActiveGeodesicFromCannon(nextCannon, { connectEmitters: false });
       syncRuntimeObjectPortalInstances();
       syncSelectableHitboxDebug();
     }
 
     if (finishRequested) {
+      const refreshed = runtimeObjectRegistry.get(cannon.id);
+      finishActiveGeodesicCannonEdit(refreshed?.kind === "geodesic-cannon" ? refreshed : cannon);
       geodesicCannonRotationTargetLengthMeters = undefined;
       menuState = setRuntimeMenuSelectedTool(menuState, "aim");
       syncDesktopPalette();
@@ -2806,13 +2940,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             : cannon.geodesicEmitterYawRadiansById,
         };
         runtimeObjectRegistry.update(nextCannon);
-        rebuildActiveGeodesicFromCannon(nextCannon);
+        rebuildActiveGeodesicFromCannon(nextCannon, { connectEmitters: false });
         syncRuntimeObjectPortalInstances();
         syncSelectableHitboxDebug();
       }
     }
 
     if (finishRequested) {
+      const refreshed = runtimeObjectRegistry.get(cannon.id);
+      finishActiveGeodesicCannonEdit(refreshed?.kind === "geodesic-cannon" ? refreshed : cannon);
       finishGeodesicCannonAimMode();
     }
   }
@@ -2846,19 +2982,31 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncDesktopPalette();
   }
 
-  function rebuildActiveGeodesicFromCannon(cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>): void {
+  function finishActiveGeodesicCannonEdit(cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>): void {
+    rebuildActiveGeodesicFromCannon(cannon, { connectEmitters: true, snapToEmitter: true });
+    syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
+  }
+
+  function rebuildActiveGeodesicFromCannon(
+    cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+    options: { readonly connectEmitters?: boolean; readonly snapToEmitter?: boolean } = {},
+  ): void {
     const geodesicId = cannon.activeGeodesicId ?? activeGeodesicCannonToolState.activeGeodesicId;
     if (!geodesicId) {
       return;
     }
 
     const totalLengthMeters = geodesicCannonRotationTargetLengthMeters ?? getGeodesicTotalLengthMeters(geodesicId);
+    removeProtractorAnglesForGeodesic(geodesicId);
     rebuildGeodesicToLength({
       world: appState.world,
       registry: runtimeObjectRegistry,
       cannon,
       geodesicId,
       totalLengthMeters,
+      connectEmitters: options.connectEmitters,
+      snapToEmitter: options.snapToEmitter,
     });
     activeGeodesicCannonToolState = {
       selectedCannonId: cannon.id,
@@ -2922,7 +3070,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         menuState.selectedTool !== "aim" &&
         menuState.selectedTool !== "place-flag" &&
         menuState.selectedTool !== "geodesic-cannon" &&
-        menuState.selectedTool !== "geodesic-cannon-aim"
+        menuState.selectedTool !== "geodesic-cannon-aim" &&
+        menuState.selectedTool !== "protractor"
       ) ||
       menuState.isOpen ||
       desktopFlagEditor.isOpen()
@@ -3204,6 +3353,30 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncSelectableHitboxDebug();
   }
 
+  function removeProtractorAngles(): void {
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "protractor-angle") {
+        runtimeObjectRegistry.remove(object.id);
+        removeProtractorAngleRuntime(object.id);
+      }
+    }
+    activeProtractorToolState = {};
+    syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
+  }
+
+  function removeProtractorAnglesForGeodesic(geodesicId: string): void {
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (
+        object.kind === "protractor-angle" &&
+        (object.first.geodesicId === geodesicId || object.second.geodesicId === geodesicId)
+      ) {
+        runtimeObjectRegistry.remove(object.id);
+        removeProtractorAngleRuntime(object.id);
+      }
+    }
+  }
+
   function getCameraForwardVector(): { readonly x: number; readonly y: number; readonly z: number } {
     const forward = new THREE.Vector3(0, 0, -1);
     const quaternion = new THREE.Quaternion();
@@ -3231,7 +3404,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     selectableHitboxDebugGroupsByCellId.clear();
 
-    if (!hasActiveDebugOption(debugLevel, debugOptions, "selectable-hitboxes")) {
+    for (const group of aimCollisionOutlineDebugGroupsByCellId.values()) {
+      group.removeFromParent();
+      disposeObject3D(group);
+    }
+    aimCollisionOutlineDebugGroupsByCellId.clear();
+
+    const selectableHitboxesActive = hasActiveDebugOption(debugLevel, debugOptions, "selectable-hitboxes");
+    const aimCollisionOutlinesActive = hasActiveDebugOption(debugLevel, debugOptions, "aim-collision-outlines");
+    if (!selectableHitboxesActive && !aimCollisionOutlinesActive) {
       return;
     }
 
@@ -3241,22 +3422,41 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         continue;
       }
 
-      const group = new THREE.Group();
-      group.name = `selectable-hitboxes:${cell.id}`;
-      for (const object of runtimeObjectRegistry.getObjectsInCell(cell.id)) {
-        const hitbox = buildSelectableHitboxDebugMesh(object);
-        if (hitbox) {
-          group.add(hitbox);
+      if (selectableHitboxesActive) {
+        const group = new THREE.Group();
+        group.name = `selectable-hitboxes:${cell.id}`;
+        for (const object of runtimeObjectRegistry.getObjectsInCell(cell.id)) {
+          const hitbox = buildSelectableHitboxDebugMesh(object);
+          if (hitbox) {
+            group.add(hitbox);
+          }
+        }
+
+        if (group.children.length > 0) {
+          cellRoot.add(group);
+          selectableHitboxDebugGroupsByCellId.set(cell.id, group);
+        } else {
+          disposeObject3D(group);
         }
       }
 
-      if (group.children.length === 0) {
-        disposeObject3D(group);
-        continue;
-      }
+      if (aimCollisionOutlinesActive) {
+        const group = new THREE.Group();
+        group.name = `aim-collision-outlines:${cell.id}`;
+        for (const object of runtimeObjectRegistry.getObjectsInCell(cell.id)) {
+          const outline = buildAimCollisionOutlineDebugMesh(object);
+          if (outline) {
+            group.add(outline);
+          }
+        }
 
-      cellRoot.add(group);
-      selectableHitboxDebugGroupsByCellId.set(cell.id, group);
+        if (group.children.length > 0) {
+          cellRoot.add(group);
+          aimCollisionOutlineDebugGroupsByCellId.set(cell.id, group);
+        } else {
+          disposeObject3D(group);
+        }
+      }
     }
   }
 
@@ -3271,6 +3471,35 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
     return bounds ? buildCylinderSelectableHitboxDebugMesh(bounds, selectableObjectHitboxDebugColor) : undefined;
+  }
+
+  function buildAimCollisionOutlineDebugMesh(object: RuntimeWorldObject): THREE.Object3D | undefined {
+    if (!object.tooltip && !object.interactable) {
+      return undefined;
+    }
+
+    if (object.kind === "geodesic-segment") {
+      return buildGeodesicSegmentAimCollisionOutlineDebugMesh(object);
+    }
+
+    if (object.kind === "geodesic-cannon") {
+      const bounds = getGeodesicEmitterAimCylinderBounds(object);
+      return bounds ? buildCylinderAimCollisionOutlineDebugMesh(
+        bounds,
+        "aim-collision-outline:geodesic-emitter-cylinder",
+      ) : undefined;
+    }
+
+    const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
+    if (bounds) {
+      return buildCylinderAimCollisionOutlineDebugMesh(bounds, "aim-collision-outline:cylinder");
+    }
+
+    return buildSphereAimCollisionOutlineDebugMesh(
+      object.localPose.translation,
+      fallbackObjectAimCollisionRadiusMeters,
+      "aim-collision-outline:fallback-sphere",
+    );
   }
 
   function dispatchRuntimeCommand(command: RuntimeCommand): void {
@@ -3837,6 +4066,36 @@ function buildCylinderSelectableHitboxDebugMesh(
   return mesh;
 }
 
+function buildCylinderAimCollisionOutlineDebugMesh(
+  bounds: SimpleCylinderBounds,
+  name: string,
+): THREE.Mesh {
+  const geometry = new THREE.CylinderGeometry(1, 1, 1, 28, 1, true);
+  const material = createAimCollisionOutlineDebugMaterial();
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = name;
+  mesh.position.copy(worldPointToThree(bounds.center));
+  mesh.scale.set(bounds.radius, bounds.halfHeight * 2, bounds.radius);
+  mesh.renderOrder = aimCollisionOutlineDebugRenderOrder;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+function buildSphereAimCollisionOutlineDebugMesh(
+  center: { readonly x: number; readonly y: number; readonly z: number },
+  radius: number,
+  name: string,
+): THREE.Mesh {
+  const geometry = new THREE.SphereGeometry(radius, 24, 12);
+  const material = createAimCollisionOutlineDebugMaterial();
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = name;
+  mesh.position.copy(worldPointToThree(center));
+  mesh.renderOrder = aimCollisionOutlineDebugRenderOrder;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 function buildGeodesicSegmentSelectableHitboxDebugMesh(
   object: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>,
 ): THREE.Group {
@@ -3890,6 +4149,59 @@ function buildGeodesicSegmentSelectableHitboxDebugMesh(
   return group;
 }
 
+function buildGeodesicSegmentAimCollisionOutlineDebugMesh(
+  object: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>,
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "aim-collision-outline:geodesic-segment";
+  group.renderOrder = aimCollisionOutlineDebugRenderOrder;
+  group.frustumCulled = false;
+
+  const length = Math.max(0.001, object.lengthMeters);
+  const segmentGeometry = new THREE.CylinderGeometry(
+    geodesicSegmentAimRadiusMeters,
+    geodesicSegmentAimRadiusMeters,
+    length,
+    20,
+    1,
+    true,
+  );
+  const material = createAimCollisionOutlineDebugMaterial();
+  const segmentMesh = new THREE.Mesh(segmentGeometry, material);
+  segmentMesh.name = "aim-collision-outline:geodesic-segment-body";
+  segmentMesh.position.copy(worldPointToThree({
+    x: object.start.x + object.direction.x * length * 0.5,
+    y: object.start.y + object.direction.y * length * 0.5,
+    z: object.start.z + object.direction.z * length * 0.5,
+  }));
+  const threeDirection = worldPointToThree(object.direction).normalize();
+  segmentMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), threeDirection);
+  segmentMesh.renderOrder = aimCollisionOutlineDebugRenderOrder;
+  segmentMesh.frustumCulled = false;
+  group.add(segmentMesh);
+
+  const capGeometry = new THREE.SphereGeometry(geodesicSegmentAimRadiusMeters, 16, 8);
+  const startCap = new THREE.Mesh(capGeometry, material.clone());
+  startCap.name = "aim-collision-outline:geodesic-segment-start-cap";
+  startCap.position.copy(worldPointToThree(object.start));
+  startCap.renderOrder = aimCollisionOutlineDebugRenderOrder;
+  startCap.frustumCulled = false;
+  group.add(startCap);
+
+  const endCap = new THREE.Mesh(capGeometry.clone(), material.clone());
+  endCap.name = "aim-collision-outline:geodesic-segment-end-cap";
+  endCap.position.copy(worldPointToThree({
+    x: object.start.x + object.direction.x * length,
+    y: object.start.y + object.direction.y * length,
+    z: object.start.z + object.direction.z * length,
+  }));
+  endCap.renderOrder = aimCollisionOutlineDebugRenderOrder;
+  endCap.frustumCulled = false;
+  group.add(endCap);
+
+  return group;
+}
+
 function createSelectableHitboxDebugMaterial(color: number): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
     color,
@@ -3897,6 +4209,17 @@ function createSelectableHitboxDebugMaterial(color: number): THREE.MeshBasicMate
     opacity: selectableHitboxDebugOpacity,
     side: THREE.DoubleSide,
     transparent: true,
+  });
+}
+
+function createAimCollisionOutlineDebugMaterial(): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color: aimCollisionOutlineDebugColor,
+    depthWrite: false,
+    opacity: aimCollisionOutlineDebugOpacity,
+    side: THREE.DoubleSide,
+    transparent: true,
+    wireframe: true,
   });
 }
 

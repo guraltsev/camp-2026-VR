@@ -87,6 +87,28 @@ describe("resolveAimTarget", () => {
     expect(target?.distanceMeters).toBeGreaterThan(39);
   });
 
+  it("misses geodesic emitters just outside the enlarged cylindrical aim outline", () => {
+    const world = compileCellComplex(largeRoomWorld());
+    const emitter = createGeodesicCannonObject({
+      id: "emitter-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 40, y: 0, z: 0 }),
+    });
+    const registry = createRuntimeObjectRegistry([emitter]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0, y: 0.42, z: 1.08 }, { x: 40, y: 0.42, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+      maxDistanceMeters: 24,
+    });
+
+    expect(target).toBeUndefined();
+  });
+
   it("resolves a floor point in a visible destination cell", () => {
     const world = compileCellComplex(twoRoomPortalWorld());
     const registry = createRuntimeObjectRegistry();
@@ -148,7 +170,7 @@ describe("resolveAimTarget", () => {
     expect(target?.localPoint.z).toBeCloseTo(1.08);
   });
 
-  it("suppresses geodesic ray segments within one meter of their emitter while keeping the emitter selectable", () => {
+  it("resolves geodesic ray segments near their emitter when the smaller emitter hitbox is missed", () => {
     const world = compileCellComplex(singleRoomWorld());
     const cannon = createGeodesicCannonObject({
       id: "cannon-a",
@@ -173,10 +195,11 @@ describe("resolveAimTarget", () => {
     });
 
     expect(target?.kind).toBe("object");
-    expect(target?.object?.id).toBe("cannon-a");
+    expect(target?.object?.id).toBe("segment-a");
+    expect(target?.localPoint.x).toBeCloseTo(0.5);
   });
 
-  it("resolves the selectable part of a geodesic ray while standing near its emitter", () => {
+  it("prioritizes geodesic emitters over overlapping geodesic ray segments", () => {
     const world = compileCellComplex(singleRoomWorld());
     const cannon = createGeodesicCannonObject({
       id: "cannon-a",
@@ -201,11 +224,10 @@ describe("resolveAimTarget", () => {
     });
 
     expect(target?.kind).toBe("object");
-    expect(target?.object?.id).toBe("segment-a");
-    expect(target?.localPoint.x).toBeGreaterThanOrEqual(1);
+    expect(target?.object?.id).toBe("cannon-a");
   });
 
-  it("keeps the last ten centimeters of a geodesic ray selectable inside the emitter buffer", () => {
+  it("keeps short geodesic ray segments selectable near their emitter when the emitter hitbox is missed", () => {
     const world = compileCellComplex(singleRoomWorld());
     const cannon = createGeodesicCannonObject({
       id: "cannon-a",
@@ -231,7 +253,7 @@ describe("resolveAimTarget", () => {
 
     expect(target?.kind).toBe("object");
     expect(target?.object?.id).toBe("segment-a");
-    expect(target?.localPoint.x).toBeGreaterThanOrEqual(0.9);
+    expect(target?.localPoint.x).toBeCloseTo(0.95);
   });
 
   it("prioritizes geodesic intersection balloons over overlapping geodesic ray segments", () => {
@@ -257,6 +279,31 @@ describe("resolveAimTarget", () => {
     expect(target?.kind).toBe("object");
     expect(target?.object?.id).toBe("vertex-a");
     expect(target?.object?.kind).toBe("geodesic-intersection");
+  });
+
+  it("prioritizes geodesic emitters over overlapping geodesic intersection balloons", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const vertex = createGeodesicIntersection({
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 1.08 }),
+    });
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+    });
+    const registry = createRuntimeObjectRegistry([vertex, cannon]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt({ x: 0, y: -2, z: 1.08 }, { x: 0, y: 0, z: 1.08 });
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("cannon-a");
   });
 
   it("snaps sticky object aim targets to their declared local point", () => {

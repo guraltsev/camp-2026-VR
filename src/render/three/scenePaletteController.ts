@@ -33,6 +33,7 @@ export interface ScenePaletteControllerOptions {
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
+  readonly onAimCollisionOutlinesToggled: (enabled: boolean) => void;
   readonly onToolSelected: (toolId: RuntimeToolId) => void;
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
@@ -101,6 +102,7 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
     onPortalPanelModeSelected: options.onPortalPanelModeSelected,
     onPortalInspectionToggled: options.onPortalInspectionToggled,
     onCollisionGeometryWireframesToggled: options.onCollisionGeometryWireframesToggled,
+    onAimCollisionOutlinesToggled: options.onAimCollisionOutlinesToggled,
     onToolSelected: options.onToolSelected,
     onPlaceFlagOptionsRequested: options.onPlaceFlagOptionsRequested,
     onPlaceFlagTypeSelected: options.onPlaceFlagTypeSelected,

@@ -8,7 +8,6 @@ import {
   geodesicRayBeamHeightMeters,
   geodesicRayBeamStartOffsetMeters,
   getGeodesicConnection,
-  getGeodesicSegmentEnd,
   getGeodesicSegments,
   getGeodesicTail,
   isGeodesicLocked,
@@ -38,7 +37,7 @@ describe("geodesic cannon world objects", () => {
     expect(result.terminal).toEqual({ kind: "open" });
   });
 
-  it("shoots and extends two-meter segments by default", () => {
+  it("extends same-cell geodesics by lengthening the tail segment", () => {
     const world = compileLargeWorld();
     const registry = createRuntimeObjectRegistry();
     const cannon = createGeodesicCannonObject({
@@ -64,10 +63,13 @@ describe("geodesic cannon world objects", () => {
     expect(first.geodesicNumber).toBe(1);
     expect(first.tooltip?.label).toBe("Geodesic G1");
     expect(first.tooltip?.rangeMeters).toBe(6);
-    expect(second?.lengthMeters).toBe(2);
+    expect(second?.id).toBe(first.id);
+    expect(second?.segmentIndex).toBe(0);
+    expect(second?.lengthMeters).toBe(4);
     expect(second?.geodesicNumber).toBe(1);
     expect(second?.tooltip?.label).toBe("Geodesic G1");
     expect(second?.tooltip?.rangeMeters).toBe(6);
+    expect(getGeodesicSegments(registry, "g-a")).toHaveLength(1);
   });
 
   it("numbers multiple geodesics from the same emitter pole incrementally", () => {
@@ -338,9 +340,15 @@ describe("geodesic cannon world objects", () => {
     const second = extendGeodesic({ world, registry, geodesicId: "g-a", maxLengthMeters: 0.5 });
     const third = extendGeodesic({ world, registry, geodesicId: "g-a", maxLengthMeters: 1 });
 
-    expect(second?.start).toEqual(getGeodesicSegmentEnd(first));
+    expect(second?.id).toBe(first.id);
+    expect(second?.segmentIndex).toBe(0);
+    expect(second?.start).toEqual(first.start);
+    expect(second?.lengthMeters).toBeCloseTo(0.75);
     expect(second?.terminal.kind).toBe("open");
+    expect(third?.id).toBe(first.id);
+    expect(third?.segmentIndex).toBe(0);
     expect(third?.terminal.kind).toBe("wall-hit");
+    expect(getGeodesicSegments(registry, "g-a")).toHaveLength(1);
     expect(extendGeodesic({ world, registry, geodesicId: "g-a" })).toBeUndefined();
   });
 
@@ -405,6 +413,71 @@ describe("geodesic cannon world objects", () => {
     });
     expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-a"]);
     expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(Math.PI);
+  });
+
+  it("does not connect to emitters during preview rebuilds", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0.05, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+
+    rebuildGeodesicToLength({
+      world,
+      registry,
+      cannon: source,
+      geodesicId: "g-a",
+      totalLengthMeters: 4,
+      connectEmitters: false,
+    });
+
+    expect(getGeodesicTail(registry, "g-a")?.terminal.kind).toBe("open");
+    expect(getGeodesicTail(registry, "g-a")?.lengthMeters).toBeCloseTo(4);
+    expect(isGeodesicLocked(registry, "g-a")).toBe(false);
+    expect(getGeodesicConnection(registry, "g-a")).toEqual({
+      outgoingEmitterId: "cannon-a",
+      state: "open",
+    });
+  });
+
+  it("snaps final rebuild yaw to a passed emitter and connects precisely", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0.05, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+
+    rebuildGeodesicToLength({
+      world,
+      registry,
+      cannon: source,
+      geodesicId: "g-a",
+      totalLengthMeters: 4,
+      snapToEmitter: true,
+    });
+
+    const snappedYaw = Math.atan2(0.05, 2.5);
+    expect(getGeodesicTail(registry, "g-a")?.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-b" });
+    expect(getCannonGeodesicYaw(registry, "cannon-a", "g-a")).toBeCloseTo(snappedYaw);
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
   });
 
   it("does not connect until extension reaches the target emitter", () => {
@@ -476,7 +549,8 @@ describe("geodesic cannon world objects", () => {
     shootGeodesic({ world, registry, cannon, geodesicId: "g-a", maxLengthMeters: 0.5 });
     extendGeodesic({ world, registry, geodesicId: "g-a", maxLengthMeters: 0.5 });
 
-    expect(getGeodesicTail(registry, "g-a")?.segmentIndex).toBe(1);
+    expect(getGeodesicTail(registry, "g-a")?.segmentIndex).toBe(0);
+    expect(getGeodesicSegments(registry, "g-a")).toHaveLength(1);
     removeGeodesic(registry, "g-a");
     expect(registry.getAll().filter((object) => object.kind === "geodesic-segment")).toHaveLength(0);
     expect(registry.get("cannon-a")?.kind).toBe("geodesic-cannon");
@@ -514,7 +588,7 @@ describe("geodesic cannon world objects", () => {
     expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(1);
   });
 
-  it("does not create a vertex balloon inside an emitter exclusion radius", () => {
+  it("creates a vertex balloon at an emitter when geodesics intersect there", () => {
     const registry = createRuntimeObjectRegistry([
       createGeodesicCannonObject({
         id: "cannon-a",
@@ -537,7 +611,16 @@ describe("geodesic cannon world objects", () => {
       }),
     ]);
 
-    expect(updateGeodesicIntersectionObjects(registry)).toHaveLength(0);
+    const [vertex] = updateGeodesicIntersectionObjects(registry);
+
+    expect(vertex).toMatchObject({
+      kind: "geodesic-intersection",
+      cellId: "a",
+      geodesicIds: ["g-a", "g-b"],
+      segmentIds: ["g-a:segment:0", "g-b:segment:0"],
+    });
+    expect(vertex.localPose.translation).toEqual({ x: 1, y: 1, z: geodesicRayBeamHeightMeters + 0.25 });
+    expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(1);
   });
 
   it("removes stale vertex balloons when a geodesic is removed", () => {

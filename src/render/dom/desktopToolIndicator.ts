@@ -41,7 +41,11 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   rayIcon.alt = "";
   rayIcon.decoding = "async";
   rayIcon.src = rayToolIconSource;
-  icon.append(aimIcon, signIcon, rayIcon);
+  const protractorIcon = document.createElement("span");
+  protractorIcon.className = "desktop-tool-indicator-protractor-icon";
+  protractorIcon.textContent = "\u2220";
+  protractorIcon.setAttribute("aria-hidden", "true");
+  icon.append(aimIcon, signIcon, rayIcon, protractorIcon);
 
   const label = document.createElement("span");
   label.className = "desktop-tool-indicator-label";
@@ -61,6 +65,7 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
           toolId === "geodesic-cannon-rotate" ||
           toolId === "geodesic-cannon-aim",
       );
+      root.classList.toggle("desktop-tool-indicator-protractor", toolId === "protractor");
       root.classList.toggle("desktop-tool-indicator-WoodenSign1", flagType === "WoodenSign1");
       root.classList.toggle("desktop-tool-indicator-WoodenSign2", flagType === "WoodenSign2");
       signIcon.src = signIconSources[flagType];
@@ -68,6 +73,8 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
         ? "Rotate"
         : toolId === "geodesic-cannon-aim"
           ? "Aim"
+          : toolId === "protractor"
+            ? "Angle"
           : toolId === "geodesic-cannon"
             ? "Ray"
             : toolId === "place-flag"
@@ -77,6 +84,8 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
         ? "Selected tool: sign"
         : toolId === "geodesic-cannon"
           ? "Selected tool: geodesic ray"
+          : toolId === "protractor"
+            ? "Selected tool: protractor"
           : toolId === "geodesic-cannon-rotate"
             ? "Selected tool: rotate geodesic ray emitter"
             : toolId === "geodesic-cannon-aim"

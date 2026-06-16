@@ -2,6 +2,7 @@ import type { RigidTransform3 } from "../math/rigidTransform3";
 import type { DynamicObjectState, SimpleCollisionCylinder } from "../movement/dynamicObject";
 import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "./geodesicCannon";
 import type { PlacedFlagObject } from "./placedFlags";
+import type { ProtractorAngleObject } from "./protractorTool";
 
 export interface RuntimeObjectInteraction {
   readonly label: string;
@@ -38,7 +39,8 @@ export type RuntimeWorldObject =
   | PlacedFlagObject
   | GeodesicCannonObject
   | GeodesicSegmentObject
-  | GeodesicIntersectionObject;
+  | GeodesicIntersectionObject
+  | ProtractorAngleObject;
 
 export interface RuntimeObjectRegistry {
   add(object: RuntimeWorldObject): void;
