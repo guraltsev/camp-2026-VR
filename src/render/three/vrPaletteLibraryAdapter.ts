@@ -67,6 +67,7 @@ const signIconSources: Record<PlacedFlagType, string> = {
 const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
 const aimIconSource = "/assets/icons/aim-inverted.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
+const protractorToolIconSource = "/assets/icons/protractor.png";
 const signTypeLabels: Record<PlacedFlagType, string> = {
   WoodenSign1: "Wooden Sign 1",
   WoodenSign2: "Wooden Sign 2",
@@ -713,7 +714,7 @@ function createToolIcon(
   }
 
   if (toolId === "protractor") {
-    return createButtonText("\u2220", 32);
+    return createProtractorIcon();
   }
 
   return new Container({ width: 64, height: 64, opacity: 0 });
@@ -731,6 +732,21 @@ function createRayIcon(): Component<any> {
     renderOrder: 1002,
   });
   image.userData.scenePaletteIconSrc = rayToolIconSource;
+  return image;
+}
+
+function createProtractorIcon(): Component<any> {
+  const image = new Image({
+    src: protractorToolIconSource,
+    width: 88,
+    height: 88,
+    objectFit: "fill",
+    keepAspectRatio: true,
+    depthTest: false,
+    depthWrite: false,
+    renderOrder: 1002,
+  });
+  image.userData.scenePaletteIconSrc = protractorToolIconSource;
   return image;
 }
 

@@ -14,8 +14,10 @@ describe("protractor angle renderer", () => {
     });
 
     const runtime = createProtractorAngleRuntime(object);
+    const objectNames: string[] = [];
     const meshNames: string[] = [];
     runtime.root.traverse((child) => {
+      objectNames.push(child.name);
       if (child.type === "Mesh" || child.type === "Sprite") {
         meshNames.push(child.name);
       }
@@ -27,6 +29,9 @@ describe("protractor angle renderer", () => {
     expect(meshNames).toContain("protractor-angle-arc");
     expect(meshNames).toContain("protractor-angle-boundary:first");
     expect(meshNames).toContain("protractor-angle-boundary:second");
+    expect(meshNames).toContain("protractor-angle-floating-tooltip:front");
+    expect(meshNames).toContain("protractor-angle-floating-tooltip:back");
+    expect(objectNames).toContain("protractor-angle-floating-tooltip");
 
     runtime.dispose();
   });

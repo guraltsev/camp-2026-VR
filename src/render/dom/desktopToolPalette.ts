@@ -11,6 +11,7 @@ const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
 const aimIconSource = "/assets/icons/aim-inverted.png";
 const lockIconSource = "/assets/icons/lock.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
+const protractorToolIconSource = "/assets/icons/protractor.png";
 
 export interface DesktopPaletteView {
   readonly pageId: PaletteDefinition["pageId"];
@@ -699,10 +700,11 @@ function createCannonTileIcon(): HTMLElement {
 }
 
 function createProtractorTileIcon(): HTMLElement {
-  const icon = document.createElement("span");
+  const icon = document.createElement("img");
   icon.className = "desktop-tool-tile-icon";
-  icon.textContent = "\u2220";
-  icon.setAttribute("aria-hidden", "true");
+  icon.src = protractorToolIconSource;
+  icon.alt = "";
+  icon.decoding = "async";
   return icon;
 }
 

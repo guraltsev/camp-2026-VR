@@ -3,7 +3,7 @@ import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex"
 import type { CompiledPrismCell } from "../../cell-complex/prismCells";
 import { distanceVec3, dotVec3, normalizeVec3, subVec3, type Vec3 } from "../../math/vec3";
 import { getDynamicObjectCollisionBounds, signedDistanceToSide, type SimpleCylinderBounds } from "../../movement/collision";
-import { geodesicRayBeamHeightMeters } from "../../world-objects/geodesicCannon";
+import { geodesicRayBeamHeightMeters, geodesicRayBeamStartOffsetMeters } from "../../world-objects/geodesicCannon";
 import { runtimeObjectToDynamicObjectState, type RuntimeObjectRegistry, type RuntimeWorldObject } from "../../world-objects/runtimeObjectRegistry";
 import type { VisiblePortalPath } from "./visiblePortalPaths";
 import { threeDirectionToWorld, threePointToWorld, worldPointToThree } from "./worldAxes";
@@ -22,6 +22,7 @@ export interface AimTarget {
   readonly portalPathId: number;
   readonly object?: RuntimeWorldObject;
   readonly geodesicSegmentDistanceMeters?: number;
+  readonly geodesicEmitterGeodesicId?: string;
 }
 
 export interface ResolveAimTargetRequest {
@@ -47,6 +48,7 @@ interface ObjectAimHit {
   readonly point?: Vec3;
   readonly targetPoint?: Vec3;
   readonly geodesicSegmentDistanceMeters?: number;
+  readonly geodesicEmitterGeodesicId?: string;
 }
 
 const centerNdc = { x: 0, y: 0 };
@@ -56,6 +58,8 @@ const geodesicSegmentVsEmitterPriorityDistanceToleranceMeters = 3;
 const fallbackObjectRadiusMeters = 0.25;
 const geodesicEmitterAimCylinderRadiusPaddingMeters = 0.08;
 const geodesicEmitterAimCylinderHalfHeightPaddingMeters = 0.1;
+const geodesicEmitterGeodesicHandleLengthMeters = 0.65;
+const geodesicEmitterGeodesicHandleRadiusMeters = 0.16;
 const defaultMaxEmitterAimDistanceMeters = 200;
 export const geodesicSegmentAimRadiusMeters = 0.28 / 1.5;
 
@@ -189,6 +193,7 @@ function resolveObjectAimTargets(
       portalPathId: ray.path.pathId,
       object,
       geodesicSegmentDistanceMeters: hit.geodesicSegmentDistanceMeters,
+      geodesicEmitterGeodesicId: hit.geodesicEmitterGeodesicId,
     });
   }
 
@@ -278,6 +283,7 @@ function intersectRayWithSegmentCapsule(
   segmentStart: Vec3,
   segmentDirection: Vec3,
   segmentLengthMeters: number,
+  radiusMeters = geodesicSegmentAimRadiusMeters,
 ): ObjectAimHit | undefined {
   if (!(segmentLengthMeters > 0)) {
     return undefined;
@@ -301,8 +307,8 @@ function intersectRayWithSegmentCapsule(
   };
   const hits: ObjectAimHit[] = [];
 
-  pushSegmentCylinderHit(hits, localOrigin, localDirection, origin, direction, segmentStart, segmentDirection, segmentLengthMeters);
-  pushSegmentSphereHit(hits, localOrigin, localDirection, origin, direction, segmentStart, segmentDirection, 0);
+  pushSegmentCylinderHit(hits, localOrigin, localDirection, origin, direction, segmentStart, segmentDirection, segmentLengthMeters, radiusMeters);
+  pushSegmentSphereHit(hits, localOrigin, localDirection, origin, direction, segmentStart, segmentDirection, 0, radiusMeters);
   pushSegmentSphereHit(
     hits,
     localOrigin,
@@ -312,6 +318,7 @@ function intersectRayWithSegmentCapsule(
     segmentStart,
     segmentDirection,
     segmentLengthMeters,
+    radiusMeters,
   );
 
   if (hits.length === 0) {
@@ -362,6 +369,7 @@ function pushSegmentCylinderHit(
   segmentStart: Vec3,
   segmentDirection: Vec3,
   segmentLengthMeters: number,
+  radiusMeters: number,
 ): void {
   const a = localDirection.y * localDirection.y + localDirection.z * localDirection.z;
   if (a <= aimPointToleranceMeters) {
@@ -369,8 +377,7 @@ function pushSegmentCylinderHit(
   }
 
   const b = 2 * (localOrigin.y * localDirection.y + localOrigin.z * localDirection.z);
-  const c = localOrigin.y * localOrigin.y + localOrigin.z * localOrigin.z -
-    geodesicSegmentAimRadiusMeters * geodesicSegmentAimRadiusMeters;
+  const c = localOrigin.y * localOrigin.y + localOrigin.z * localOrigin.z - radiusMeters * radiusMeters;
   const discriminant = b * b - 4 * a * c;
   if (discriminant < 0) {
     return;
@@ -441,6 +448,7 @@ function pushSegmentSphereHit(
   segmentStart: Vec3,
   segmentDirection: Vec3,
   segmentDistance: number,
+  radiusMeters: number,
 ): void {
   const sphereOrigin = {
     x: localOrigin.x - segmentDistance,
@@ -448,8 +456,7 @@ function pushSegmentSphereHit(
     z: localOrigin.z,
   };
   const b = 2 * dotVec3(sphereOrigin, localDirection);
-  const c = dotVec3(sphereOrigin, sphereOrigin) -
-    geodesicSegmentAimRadiusMeters * geodesicSegmentAimRadiusMeters;
+  const c = dotVec3(sphereOrigin, sphereOrigin) - radiusMeters * radiusMeters;
   const discriminant = b * b - 4 * c;
   if (discriminant < 0) {
     return;
@@ -586,7 +593,11 @@ function intersectRayWithGeodesicEmitterAimCylinder(
     return undefined;
   }
 
-  const hit = intersectRayWithVerticalCylinder(origin, direction, bounds);
+  const cylinderHit = intersectRayWithVerticalCylinder(origin, direction, bounds);
+  const geodesicHit = cylinderHit
+    ? intersectRayWithEmitterGeodesicHandles(origin, direction, emitter)
+    : undefined;
+  const hit = chooseEmitterAimHit(cylinderHit, geodesicHit);
   if (!hit) {
     return undefined;
   }
@@ -600,6 +611,72 @@ function intersectRayWithGeodesicEmitterAimCylinder(
     ...hit,
     targetPoint,
   };
+}
+
+function intersectRayWithEmitterGeodesicHandles(
+  origin: Vec3,
+  direction: Vec3,
+  emitter: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+): ObjectAimHit | undefined {
+  const center = {
+    x: emitter.localPose.translation.x,
+    y: emitter.localPose.translation.y,
+    z: emitter.localPose.translation.z + geodesicRayBeamHeightMeters,
+  };
+  let best: ObjectAimHit | undefined;
+
+  for (const geodesicId of emitter.geodesicIds) {
+    const yawRadians = emitter.geodesicEmitterYawRadiansById?.[geodesicId] ?? emitter.aimYawRadians;
+    const handleStart = {
+      x: center.x + Math.cos(yawRadians) * geodesicRayBeamStartOffsetMeters,
+      y: center.y + Math.sin(yawRadians) * geodesicRayBeamStartOffsetMeters,
+      z: center.z,
+    };
+    const handleDirection = {
+      x: Math.cos(yawRadians),
+      y: Math.sin(yawRadians),
+      z: 0,
+    };
+    const hit = intersectRayWithSegmentCapsule(
+      origin,
+      direction,
+      handleStart,
+      handleDirection,
+      geodesicEmitterGeodesicHandleLengthMeters,
+      geodesicEmitterGeodesicHandleRadiusMeters,
+    );
+    if (!hit) {
+      continue;
+    }
+
+    const withGeodesicId = {
+      ...hit,
+      targetPoint: center,
+      geodesicEmitterGeodesicId: geodesicId,
+    };
+    if (!best || withGeodesicId.distance < best.distance) {
+      best = withGeodesicId;
+    }
+  }
+
+  return best;
+}
+
+function chooseEmitterAimHit(
+  cylinderHit: ObjectAimHit | undefined,
+  geodesicHit: ObjectAimHit | undefined,
+): ObjectAimHit | undefined {
+  if (!geodesicHit) {
+    return cylinderHit;
+  }
+
+  if (!cylinderHit) {
+    return geodesicHit;
+  }
+
+  return geodesicHit.distance <= cylinderHit.distance + aimTargetPriorityDistanceToleranceMeters
+    ? geodesicHit
+    : cylinderHit;
 }
 
 function pushCylinderSideHit(

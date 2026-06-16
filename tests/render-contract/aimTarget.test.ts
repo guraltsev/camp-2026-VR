@@ -6,7 +6,12 @@ import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 import { createPlacedFlagObject } from "../../src/world-objects/placedFlags";
 import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
-import { createGeodesicCannonObject, type GeodesicIntersectionObject, type GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
+import {
+  createGeodesicCannonObject,
+  geodesicRayBeamHeightMeters,
+  type GeodesicIntersectionObject,
+  type GeodesicSegmentObject,
+} from "../../src/world-objects/geodesicCannon";
 import { resolveAimTarget } from "../../src/render/three/aimTarget";
 import type { VisiblePortalPath } from "../../src/render/three/visiblePortalPaths";
 import { rigidTransformToThreeMatrix, worldPointToThree } from "../../src/render/three/worldAxes";
@@ -225,6 +230,47 @@ describe("resolveAimTarget", () => {
 
     expect(target?.kind).toBe("object");
     expect(target?.object?.id).toBe("cannon-a");
+  });
+
+  it("reports the aimed geodesic id on geodesic emitter handles", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+      activeGeodesicId: "g-a",
+      geodesicIds: ["g-a", "g-b"],
+      geodesicEmitterYawRadiansById: {
+        "g-a": 0,
+        "g-b": Math.PI / 2,
+      },
+    });
+    const registry = createRuntimeObjectRegistry([cannon]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+
+    const firstTarget = resolveAimTarget({
+      world,
+      registry,
+      camera: cameraLookingAt(
+        { x: 0.32, y: -2, z: geodesicRayBeamHeightMeters },
+        { x: 0.32, y: 0, z: geodesicRayBeamHeightMeters },
+      ),
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+    const secondTarget = resolveAimTarget({
+      world,
+      registry,
+      camera: cameraLookingAt(
+        { x: 2, y: 0.32, z: geodesicRayBeamHeightMeters },
+        { x: 0, y: 0.32, z: geodesicRayBeamHeightMeters },
+      ),
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(firstTarget?.object?.id).toBe("cannon-a");
+    expect(firstTarget?.geodesicEmitterGeodesicId).toBe("g-a");
+    expect(secondTarget?.object?.id).toBe("cannon-a");
+    expect(secondTarget?.geodesicEmitterGeodesicId).toBe("g-b");
   });
 
   it("keeps short geodesic ray segments selectable near their emitter when the emitter hitbox is missed", () => {

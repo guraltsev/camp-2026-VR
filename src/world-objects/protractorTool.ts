@@ -1,6 +1,11 @@
 import { yawRigidTransform3 } from "../math/rigidTransform3";
 import { dotVec3, type Vec3 } from "../math/vec3";
-import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "./geodesicCannon";
+import {
+  geodesicRayBeamHeightMeters,
+  type GeodesicCannonObject,
+  type GeodesicIntersectionObject,
+  type GeodesicSegmentObject,
+} from "./geodesicCannon";
 import type { RuntimeWorldObjectBase } from "./runtimeObjectRegistry";
 
 export const protractorAngleRadiusMeters = 0.3;
@@ -35,12 +40,20 @@ export function resolveProtractorCenterSelection(
   return {
     objectId: object.id,
     cellId: object.cellId,
-    point: object.aimStickyTarget?.localPoint ?? {
-      x: object.localPose.translation.x,
-      y: object.localPose.translation.y,
-      z: object.localPose.translation.z,
-    },
+    point: resolveProtractorCenterPoint(object),
     geodesicIds: object.geodesicIds,
+  };
+}
+
+function resolveProtractorCenterPoint(object: GeodesicCannonObject | GeodesicIntersectionObject): Vec3 {
+  if (object.aimStickyTarget?.localPoint) {
+    return object.aimStickyTarget.localPoint;
+  }
+
+  return {
+    x: object.localPose.translation.x,
+    y: object.localPose.translation.y,
+    z: object.localPose.translation.z + (object.kind === "geodesic-cannon" ? geodesicRayBeamHeightMeters : 0),
   };
 }
 
@@ -78,6 +91,30 @@ export function resolveProtractorDirectedGeodesicSelection(options: {
     geodesicId: segment.geodesicId,
     segmentId: segment.id,
     yawRadians,
+  };
+}
+
+export function resolveProtractorEmitterGeodesicSelection(options: {
+  readonly center: ProtractorCenterSelection;
+  readonly emitter: GeodesicCannonObject;
+  readonly geodesicId?: string;
+}): ProtractorDirectedGeodesic | undefined {
+  const { center, emitter } = options;
+  if (center.cellId !== emitter.cellId) {
+    return undefined;
+  }
+
+  const geodesicId = options.geodesicId ??
+    emitter.activeGeodesicId ??
+    emitter.geodesicIds.find((candidate) => center.geodesicIds.includes(candidate));
+  if (!geodesicId || !center.geodesicIds.includes(geodesicId) || !emitter.geodesicIds.includes(geodesicId)) {
+    return undefined;
+  }
+
+  return {
+    geodesicId,
+    segmentId: `${emitter.id}:${geodesicId}:emitter`,
+    yawRadians: normalizeSignedRadians(emitter.geodesicEmitterYawRadiansById?.[geodesicId] ?? emitter.aimYawRadians),
   };
 }
 

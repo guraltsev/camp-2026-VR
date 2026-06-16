@@ -5,10 +5,24 @@ import {
   protractorAngleRadiusMeters,
   resolveProtractorCenterSelection,
   resolveProtractorDirectedGeodesicSelection,
+  resolveProtractorEmitterGeodesicSelection,
 } from "../../src/world-objects/protractorTool";
-import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "../../src/world-objects/geodesicCannon";
+import {
+  geodesicRayBeamHeightMeters,
+  type GeodesicCannonObject,
+  type GeodesicIntersectionObject,
+  type GeodesicSegmentObject,
+} from "../../src/world-objects/geodesicCannon";
 
 describe("protractor tool objects", () => {
+  it("uses the ray emitter height as the center for emitter selections", () => {
+    const center = resolveProtractorCenterSelection(createEmitter({
+      localPose: yawRigidTransform3(0, { x: 2, y: 3, z: 0.5 }),
+    }));
+
+    expect(center.point).toEqual({ x: 2, y: 3, z: 0.5 + geodesicRayBeamHeightMeters });
+  });
+
   it("selects the side of a geodesic segment from the center toward the hit point", () => {
     const center = resolveProtractorCenterSelection(createIntersection());
     const segment = createSegment({
@@ -58,6 +72,29 @@ describe("protractor tool objects", () => {
     });
 
     expect(angle.angleDegrees).toBeCloseTo(270);
+  });
+
+  it("selects a geodesic side directly from an emitter", () => {
+    const center = resolveProtractorCenterSelection(createEmitter({
+      geodesicIds: ["g-a", "g-b"],
+      activeGeodesicId: "g-b",
+      geodesicEmitterYawRadiansById: { "g-b": Math.PI / 4 },
+    }));
+
+    const selected = resolveProtractorEmitterGeodesicSelection({
+      center,
+      emitter: createEmitter({
+        geodesicIds: ["g-a", "g-b"],
+        activeGeodesicId: "g-b",
+        geodesicEmitterYawRadiansById: { "g-b": Math.PI / 4 },
+      }),
+    });
+
+    expect(selected).toEqual({
+      geodesicId: "g-b",
+      segmentId: "emitter-a:g-b:emitter",
+      yawRadians: Math.PI / 4,
+    });
   });
 });
 

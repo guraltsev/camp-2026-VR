@@ -6,6 +6,7 @@ const signIconSources: Record<PlacedFlagType, string> = {
   WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
 };
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
+const protractorToolIconSource = "/assets/icons/protractor.png";
 
 export interface DesktopToolIndicator {
   readonly root: HTMLDivElement;
@@ -41,9 +42,11 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   rayIcon.alt = "";
   rayIcon.decoding = "async";
   rayIcon.src = rayToolIconSource;
-  const protractorIcon = document.createElement("span");
+  const protractorIcon = document.createElement("img");
   protractorIcon.className = "desktop-tool-indicator-protractor-icon";
-  protractorIcon.textContent = "\u2220";
+  protractorIcon.alt = "";
+  protractorIcon.decoding = "async";
+  protractorIcon.src = protractorToolIconSource;
   protractorIcon.setAttribute("aria-hidden", "true");
   icon.append(aimIcon, signIcon, rayIcon, protractorIcon);
 

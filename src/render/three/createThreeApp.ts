@@ -77,6 +77,7 @@ import {
   createProtractorAngleObject,
   resolveProtractorCenterSelection,
   resolveProtractorDirectedGeodesicSelection,
+  resolveProtractorEmitterGeodesicSelection,
   type ProtractorCenterSelection,
   type ProtractorDirectedGeodesic,
 } from "../../world-objects/protractorTool";
@@ -437,6 +438,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onToolSelected(toolId) {
       if (toolId !== "protractor") {
         activeProtractorToolState = {};
+        clearProtractorToolFeedback();
       }
       menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, toolId));
       syncDesktopPalette();
@@ -504,6 +506,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     readonly center?: ProtractorCenterSelection;
     readonly first?: ProtractorDirectedGeodesic;
   } = {};
+  let protractorToolFeedback: {
+    readonly signature: string;
+    readonly cellId: string;
+    readonly root: THREE.Group;
+  } | undefined;
   let geodesicCreatureDebugElapsedSeconds = 0;
   let geodesicCreatureHealthyLogElapsedSeconds = geodesicCreatureHealthyLogIntervalSeconds;
   const runtimeObjectRenderRoot = new THREE.Group();
@@ -784,6 +791,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameBeforeUiMs = frameAfterPortalMs;
 
     updateAimCrossMarker(xrActive, xrFrame, xrReferenceSpace);
+    updateProtractorToolFeedback(xrActive, xrFrame, xrReferenceSpace);
     updateGeodesicEmitterLabels();
     syncXrDebugState(frame.source, moveResult);
     updateScenePalette(xrActive, xrFrame, xrReferenceSpace, deltaSeconds, frame);
@@ -976,6 +984,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       aimCrossMarker.dispose();
       floatingObjectTooltip.dispose();
       controls.dispose();
+      clearProtractorToolFeedback();
       for (const runtime of placedFlagRuntimes.values()) {
         runtime.dispose();
       }
@@ -2617,15 +2626,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    if (target?.object?.kind !== "geodesic-segment") {
-      return;
-    }
-
-    const selected = resolveProtractorDirectedGeodesicSelection({
-      center: activeProtractorToolState.center,
-      segment: target.object,
-      hitPoint: target.localPoint,
-    });
+    const selected = resolveProtractorDirectedSelectionFromAimTarget(target, activeProtractorToolState.center);
     if (!selected) {
       return;
     }
@@ -2647,6 +2648,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     runtimeObjectRegistry.add(angle);
     syncProtractorAngleRuntime(angle);
     activeProtractorToolState = {};
+    clearProtractorToolFeedback();
     menuState = setRuntimeMenuSelectedTool(menuState, "aim");
     syncDesktopPalette();
     syncSelectableHitboxDebug();
@@ -3091,6 +3093,72 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     aimCrossMarker.update(resolveCurrentAimTarget(), { quaternion: cameraQuaternion });
   }
 
+  function updateProtractorToolFeedback(
+    xrActive: boolean,
+    xrFrame: XRFrame | undefined,
+    xrReferenceSpace: XRReferenceSpace | null,
+  ): void {
+    if (menuState.selectedTool !== "protractor" || menuState.isOpen || desktopFlagEditor.isOpen()) {
+      clearProtractorToolFeedback();
+      return;
+    }
+
+    const target = xrActive
+      ? (() => {
+          const ray = resolveXrControllerRootRay(xrFrame, xrReferenceSpace);
+          return ray ? resolveCurrentAimTarget(ray) : undefined;
+        })()
+      : resolveCurrentAimTarget();
+    const usableTarget = targetIsWithinInteractionRange(target) ? target : undefined;
+    const center = activeProtractorToolState.center ??
+      (usableTarget?.object?.kind === "geodesic-cannon" || usableTarget?.object?.kind === "geodesic-intersection"
+        ? resolveProtractorCenterSelection(usableTarget.object)
+        : undefined);
+    if (!center) {
+      clearProtractorToolFeedback();
+      return;
+    }
+
+    const hoverSelection = activeProtractorToolState.center
+      ? resolveProtractorDirectedSelectionFromAimTarget(usableTarget, activeProtractorToolState.center)
+      : undefined;
+    const feedback = createProtractorToolFeedback({
+      center,
+      centerLocked: Boolean(activeProtractorToolState.center),
+      first: activeProtractorToolState.first,
+      hover: hoverSelection,
+    });
+    if (!feedback) {
+      clearProtractorToolFeedback();
+      return;
+    }
+
+    syncProtractorToolFeedback(feedback);
+  }
+
+  function resolveProtractorDirectedSelectionFromAimTarget(
+    target: ReturnType<typeof resolveCurrentAimTarget>,
+    center: ProtractorCenterSelection,
+  ): ProtractorDirectedGeodesic | undefined {
+    if (target?.object?.kind === "geodesic-segment") {
+      return resolveProtractorDirectedGeodesicSelection({
+        center,
+        segment: target.object,
+        hitPoint: target.localPoint,
+      });
+    }
+
+    if (target?.object?.kind === "geodesic-cannon") {
+      return resolveProtractorEmitterGeodesicSelection({
+        center,
+        emitter: target.object,
+        geodesicId: target.geodesicEmitterGeodesicId,
+      });
+    }
+
+    return undefined;
+  }
+
   function resolveCurrentAimTarget(ray?: {
     readonly origin: THREE.Vector3;
     readonly direction: THREE.Vector3;
@@ -3120,6 +3188,37 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     aimRayCamera.quaternion.copy(ray.quaternion);
     aimRayCamera.updateMatrixWorld(true);
     return aimRayCamera;
+  }
+
+  function syncProtractorToolFeedback(feedback: {
+    readonly signature: string;
+    readonly cellId: string;
+    readonly root: THREE.Group;
+  }): void {
+    if (protractorToolFeedback?.signature === feedback.signature) {
+      disposeObject3D(feedback.root);
+      return;
+    }
+
+    clearProtractorToolFeedback();
+    const cellRoot = cellMeshes.get(feedback.cellId);
+    if (!cellRoot) {
+      disposeObject3D(feedback.root);
+      return;
+    }
+
+    cellRoot.add(feedback.root);
+    protractorToolFeedback = feedback;
+  }
+
+  function clearProtractorToolFeedback(): void {
+    if (!protractorToolFeedback) {
+      return;
+    }
+
+    protractorToolFeedback.root.removeFromParent();
+    disposeObject3D(protractorToolFeedback.root);
+    protractorToolFeedback = undefined;
   }
 
   function resolveCameraRootRay(): { readonly origin: THREE.Vector3; readonly direction: THREE.Vector3 } {
@@ -3361,6 +3460,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
     activeProtractorToolState = {};
+    clearProtractorToolFeedback();
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
   }
@@ -4221,6 +4321,196 @@ function createAimCollisionOutlineDebugMaterial(): THREE.MeshBasicMaterial {
     transparent: true,
     wireframe: true,
   });
+}
+
+function createProtractorToolFeedback(options: {
+  readonly center: ProtractorCenterSelection;
+  readonly centerLocked: boolean;
+  readonly first?: ProtractorDirectedGeodesic;
+  readonly hover?: ProtractorDirectedGeodesic;
+}): { readonly signature: string; readonly cellId: string; readonly root: THREE.Group } | undefined {
+  const center = options.center;
+  const point = center.point;
+  const signature = [
+    center.cellId,
+    center.objectId,
+    options.centerLocked ? "locked" : "hover",
+    formatFeedbackNumber(options.first?.yawRadians),
+    options.first?.geodesicId ?? "",
+    formatFeedbackNumber(options.hover?.yawRadians),
+    options.hover?.geodesicId ?? "",
+  ].join(":");
+  const root = new THREE.Group();
+  root.name = "protractor-tool-feedback";
+
+  root.add(createFeedbackCenterMarker(point, options.centerLocked));
+  if (options.first) {
+    root.add(createFeedbackRay(point, options.first.yawRadians, 0xffffff, 0.92, 0.52));
+  }
+  if (options.hover) {
+    root.add(createFeedbackRay(point, options.hover.yawRadians, 0xffd166, 0.98, 0.56));
+  }
+  if (options.first && options.hover) {
+    root.add(createFeedbackAngleSector(point, options.first.yawRadians, options.hover.yawRadians));
+  }
+
+  return {
+    signature,
+    cellId: center.cellId,
+    root,
+  };
+}
+
+function createFeedbackCenterMarker(point: Vec3, locked: boolean): THREE.Object3D {
+  const group = new THREE.Group();
+  group.name = locked ? "protractor-feedback-center:selected" : "protractor-feedback-center:hover";
+  const color = locked ? 0xffd166 : 0x38f2ff;
+  const ringGeometry = new THREE.TorusGeometry(0.16, 0.01, 8, 36);
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: locked ? 0.96 : 0.7,
+    depthWrite: false,
+  });
+  const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+  ring.rotation.x = Math.PI / 2;
+  ring.renderOrder = 70;
+  ring.name = "protractor-feedback-center-ring";
+
+  const dotGeometry = new THREE.SphereGeometry(0.035, 12, 8);
+  const dotMaterial = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.95,
+    depthWrite: false,
+  });
+  const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+  dot.renderOrder = 71;
+  dot.name = "protractor-feedback-center-dot";
+
+  group.position.copy(worldPointToThree(point));
+  group.add(ring, dot);
+  return group;
+}
+
+function createFeedbackRay(point: Vec3, yawRadians: number, color: number, opacity: number, lengthMeters: number): THREE.Mesh {
+  return createFeedbackCylinderBetween(
+    point,
+    {
+      x: point.x + Math.cos(yawRadians) * lengthMeters,
+      y: point.y + Math.sin(yawRadians) * lengthMeters,
+      z: point.z,
+    },
+    0.012,
+    color,
+    opacity,
+    "protractor-feedback-ray",
+  );
+}
+
+function createFeedbackAngleSector(point: Vec3, firstYawRadians: number, secondYawRadians: number): THREE.Object3D {
+  const group = new THREE.Group();
+  group.name = "protractor-feedback-angle-preview";
+  const radiusMeters = 0.34;
+  const angleRadians = normalizePositiveFeedbackRadians(secondYawRadians - firstYawRadians);
+  const segmentCount = Math.max(8, Math.ceil(angleRadians / (Math.PI / 30)));
+  const centerThree = worldPointToThree({ ...point, z: point.z + 0.004 });
+  const positions: number[] = [centerThree.x, centerThree.y, centerThree.z];
+  const indices: number[] = [];
+  const arcPoints: Vec3[] = [];
+  for (let index = 0; index <= segmentCount; index += 1) {
+    const yawRadians = firstYawRadians + angleRadians * index / segmentCount;
+    const arcPoint = {
+      x: point.x + Math.cos(yawRadians) * radiusMeters,
+      y: point.y + Math.sin(yawRadians) * radiusMeters,
+      z: point.z + 0.004,
+    };
+    arcPoints.push(arcPoint);
+    const threePoint = worldPointToThree(arcPoint);
+    positions.push(threePoint.x, threePoint.y, threePoint.z);
+    if (index > 0) {
+      indices.push(0, index, index + 1);
+    }
+  }
+
+  const fillGeometry = new THREE.BufferGeometry();
+  fillGeometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  fillGeometry.setIndex(indices);
+  fillGeometry.computeVertexNormals();
+  const fill = new THREE.Mesh(fillGeometry, new THREE.MeshBasicMaterial({
+    color: 0x38f2ff,
+    opacity: 0.24,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  }));
+  fill.name = "protractor-feedback-angle-fill";
+  fill.renderOrder = 68;
+  group.add(fill);
+
+  for (let index = 1; index < arcPoints.length; index += 1) {
+    group.add(createFeedbackCylinderBetween(
+      arcPoints[index - 1],
+      arcPoints[index],
+      0.007,
+      0xffd166,
+      0.96,
+      "protractor-feedback-angle-arc",
+    ));
+  }
+
+  return group;
+}
+
+function createFeedbackCylinderBetween(
+  start: Vec3,
+  end: Vec3,
+  radiusMeters: number,
+  color: number,
+  opacity: number,
+  name: string,
+): THREE.Mesh {
+  const startThree = worldPointToThree(start);
+  const endThree = worldPointToThree(end);
+  const delta = endThree.clone().sub(startThree);
+  const length = delta.length();
+  if (length <= 1e-6) {
+    const geometry = new THREE.SphereGeometry(radiusMeters, 8, 6);
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name;
+    mesh.position.copy(startThree);
+    mesh.renderOrder = 69;
+    return mesh;
+  }
+
+  const geometry = new THREE.CylinderGeometry(radiusMeters, radiusMeters, length, 8);
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = name;
+  mesh.position.copy(startThree).add(endThree).multiplyScalar(0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize());
+  mesh.renderOrder = 69;
+  return mesh;
+}
+
+function normalizePositiveFeedbackRadians(radians: number): number {
+  const twoPi = Math.PI * 2;
+  return ((radians % twoPi) + twoPi) % twoPi;
+}
+
+function formatFeedbackNumber(value: number | undefined): string {
+  return value === undefined ? "" : value.toFixed(4);
 }
 
 function isGeodesicRuntimeRenderObject(
