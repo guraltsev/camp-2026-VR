@@ -250,6 +250,12 @@ interface PortalEyeRenderState {
   readonly rootCellId: string;
 }
 
+interface RootAimRay {
+  readonly origin: THREE.Vector3;
+  readonly direction: THREE.Vector3;
+  readonly quaternion: THREE.Quaternion;
+}
+
 const underCellInfinityFloorSizeMeters = 1_000;
 const underCellInfinityFloorWorldZMeters = -1;
 const fallbackObjectAimCollisionRadiusMeters = 0.25;
@@ -752,6 +758,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
 
+    const activeAimRay = xrActive ? resolveXrControllerRootRay(xrFrame, xrReferenceSpace) : undefined;
+    const worldPrimaryActionRequested = frame.primaryActionRequested && !menuState.isOpen && !desktopFlagEditor.isOpen();
     let primaryActionConsumed = false;
     if (menuState.selectedTool === "geodesic-cannon-rotate") {
       updateActiveGeodesicCannonRotation(frame.yawDeltaRadians, frame.primaryActionRequested);
@@ -759,17 +767,17 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else if (menuState.selectedTool === "geodesic-cannon-aim") {
       updateActiveGeodesicCannonAim(frame.primaryActionRequested, xrActive, xrFrame, xrReferenceSpace);
       primaryActionConsumed = frame.primaryActionRequested;
-    } else if (!xrActive && frame.primaryActionRequested && menuState.selectedTool === "place-flag") {
-      tryPlaceFlagFromDesktopAim();
+    } else if (worldPrimaryActionRequested && menuState.selectedTool === "place-flag") {
+      tryPlaceFlagFromAim(activeAimRay);
     }
-    if (!xrActive && frame.primaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "aim") {
-      tryExtendFocusedGeodesicFromDesktopAim();
+    if (worldPrimaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "aim") {
+      tryExtendFocusedGeodesicFromAim(activeAimRay);
     }
-    if (!xrActive && frame.primaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "geodesic-cannon") {
-      tryUseGeodesicCannonToolFromDesktopAim();
+    if (worldPrimaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "geodesic-cannon") {
+      tryUseGeodesicCannonToolFromAim(activeAimRay);
     }
-    if (!xrActive && frame.primaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "protractor") {
-      tryUseProtractorToolFromDesktopAim();
+    if (worldPrimaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "protractor") {
+      tryUseProtractorToolFromAim(activeAimRay);
     }
 
     if (!xrActive && frame.interactRequested) {
@@ -2576,8 +2584,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncDesktopPalette();
   }
 
-  function tryPlaceFlagFromDesktopAim(): void {
-    const target = resolveCurrentAimTarget();
+  function tryPlaceFlagFromAim(ray?: RootAimRay): void {
+    const target = resolveCurrentAimTarget(ray);
     if (target?.kind !== "floor") {
       return;
     }
@@ -2600,15 +2608,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
-  function tryUseGeodesicCannonToolFromDesktopAim(): void {
-    const target = resolveCurrentAimTarget();
+  function tryUseGeodesicCannonToolFromAim(ray?: RootAimRay): void {
+    const target = resolveCurrentAimTarget(ray);
     if (targetIsWithinInteractionRange(target) && target?.object?.kind === "geodesic-cannon") {
       addGeodesicToCannon(target.object.id, { afterAdd: "return-to-aim" });
       return;
     }
 
     if (target?.object?.kind === "geodesic-segment") {
-      const forward = getCameraForwardVector();
+      const forward = getAimForwardVector(ray);
       let horizontalForward: { readonly x: number; readonly y: number; readonly z: number };
       try {
         horizontalForward = normalizeVec3({ x: forward.x, y: forward.y, z: 0 });
@@ -2646,7 +2654,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    const forward = getCameraForwardVector();
+    const forward = getAimForwardVector(ray);
     let horizontalForward: { readonly x: number; readonly y: number; readonly z: number };
     try {
       horizontalForward = normalizeVec3({ x: forward.x, y: forward.y, z: 0 });
@@ -2683,8 +2691,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncSelectableHitboxDebug();
   }
 
-  function tryExtendFocusedGeodesicFromDesktopAim(): void {
-    const target = resolveCurrentAimTarget();
+  function tryExtendFocusedGeodesicFromAim(ray?: RootAimRay): void {
+    const target = resolveCurrentAimTarget(ray);
     logVerboseAimClick(target);
     if (!targetIsWithinInteractionRange(target)) {
       return;
@@ -2712,8 +2720,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncSelectableHitboxDebug();
   }
 
-  function tryUseProtractorToolFromDesktopAim(): void {
-    const target = resolveCurrentAimTarget();
+  function tryUseProtractorToolFromAim(ray?: RootAimRay): void {
+    const target = resolveCurrentAimTarget(ray);
     logVerboseAimClick(target);
     if (!targetIsWithinInteractionRange(target)) {
       return;
@@ -3323,11 +3331,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     };
   }
 
-  function resolveCurrentAimTarget(ray?: {
-    readonly origin: THREE.Vector3;
-    readonly direction: THREE.Vector3;
-    readonly quaternion: THREE.Quaternion;
-  }) {
+  function resolveCurrentAimTarget(ray?: RootAimRay) {
     const ignoredGeodesicIds = menuState.selectedTool === "geodesic-cannon-aim" &&
         activeGeodesicCannonToolState.activeGeodesicId
       ? [activeGeodesicCannonToolState.activeGeodesicId]
@@ -3344,10 +3348,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
-  function syncAimRayCamera(ray: {
-    readonly origin: THREE.Vector3;
-    readonly quaternion: THREE.Quaternion;
-  }): THREE.Camera {
+  function syncAimRayCamera(ray: RootAimRay): THREE.Camera {
     aimRayCamera.position.copy(ray.origin);
     aimRayCamera.quaternion.copy(ray.quaternion);
     aimRayCamera.updateMatrixWorld(true);
@@ -3397,11 +3398,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function resolveXrControllerRootRay(
     xrFrame: XRFrame | undefined,
     xrReferenceSpace: XRReferenceSpace | null,
-  ): {
-    readonly origin: THREE.Vector3;
-    readonly direction: THREE.Vector3;
-    readonly quaternion: THREE.Quaternion;
-  } | undefined {
+  ): RootAimRay | undefined {
     const session = renderer.xr.getSession();
     if (!xrFrame || !xrReferenceSpace || !session) {
       return undefined;
@@ -3689,6 +3686,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       y: -forward.z,
       z: forward.y,
     };
+  }
+
+  function getAimForwardVector(ray?: RootAimRay): { readonly x: number; readonly y: number; readonly z: number } {
+    return ray ? threeDirectionToWorld(ray.direction) : getCameraForwardVector();
   }
 
   function syncDynamicObjectDebugWireframes(): void {
