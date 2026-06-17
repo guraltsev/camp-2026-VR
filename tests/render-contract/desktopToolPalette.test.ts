@@ -9,7 +9,7 @@ import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 import { describeDesktopPaletteView } from "../../src/render/dom/desktopToolPalette";
 
 describe("desktopToolPalette", () => {
-  it("describes the main page with default selection plus place-flag tool controls and settings actions", () => {
+  it("describes the main page with no default tool selection plus place-flag tool controls and settings actions", () => {
     const definition = createPaletteDefinition(createRuntimeMenuState({
       selectedWorldId: "cube",
       debugOverlayEnabled: true,
@@ -23,7 +23,7 @@ describe("desktopToolPalette", () => {
     if (view.content.kind !== "main") {
       throw new Error("Expected main content.");
     }
-    expect(view.content.selectedTool).toBe("aim");
+    expect(view.content.selectedTool).toBe("none");
     expect(view.content.placeFlagType).toBe("WoodenSign1");
   });
 

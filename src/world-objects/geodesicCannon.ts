@@ -178,8 +178,8 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
     tooltip: {
       label: "Geodesic emitter",
       rangeMeters: 2.5,
-      desktopPrompt: "Geodesic emitter\nRMouse / F - menu",
-      xrPrompt: "Geodesic emitter\nA / X - menu",
+      desktopPrompt: "Geodesic emitter\nLMouse / RMouse - menu",
+      xrPrompt: "Geodesic emitter\nSelect - menu",
     },
     activeGeodesicId: options.activeGeodesicId,
     geodesicIds: options.geodesicIds ?? (options.activeGeodesicId ? [options.activeGeodesicId] : []),
@@ -947,6 +947,8 @@ function createSegmentFromTrace(options: {
     tooltip: {
       label: geodesicLabel ? `Geodesic ${geodesicLabel}` : "Geodesic",
       rangeMeters: 6,
+      desktopPrompt: `${geodesicLabel ? `Geodesic ${geodesicLabel}` : "Geodesic"}\nLMouse - extend`,
+      xrPrompt: `${geodesicLabel ? `Geodesic ${geodesicLabel}` : "Geodesic"}\nSelect - extend`,
     },
     geodesicId: options.geodesicId,
     geodesicNumber: options.geodesicNumber,

@@ -75,7 +75,7 @@ export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHa
     update(frame) {
       const seenHands = new Set<"left" | "right">();
 
-      const selectedTool = frame.selectedTool ?? "aim";
+      const selectedTool = frame.selectedTool ?? "none";
       const placeFlagType = frame.placeFlagType ?? "WoodenSign1";
 
       for (const source of frame.inputSources) {

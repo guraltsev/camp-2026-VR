@@ -777,18 +777,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       primaryActionConsumed = frame.primaryActionRequested;
     } else if (worldPrimaryActionRequested && menuState.selectedTool === "place-flag") {
       tryPlaceFlagFromAim(activeAimRay);
-    }
-    if (worldPrimaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "aim") {
-      primaryActionConsumed = tryOpenFocusedObjectMenu(activeAimRay);
-      if (!primaryActionConsumed) {
-        tryExtendFocusedGeodesicFromAim(activeAimRay);
-      }
-    }
-    if (worldPrimaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "geodesic-cannon") {
+      primaryActionConsumed = true;
+    } else if (worldPrimaryActionRequested && menuState.selectedTool === "geodesic-cannon") {
       tryUseGeodesicCannonToolFromAim(activeAimRay);
-    }
-    if (worldPrimaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "protractor") {
+      primaryActionConsumed = true;
+    } else if (worldPrimaryActionRequested && menuState.selectedTool === "protractor") {
       tryUseProtractorToolFromAim(activeAimRay);
+      primaryActionConsumed = true;
+    } else if (
+      worldPrimaryActionRequested &&
+      !primaryActionConsumed &&
+      (menuState.selectedTool === "none" || menuState.selectedTool === "aim")
+    ) {
+      primaryActionConsumed = tryUseFocusedObjectPrimaryInteraction(activeAimRay);
     }
 
     if (!xrActive && frame.interactRequested) {
@@ -1205,15 +1206,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     event.preventDefault();
-    if (!menuState.isOpen && cancelSelectedToolToAim()) {
+    const activeAimRay = resolveActiveRootAimRay(false);
+    if (!menuState.isOpen && tryOpenFocusedObjectMenu(activeAimRay)) {
       return;
     }
 
-    if (!menuState.isOpen && tryRemoveFocusedProtractorAngle(resolveActiveRootAimRay(false))) {
-      return;
-    }
-
-    if (!menuState.isOpen && tryOpenFocusedObjectMenu(resolveActiveRootAimRay(false))) {
+    if (!menuState.isOpen && isPointingAtRuntimeObject(activeAimRay)) {
       return;
     }
 
@@ -2306,21 +2304,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return "select: side2";
   }
 
-  function cancelSelectedToolToAim(): boolean {
-    if (menuState.selectedTool === "aim") {
-      return false;
-    }
-
-    activeProtractorToolState = {};
-    clearProtractorToolFeedback();
-    activeGeodesicCannonToolState = {};
-    geodesicCannonRotationHeadHeightMeters = undefined;
-    geodesicCannonRotationTargetLengthMeters = undefined;
-    menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "aim"));
-    syncDesktopPalette();
-    return true;
-  }
-
   function syncPlacedFlagRuntime(flag: RuntimeWorldObject): void {
     if (flag.kind !== "placed-flag") {
       return;
@@ -2618,7 +2601,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     if (result.placed && result.object) {
       syncPlacedFlagRuntime(result.object);
-      menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+      menuState = setRuntimeMenuSelectedTool(menuState, "none");
       syncDesktopPalette();
       syncSelectableHitboxDebug();
     }
@@ -2631,7 +2614,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const target = resolveCurrentAimTarget(ray);
     if (targetIsWithinInteractionRange(target) && target?.object?.kind === "geodesic-cannon") {
-      addGeodesicToCannon(target.object.id, { afterAdd: "return-to-aim" });
+      addGeodesicToCannon(target.object.id, { afterAdd: "return-to-none" });
       return;
     }
 
@@ -2666,7 +2649,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         selectedCannonId: result.object.id,
         activeGeodesicId: target.object.geodesicId,
       };
-      menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+      menuState = setRuntimeMenuSelectedTool(menuState, "none");
       syncDesktopPalette();
       syncRuntimeObjectPortalInstances();
       syncSelectableHitboxDebug();
@@ -2711,25 +2694,25 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       selectedCannonId: result.object.id,
       activeGeodesicId: geodesicId,
     };
-    menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+    menuState = setRuntimeMenuSelectedTool(menuState, "none");
     syncDesktopPalette();
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
   }
 
-  function tryExtendFocusedGeodesicFromAim(ray?: RootAimRay): void {
+  function tryExtendFocusedGeodesicFromAim(ray?: RootAimRay): boolean {
     if (!ray) {
-      return;
+      return false;
     }
 
     const target = resolveCurrentAimTarget(ray);
     logVerboseAimClick(target);
     if (!targetIsWithinInteractionRange(target)) {
-      return;
+      return false;
     }
 
     if (target?.object?.kind !== "geodesic-segment") {
-      return;
+      return false;
     }
     const geodesicId = target.object.geodesicId;
 
@@ -2739,7 +2722,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       geodesicId,
     });
     if (!segment) {
-      return;
+      return false;
     }
 
     activeGeodesicCannonToolState = {
@@ -2748,6 +2731,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     };
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
+    return true;
   }
 
   function tryUseProtractorToolFromAim(ray?: RootAimRay): void {
@@ -2797,7 +2781,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncProtractorAngleRuntime(angle);
     activeProtractorToolState = {};
     clearProtractorToolFeedback();
-    menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+    menuState = setRuntimeMenuSelectedTool(menuState, "none");
     syncDesktopPalette();
     syncSelectableHitboxDebug();
   }
@@ -2813,6 +2797,29 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
     return true;
+  }
+
+  function tryUseFocusedObjectPrimaryInteraction(ray?: RootAimRay): boolean {
+    if (!ray) {
+      return false;
+    }
+
+    const target = resolveCurrentAimTarget(ray);
+    if (!targetIsWithinInteractionRange(target)) {
+      return false;
+    }
+
+    switch (target?.object?.kind) {
+      case "placed-flag":
+      case "geodesic-cannon":
+        return tryOpenFocusedObjectMenu(ray);
+      case "geodesic-segment":
+        return tryExtendFocusedGeodesicFromAim(ray);
+      case "protractor-angle":
+        return tryRemoveFocusedProtractorAngle(ray);
+      default:
+        return false;
+    }
   }
 
   function tryOpenFocusedObjectMenu(ray?: RootAimRay): boolean {
@@ -2850,13 +2857,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function addGeodesicToCannon(
     cannonId: string,
-    options: { readonly afterAdd?: "show-cannon-menu" | "return-to-aim" } = {},
+    options: { readonly afterAdd?: "show-cannon-menu" | "return-to-none" } = {},
   ): void {
     const afterAdd = options.afterAdd ?? "show-cannon-menu";
     const cannon = runtimeObjectRegistry.get(cannonId);
     if (cannon?.kind !== "geodesic-cannon") {
-      menuState = afterAdd === "return-to-aim"
-        ? closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "aim"))
+      menuState = afterAdd === "return-to-none"
+        ? closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "none"))
         : closeRuntimeMenu(menuState);
       syncDesktopPalette();
       return;
@@ -2881,8 +2888,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         selectedCannonId: updatedCannon.id,
         activeGeodesicId: geodesicId,
       };
-      menuState = afterAdd === "return-to-aim"
-        ? closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "aim"))
+      menuState = afterAdd === "return-to-none"
+        ? closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "none"))
         : showRuntimeMenuGeodesicCannonActions(menuState, {
             cannonId: updatedCannon.id,
             geodesicIds: updatedCannon.geodesicIds,
@@ -3007,7 +3014,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     if (!cannon || cannon.kind !== "geodesic-cannon") {
       activeGeodesicCannonToolState = {};
-      menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+      menuState = setRuntimeMenuSelectedTool(menuState, "none");
       syncDesktopPalette();
       return;
     }
@@ -3038,7 +3045,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       const refreshed = runtimeObjectRegistry.get(cannon.id);
       finishActiveGeodesicCannonEdit(refreshed?.kind === "geodesic-cannon" ? refreshed : cannon);
       geodesicCannonRotationTargetLengthMeters = undefined;
-      menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+      menuState = setRuntimeMenuSelectedTool(menuState, "none");
       syncDesktopPalette();
     }
   }
@@ -3172,7 +3179,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function finishGeodesicCannonAimMode(): void {
     geodesicCannonRotationTargetLengthMeters = undefined;
-    menuState = setRuntimeMenuSelectedTool(menuState, "aim");
+    menuState = setRuntimeMenuSelectedTool(menuState, "none");
     syncDesktopPalette();
   }
 
@@ -3357,6 +3364,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function updateAimCrossMarker(activeAimRay: RootAimRay | undefined): void {
     if (
       (
+        menuState.selectedTool !== "none" &&
         menuState.selectedTool !== "aim" &&
         menuState.selectedTool !== "place-flag" &&
         menuState.selectedTool !== "geodesic-cannon" &&
@@ -3623,6 +3631,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         z: target.rootPoint.z + 0.18,
       },
     };
+  }
+
+  function isPointingAtRuntimeObject(ray?: RootAimRay): boolean {
+    if (!ray) {
+      return false;
+    }
+
+    const target = resolveCurrentAimTarget(ray);
+    return target?.kind === "object" && target.object !== undefined && targetIsWithinInteractionRange(target);
   }
 
   function targetIsWithinInteractionRange(target: ReturnType<typeof resolveCurrentAimTarget>): boolean {

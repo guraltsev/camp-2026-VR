@@ -116,7 +116,7 @@ export function createPlacedFlagObject(options: CreatePlacedFlagOptions): Placed
       label: "Sign",
       rangeMeters: 2.5,
       desktopPrompt: "Sign\nRMouse / F - edit",
-      xrPrompt: "Sign\nA / X - edit",
+      xrPrompt: "Sign\nSelect - edit",
     },
     interactable: defaultFlagInteraction,
     flagType: options.flagType,

@@ -142,7 +142,7 @@ describe("placedFlags", () => {
       label: "Sign",
       rangeMeters: 2.5,
       desktopPrompt: "Sign\nRMouse / F - edit",
-      xrPrompt: "Sign\nA / X - edit",
+      xrPrompt: "Sign\nSelect - edit",
     });
     expect(flag.interactable).toMatchObject({
       label: "Edit sign",

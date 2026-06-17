@@ -15,20 +15,20 @@ import {
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 
 describe("runtimeMenuState", () => {
-  it("selects the aim tool by default", () => {
+  it("starts with no tool selected by default", () => {
     const state = createRuntimeMenuState({
       selectedWorldId: "cube",
     });
 
-    expect(state.selectedTool).toBe("aim");
+    expect(state.selectedTool).toBe("none");
   });
 
-  it("keeps the default tool selected when a caller attempts to clear the selection", () => {
+  it("keeps no tool selected when a caller clears the selection", () => {
     const state = createRuntimeMenuState({
       selectedWorldId: "cube",
     });
 
-    expect(setRuntimeMenuSelectedTool(state, "none").selectedTool).toBe("aim");
+    expect(setRuntimeMenuSelectedTool(state, "none").selectedTool).toBe("none");
   });
 
   it("selects the place-flag tool when a flag type is selected", () => {
@@ -74,7 +74,7 @@ describe("runtimeMenuState", () => {
     });
   });
 
-  it("restores the default tool when backing out to the main menu", () => {
+  it("clears the selected tool when backing out to the main menu", () => {
     const state = setRuntimeMenuSelectedTool(createRuntimeMenuState({
       selectedWorldId: "cube",
     }), "place-flag");
@@ -82,7 +82,7 @@ describe("runtimeMenuState", () => {
     const next = showRuntimeMenuMainPage(state);
 
     expect(next.page).toBe("main");
-    expect(next.selectedTool).toBe("aim");
+    expect(next.selectedTool).toBe("none");
   });
 
   it("tracks the active in-game sign editor message", () => {

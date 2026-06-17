@@ -92,7 +92,7 @@ export function createRuntimeMenuState(options: CreateRuntimeMenuStateOptions): 
       collisionGeometryDebugOptions,
     ),
     aimCollisionOutlinesEnabled: hasAnyDebugOption(debugSettings?.debugOptions, aimCollisionDebugOptions),
-    selectedTool: "aim",
+    selectedTool: "none",
     placeFlagOptions: {
       flagType: "WoodenSign1",
     },
@@ -143,7 +143,7 @@ export function showRuntimeMenuMainPage(state: RuntimeMenuState): RuntimeMenuSta
   return {
     ...state,
     page: "main",
-    selectedTool: "aim",
+    selectedTool: "none",
     editSignOptions: undefined,
     geodesicCannonOptions: undefined,
     editingFlagId: undefined,
@@ -293,7 +293,7 @@ export function setRuntimeMenuAimCollisionOutlinesEnabled(
 export function setRuntimeMenuSelectedTool(state: RuntimeMenuState, selectedTool: RuntimeToolId): RuntimeMenuState {
   return {
     ...state,
-    selectedTool: selectedTool === "none" ? "aim" : selectedTool,
+    selectedTool,
   };
 }
 
