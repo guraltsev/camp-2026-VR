@@ -3098,7 +3098,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return false;
     }
 
-    for (const object of runtimeObjectRegistry.getCollidableObjectsInCell(pose.cellId)) {
+    for (const object of runtimeObjectRegistry.getPlayerBlockingObjectsInCell(pose.cellId)) {
       const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
       if (bounds && simpleCylinderIntersectsSimpleCylinder(playerBounds, bounds)) {
         return true;

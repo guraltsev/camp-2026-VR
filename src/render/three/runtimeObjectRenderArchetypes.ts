@@ -55,7 +55,6 @@ export function buildRuntimeObjectRenderArchetype(
   mesh.name = `runtime-object-archetype:${source.archetypeKey}`;
   mesh.count = 0;
   mesh.frustumCulled = false;
-  mesh.renderOrder = source.mesh.renderOrder;
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   portalPathIdAttribute.setUsage(THREE.DynamicDrawUsage);
   portalClipIndexAttribute.setUsage(THREE.DynamicDrawUsage);

@@ -301,7 +301,7 @@ describe("geodesic cannon world objects", () => {
     expect(totalGeodesicLength(registry, "g-a")).toBeCloseTo(2);
   });
 
-  it("records portal target data and extends in the target cell", () => {
+  it("shoots seamlessly across a portal and records the continuation target data", () => {
     const world = compileWorld(true);
     const registry = createRuntimeObjectRegistry();
     const cannon = createGeodesicCannonObject({
@@ -321,11 +321,41 @@ describe("geodesic cannon world objects", () => {
     }
     expect(first.terminal.targetCellId).toBe("b");
     expect(first.terminal.targetPortalId).toBe("ba");
+    const segments = getGeodesicSegments(registry, "g-a");
+    expect(segments).toHaveLength(2);
+    expect(segments[1]?.segmentIndex).toBe(1);
+    expect(segments[1]?.cellId).toBe("b");
+    expect(segments[1]?.start).toEqual(first.terminal.targetStart);
 
     const second = extendGeodesic({ world, registry, geodesicId: "g-a", maxLengthMeters: 1 });
     expect(second?.segmentIndex).toBe(1);
     expect(second?.cellId).toBe("b");
     expect(second?.start).toEqual(first.terminal.targetStart);
+  });
+
+  it("extends seamlessly across a portal when the requested length crosses the boundary", () => {
+    const world = compileWorld(true);
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 1.5, y: 1, z: 0 }),
+    });
+    registry.add(cannon);
+
+    const first = shootGeodesic({ world, registry, cannon, geodesicId: "g-a", maxLengthMeters: 0.25 });
+    const extended = extendGeodesic({ world, registry, geodesicId: "g-a", maxLengthMeters: 1 });
+    const segments = getGeodesicSegments(registry, "g-a");
+
+    expect(first.terminal.kind).toBe("open");
+    expect(extended?.segmentIndex).toBe(1);
+    expect(segments).toHaveLength(2);
+    expect(segments.map((segment) => segment.cellId)).toEqual(["a", "b"]);
+    expect(segments[0]?.terminal.kind).toBe("portal-hit");
+    expect(segments[1]?.start).toEqual(
+      segments[0]?.terminal.kind === "portal-hit" ? segments[0].terminal.targetStart : undefined,
+    );
+    expect(totalGeodesicLength(registry, "g-a")).toBeCloseTo(1.25);
   });
 
   it("extends open tails and refuses wall-hit tails", () => {

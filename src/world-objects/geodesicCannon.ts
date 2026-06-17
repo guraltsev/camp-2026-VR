@@ -529,6 +529,38 @@ function traceGeodesicSegmentForConnectionMode(
     : traceGeodesicSegment(input);
 }
 
+function traceGeodesicPathForConnectionMode(
+  input: TraceGeodesicSegmentWithEmittersInput & { readonly connectEmitters: boolean },
+): readonly TraceGeodesicSegmentResult[] {
+  const traces: TraceGeodesicSegmentResult[] = [];
+  let remainingLengthMeters = input.maxLengthMeters;
+  let currentCellId = input.cellId;
+  let currentStart = input.start;
+  let currentDirection = input.direction;
+
+  while (remainingLengthMeters > intersectionTolerance) {
+    const trace = traceGeodesicSegmentForConnectionMode({
+      ...input,
+      cellId: currentCellId,
+      start: currentStart,
+      direction: currentDirection,
+      maxLengthMeters: remainingLengthMeters,
+    });
+    traces.push(trace);
+    remainingLengthMeters -= trace.lengthMeters;
+
+    if (trace.terminal.kind !== "portal-hit" || remainingLengthMeters <= intersectionTolerance) {
+      break;
+    }
+
+    currentCellId = trace.terminal.targetCellId;
+    currentStart = trace.terminal.targetStart;
+    currentDirection = trace.terminal.targetDirection;
+  }
+
+  return traces;
+}
+
 export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject {
   const aimYawRadians = resolveEmitterYawForGeodesic(input.cannon, input.geodesicId);
   const direction = directionFromYaw(aimYawRadians);
@@ -541,25 +573,36 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
     },
     scaleVec3(direction, geodesicRayBeamStartOffsetMeters),
   );
+  const traces = traceGeodesicPathForConnectionMode({
+    connectEmitters: input.connectEmitters ?? true,
+    world: input.world,
+    registry: input.registry,
+    geodesicId: input.geodesicId,
+    sourceEmitterId: input.cannon.id,
+    cellId: input.cannon.cellId,
+    start,
+    direction,
+    maxLengthMeters: input.maxLengthMeters ?? defaultTraceLengthMeters,
+  });
   const segment = createSegmentFromTrace({
     id: `${input.geodesicId}:segment:0`,
     geodesicId: input.geodesicId,
     geodesicNumber,
     segmentIndex: 0,
-    trace: traceGeodesicSegmentForConnectionMode({
-      connectEmitters: input.connectEmitters ?? true,
-      world: input.world,
-      registry: input.registry,
-      geodesicId: input.geodesicId,
-      sourceEmitterId: input.cannon.id,
-      cellId: input.cannon.cellId,
-      start,
-      direction,
-      maxLengthMeters: input.maxLengthMeters ?? defaultTraceLengthMeters,
-    }),
+    trace: traces[0],
   });
-
   input.registry.add(segment);
+  let tail = segment;
+  for (const trace of traces.slice(1)) {
+    tail = createSegmentFromTrace({
+      id: `${input.geodesicId}:segment:${tail.segmentIndex + 1}`,
+      geodesicId: input.geodesicId,
+      geodesicNumber,
+      segmentIndex: tail.segmentIndex + 1,
+      trace,
+    });
+    input.registry.add(tail);
+  }
   input.registry.update({
     ...input.cannon,
     activeGeodesicId: input.geodesicId,
@@ -574,13 +617,13 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
       ...input.cannon.geodesicConnectionsById,
       [input.geodesicId]: {
         outgoingEmitterId: input.cannon.id,
-        state: segment.terminal.kind === "emitter-hit" ? "connected" : "open",
-        incomingEmitterId: segment.terminal.kind === "emitter-hit" ? segment.terminal.emitterId : undefined,
+        state: tail.terminal.kind === "emitter-hit" ? "connected" : "open",
+        incomingEmitterId: tail.terminal.kind === "emitter-hit" ? tail.terminal.emitterId : undefined,
       },
     },
   });
-  if ((input.connectEmitters ?? true) && segment.terminal.kind === "emitter-hit") {
-    markGeodesicConnected(input.registry, input.geodesicId, input.cannon.id, segment.terminal.emitterId);
+  if ((input.connectEmitters ?? true) && tail.terminal.kind === "emitter-hit") {
+    markGeodesicConnected(input.registry, input.geodesicId, input.cannon.id, tail.terminal.emitterId);
   }
   updateGeodesicIntersectionObjects(input.registry);
   return segment;
@@ -597,58 +640,65 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
     return undefined;
   }
 
-  const trace = tail.terminal.kind === "portal-hit"
-    ? traceGeodesicSegmentForConnectionMode({
-        connectEmitters: input.connectEmitters ?? true,
-        world: input.world,
-        registry: input.registry,
-        geodesicId: input.geodesicId,
-        sourceEmitterId,
-        cellId: tail.terminal.targetCellId,
-        start: tail.terminal.targetStart,
-        direction: tail.terminal.targetDirection,
-        maxLengthMeters: input.maxLengthMeters ?? defaultTraceLengthMeters,
-      })
-    : traceGeodesicSegmentForConnectionMode({
-        connectEmitters: input.connectEmitters ?? true,
-        world: input.world,
-        registry: input.registry,
-        geodesicId: input.geodesicId,
-        sourceEmitterId,
-        cellId: tail.cellId,
-        start: getGeodesicSegmentEnd(tail),
-        direction: tail.direction,
-        maxLengthMeters: input.maxLengthMeters ?? defaultTraceLengthMeters,
-      });
+  const traces = traceGeodesicPathForConnectionMode({
+    connectEmitters: input.connectEmitters ?? true,
+    world: input.world,
+    registry: input.registry,
+    geodesicId: input.geodesicId,
+    sourceEmitterId,
+    cellId: tail.terminal.kind === "portal-hit" ? tail.terminal.targetCellId : tail.cellId,
+    start: tail.terminal.kind === "portal-hit" ? tail.terminal.targetStart : getGeodesicSegmentEnd(tail),
+    direction: tail.terminal.kind === "portal-hit" ? tail.terminal.targetDirection : tail.direction,
+    maxLengthMeters: input.maxLengthMeters ?? defaultTraceLengthMeters,
+  });
 
-  const next = createSegmentFromTrace({
+  const first = createSegmentFromTrace({
     id: `${input.geodesicId}:segment:${tail.segmentIndex + 1}`,
     geodesicId: input.geodesicId,
     geodesicNumber: tail.geodesicNumber,
     segmentIndex: tail.segmentIndex + 1,
-    trace,
+    trace: traces[0],
   });
-  if (canMergeGeodesicSegments(tail, next)) {
+
+  let lastAffected: GeodesicSegmentObject;
+  let remainingTraces = traces;
+  if (canMergeGeodesicSegments(tail, first)) {
     const merged = {
       ...tail,
-      lengthMeters: tail.lengthMeters + next.lengthMeters,
-      terminal: next.terminal,
-      connectionState: next.connectionState,
+      lengthMeters: tail.lengthMeters + first.lengthMeters,
+      terminal: first.terminal,
+      connectionState: first.connectionState,
     };
     input.registry.update(merged);
-    if ((input.connectEmitters ?? true) && merged.terminal.kind === "emitter-hit") {
-      markGeodesicConnected(input.registry, input.geodesicId, sourceEmitterId, merged.terminal.emitterId);
-    }
-    updateGeodesicIntersectionObjects(input.registry);
-    return merged;
+    lastAffected = merged;
+    remainingTraces = traces.slice(1);
+  } else {
+    input.registry.add(first);
+    lastAffected = first;
+    remainingTraces = traces.slice(1);
   }
 
-  input.registry.add(next);
-  if ((input.connectEmitters ?? true) && next.terminal.kind === "emitter-hit") {
-    markGeodesicConnected(input.registry, input.geodesicId, sourceEmitterId, next.terminal.emitterId);
+  for (const trace of remainingTraces) {
+    const next = createSegmentFromTrace({
+      id: `${input.geodesicId}:segment:${lastAffected.segmentIndex + 1}`,
+      geodesicId: input.geodesicId,
+      geodesicNumber: tail.geodesicNumber,
+      segmentIndex: lastAffected.segmentIndex + 1,
+      trace,
+    });
+    input.registry.add(next);
+    lastAffected = next;
+  }
+
+  if ((input.connectEmitters ?? true) && lastAffected.terminal.kind === "emitter-hit") {
+    markGeodesicConnected(input.registry, input.geodesicId, sourceEmitterId, lastAffected.terminal.emitterId);
+    const updated = input.registry.get(lastAffected.id);
+    if (updated?.kind === "geodesic-segment") {
+      lastAffected = updated;
+    }
   }
   updateGeodesicIntersectionObjects(input.registry);
-  return next;
+  return lastAffected;
 }
 
 export function rebuildGeodesicToLength(input: RebuildGeodesicToLengthInput): readonly GeodesicSegmentObject[] {
@@ -675,37 +725,16 @@ function rebuildUnlockedGeodesicToLength(input: RebuildGeodesicToLengthInput): r
   }
 
   removeGeodesicSegments(input.registry, input.geodesicId);
-  const segments: GeodesicSegmentObject[] = [];
-  let remainingLengthMeters = input.totalLengthMeters;
-  const first = shootGeodesic({
+  shootGeodesic({
     world: input.world,
     registry: input.registry,
     cannon,
     geodesicId: input.geodesicId,
-    maxLengthMeters: remainingLengthMeters,
+    maxLengthMeters: input.totalLengthMeters,
     connectEmitters: input.connectEmitters ?? true,
   });
-  segments.push(first);
-  remainingLengthMeters -= first.lengthMeters;
-
-  while (remainingLengthMeters > intersectionTolerance && canExtendGeodesicSegment(segments[segments.length - 1])) {
-    const next = extendGeodesic({
-      world: input.world,
-      registry: input.registry,
-      geodesicId: input.geodesicId,
-      maxLengthMeters: remainingLengthMeters,
-      connectEmitters: input.connectEmitters ?? true,
-    });
-    if (!next) {
-      break;
-    }
-
-    segments.splice(0, segments.length, ...getGeodesicSegments(input.registry, input.geodesicId));
-    remainingLengthMeters = input.totalLengthMeters - segments.reduce((total, segment) => total + segment.lengthMeters, 0);
-  }
-
   updateGeodesicIntersectionObjects(input.registry);
-  return segments;
+  return getGeodesicSegments(input.registry, input.geodesicId);
 }
 
 function resolveCannonSnappedToEmitter(input: RebuildGeodesicToLengthInput): GeodesicCannonObject | undefined {

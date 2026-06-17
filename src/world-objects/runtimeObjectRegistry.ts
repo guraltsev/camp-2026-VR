@@ -58,6 +58,7 @@ export interface RuntimeObjectRegistry {
   get(id: string): RuntimeWorldObject | undefined;
   getObjectsInCell(cellId: string): readonly RuntimeWorldObject[];
   getCollidableObjectsInCell(cellId: string): readonly RuntimeWorldObject[];
+  getPlayerBlockingObjectsInCell(cellId: string): readonly RuntimeWorldObject[];
   getInteractableObjectsInCell(cellId: string): readonly RuntimeWorldObject[];
   getTooltipObjectsInCell(cellId: string): readonly RuntimeWorldObject[];
   getAll(): readonly RuntimeWorldObject[];
@@ -141,6 +142,9 @@ export function createRuntimeObjectRegistry(
     },
     getCollidableObjectsInCell(cellId) {
       return registry.getObjectsInCell(cellId).filter((object) => object.collision !== undefined);
+    },
+    getPlayerBlockingObjectsInCell(cellId) {
+      return registry.getCollidableObjectsInCell(cellId).filter((object) => object.kind !== "geodesic-cannon");
     },
     getInteractableObjectsInCell(cellId) {
       return registry.getObjectsInCell(cellId).filter((object) => object.interactable !== undefined);

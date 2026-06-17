@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { identityRigidTransform3 } from "../../src/math/rigidTransform3";
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
 import { createRuntimeObjectRegistry, type RuntimeCreatureObject } from "../../src/world-objects/runtimeObjectRegistry";
+import type { GeodesicCannonObject } from "../../src/world-objects/geodesicCannon";
 
 function creature(id: string, cellId: string, extra: Partial<RuntimeCreatureObject> = {}): RuntimeCreatureObject {
   return {
@@ -10,6 +11,19 @@ function creature(id: string, cellId: string, extra: Partial<RuntimeCreatureObje
     cellId,
     localPose: identityRigidTransform3,
     portalRenderable: true,
+    ...extra,
+  };
+}
+
+function emitter(id: string, cellId: string, extra: Partial<GeodesicCannonObject> = {}): GeodesicCannonObject {
+  return {
+    id,
+    kind: "geodesic-cannon",
+    cellId,
+    localPose: identityRigidTransform3,
+    portalRenderable: true,
+    geodesicIds: [],
+    aimYawRadians: 0,
     ...extra,
   };
 }
@@ -53,6 +67,15 @@ describe("runtimeObjectRegistry", () => {
 
     expect(registry.getCollidableObjectsInCell("cell-a").map((object) => object.id)).toEqual(["mouse-a"]);
     expect(registry.getInteractableObjectsInCell("cell-a").map((object) => object.id)).toEqual(["mouse-b"]);
+  });
+
+  it("excludes geodesic emitters from player-blocking collisions while keeping other colliders", () => {
+    const blocker = creature("mouse-a", "cell-a", { collision: simpleCollisionCylinder(0.5, 1) });
+    const nonBlockingEmitter = emitter("emitter-a", "cell-a", { collision: simpleCollisionCylinder(0.3, 1.25) });
+    const registry = createRuntimeObjectRegistry([blocker, nonBlockingEmitter]);
+
+    expect(registry.getCollidableObjectsInCell("cell-a").map((object) => object.id)).toEqual(["mouse-a", "emitter-a"]);
+    expect(registry.getPlayerBlockingObjectsInCell("cell-a").map((object) => object.id)).toEqual(["mouse-a"]);
   });
 
   it("finds tooltip-capable objects from either tooltip metadata or interaction data", () => {
