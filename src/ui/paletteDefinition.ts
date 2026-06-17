@@ -215,7 +215,7 @@ function createGeodesicCannonEntries(
     id: geodesicId,
     label: geodesicLabelsById?.[geodesicId] ?? `G${index + 1}`,
     locked: lockedIds.has(geodesicId),
-    connectionSymbolLabel: lockedIds.has(geodesicId) ? "| - lock - |" : undefined,
+    connectionSymbolLabel: lockedIds.has(geodesicId) ? "Locked geodesic segment between emitters" : undefined,
     deleteDisabled: false,
   }));
 }

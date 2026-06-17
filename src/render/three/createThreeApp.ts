@@ -1149,6 +1149,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     event.preventDefault();
+    if (!menuState.isOpen && cancelSelectedToolToAim()) {
+      return;
+    }
+
     if (!menuState.isOpen && tryRemoveFocusedProtractorAngle()) {
       return;
     }
@@ -2212,7 +2216,36 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function syncDesktopPalette(): void {
     controls.setLookMode(menuState.isOpen ? "palette" : "camera");
-    desktopToolIndicator.setTool(menuState.selectedTool, menuState.placeFlagOptions.flagType);
+    desktopToolIndicator.setTool(menuState.selectedTool, menuState.placeFlagOptions.flagType, {
+      protractorPrompt: getProtractorToolPrompt(),
+    });
+  }
+
+  function getProtractorToolPrompt(): string {
+    if (!activeProtractorToolState.center) {
+      return "select: vertex";
+    }
+
+    if (!activeProtractorToolState.first) {
+      return "select: side1";
+    }
+
+    return "select: side2";
+  }
+
+  function cancelSelectedToolToAim(): boolean {
+    if (menuState.selectedTool === "aim") {
+      return false;
+    }
+
+    activeProtractorToolState = {};
+    clearProtractorToolFeedback();
+    activeGeodesicCannonToolState = {};
+    geodesicCannonRotationHeadHeightMeters = undefined;
+    geodesicCannonRotationTargetLengthMeters = undefined;
+    menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "aim"));
+    syncDesktopPalette();
+    return true;
   }
 
   function syncPlacedFlagRuntime(flag: RuntimeWorldObject): void {
@@ -2641,6 +2674,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       activeProtractorToolState = {
         center: resolveProtractorCenterSelection(target.object),
       };
+      syncDesktopPalette();
       return;
     }
 
@@ -2654,6 +2688,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         center: activeProtractorToolState.center,
         first: selected,
       };
+      syncDesktopPalette();
       return;
     }
 

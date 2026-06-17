@@ -66,6 +66,7 @@ const signIconSources: Record<PlacedFlagType, string> = {
 };
 const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
 const aimIconSource = "/assets/icons/aim-inverted.png";
+const lockIconSource = "/assets/icons/lock.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const protractorToolIconSource = "/assets/icons/protractor.png";
 const signTypeLabels: Record<PlacedFlagType, string> = {
@@ -408,12 +409,14 @@ function buildGeodesicCannonActionsContent(
       const status = createInteractiveSurface({
         width: 252,
         height: 42,
-        label: geodesic.connectionSymbolLabel ?? "| - lock - |",
+        label: "",
         labelFontSize: 15,
         disabled: true,
         backgroundColor: "#334155",
         onClick: () => {},
       });
+      status.name = geodesic.connectionSymbolLabel ?? "Locked geodesic segment between emitters";
+      status.add(createLockedGeodesicSegmentStatus());
       row.add(status, deleteButton);
     } else {
       const rotateButton = createInteractiveSurface({
@@ -763,6 +766,60 @@ function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "a
     renderOrder: 1002,
   });
   image.userData.scenePaletteIconSrc = source;
+  return image;
+}
+
+function createLockedGeodesicSegmentStatus(): Container {
+  const status = new Container({
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 168,
+    height: 28,
+  });
+
+  status.add(
+    createLockedGeodesicSegmentEmitter(),
+    createLockedGeodesicSegmentLine(),
+    createLockIcon(),
+    createLockedGeodesicSegmentLine(),
+    createLockedGeodesicSegmentEmitter(),
+  );
+  return status;
+}
+
+function createLockedGeodesicSegmentEmitter(): Container {
+  return new Container({
+    width: 4,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: "#f8fafc",
+  });
+}
+
+function createLockedGeodesicSegmentLine(): Container {
+  return new Container({
+    width: 50,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: "#f8fafc",
+  });
+}
+
+function createLockIcon(): Component<any> {
+  const image = new Image({
+    src: lockIconSource,
+    width: 22,
+    height: 22,
+    marginLeft: 8,
+    marginRight: 8,
+    objectFit: "fill",
+    keepAspectRatio: true,
+    depthTest: false,
+    depthWrite: false,
+    renderOrder: 1002,
+  });
+  image.userData.scenePaletteIconSrc = lockIconSource;
   return image;
 }
 

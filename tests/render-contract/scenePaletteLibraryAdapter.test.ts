@@ -69,6 +69,26 @@ describe("scenePaletteLibraryAdapter", () => {
     adapter.dispose();
   });
 
+  it("renders locked geodesic emitter actions with a lock segment marker", () => {
+    const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
+    adapter.setDefinition(createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(
+      createRuntimeMenuState({ selectedWorldId: "cube" }),
+      { cannonId: "cannon-a", geodesicIds: ["g-a"], lockedGeodesicIds: ["g-a"] },
+    )));
+
+    const itemIds = collectPaletteItemIds(adapter.root);
+    const actionIds = collectPaletteActionItemIds(adapter.root);
+    const imageSources = collectPaletteImageSources(adapter.root);
+
+    expect(itemIds).not.toContain("geodesic-cannon-action:rotate:g-a");
+    expect(itemIds).not.toContain("geodesic-cannon-action:aim:g-a");
+    expect(itemIds).toContain("geodesic-cannon-action:delete:g-a");
+    expect(actionIds).toContain("geodesic-cannon-action:delete:g-a");
+    expect(imageSources).toContain("/assets/icons/lock.png");
+
+    adapter.dispose();
+  });
+
 
   it("renders sign editing with fixed number, QWERTY, space, enter, backspace, cursor, and trash controls", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());

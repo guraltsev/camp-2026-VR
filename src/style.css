@@ -361,18 +361,44 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   min-height: 40px;
-  padding: 8px 12px;
+  padding: 8px 14px;
   border: 1px solid rgb(246 196 69 / 45%);
   border-radius: 10px;
   color: #f6c445;
-  font: 700 0.82rem/1 system-ui, sans-serif;
-  white-space: nowrap;
 }
 
 .desktop-tool-palette-connection-symbol .desktop-tool-palette-button-icon {
-  filter: invert(84%) sepia(50%) saturate(829%) hue-rotate(344deg) brightness(101%) contrast(93%);
+  filter: invert(1);
+}
+
+.desktop-tool-palette-locked-segment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 122px;
+}
+
+.desktop-tool-palette-locked-segment-emitter {
+  width: 3px;
+  height: 24px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 8px rgb(246 196 69 / 42%);
+}
+
+.desktop-tool-palette-locked-segment-line {
+  width: 38px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 8px rgb(246 196 69 / 36%);
+}
+
+.desktop-tool-palette-locked-segment-lock {
+  width: 20px;
+  height: 20px;
+  margin: 0 8px;
 }
 
 .desktop-tool-palette-select {
@@ -732,6 +758,35 @@ img.desktop-tool-tile-icon {
   font: 800 0.92rem/1 system-ui, sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.desktop-tool-indicator-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.desktop-tool-indicator-protractor .desktop-tool-indicator-text {
+  justify-content: flex-start;
+}
+
+.desktop-tool-indicator-protractor .desktop-tool-indicator-label {
+  line-height: 0.95;
+}
+
+.desktop-tool-indicator-prompt {
+  display: block;
+  color: #d9edf1;
+  font: 700 0.66rem/1.05 system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.desktop-tool-indicator-prompt[hidden] {
+  display: none;
 }
 
 .floating-object-tooltip {

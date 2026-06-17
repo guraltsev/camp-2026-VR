@@ -396,7 +396,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
         const lockStatus = document.createElement("span");
         lockStatus.className = "desktop-tool-palette-connection-symbol";
         lockStatus.ariaLabel = geodesic.connectionSymbolLabel ?? "Connected locked geodesic";
-        lockStatus.append(createGeodesicCannonActionIcon("lock"), document.createTextNode(geodesic.connectionSymbolLabel ?? "| - lock - |"));
+        lockStatus.append(createLockedGeodesicSegmentSymbol());
         row.append(label, lockStatus);
       } else {
         const rotateButton = document.createElement("button");
@@ -717,4 +717,24 @@ function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "a
   icon.alt = "";
   icon.decoding = "async";
   return icon;
+}
+
+function createLockedGeodesicSegmentSymbol(): HTMLElement {
+  const symbol = document.createElement("span");
+  symbol.className = "desktop-tool-palette-locked-segment";
+  symbol.setAttribute("aria-hidden", "true");
+
+  const leftEmitter = document.createElement("span");
+  leftEmitter.className = "desktop-tool-palette-locked-segment-emitter";
+  const leftSegment = document.createElement("span");
+  leftSegment.className = "desktop-tool-palette-locked-segment-line";
+  const lock = createGeodesicCannonActionIcon("lock");
+  lock.classList.add("desktop-tool-palette-locked-segment-lock");
+  const rightSegment = document.createElement("span");
+  rightSegment.className = "desktop-tool-palette-locked-segment-line";
+  const rightEmitter = document.createElement("span");
+  rightEmitter.className = "desktop-tool-palette-locked-segment-emitter";
+
+  symbol.append(leftEmitter, leftSegment, lock, rightSegment, rightEmitter);
+  return symbol;
 }

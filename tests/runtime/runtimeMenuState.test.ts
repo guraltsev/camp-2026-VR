@@ -154,7 +154,7 @@ describe("runtimeMenuState", () => {
     ]);
   });
 
-  it("marks locked geodesic rows with a connection symbol", () => {
+  it("marks locked geodesic rows with a connection symbol label", () => {
     const definition = createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(createRuntimeMenuState({
       selectedWorldId: "cube",
     }), {
@@ -168,7 +168,13 @@ describe("runtimeMenuState", () => {
       throw new Error("Expected geodesic cannon actions.");
     }
     expect(definition.content.geodesics).toEqual([
-      { id: "g-b", label: "G1", locked: true, connectionSymbolLabel: "| - lock - |", deleteDisabled: false },
+      {
+        id: "g-b",
+        label: "G1",
+        locked: true,
+        connectionSymbolLabel: "Locked geodesic segment between emitters",
+        deleteDisabled: false,
+      },
     ]);
   });
 });

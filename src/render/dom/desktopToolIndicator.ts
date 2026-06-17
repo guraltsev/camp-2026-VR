@@ -10,7 +10,11 @@ const protractorToolIconSource = "/assets/icons/protractor.png";
 
 export interface DesktopToolIndicator {
   readonly root: HTMLDivElement;
-  setTool(toolId: RuntimeDesktopToolId, flagType: PlacedFlagType): void;
+  setTool(
+    toolId: RuntimeDesktopToolId,
+    flagType: PlacedFlagType,
+    options?: { readonly protractorPrompt?: string },
+  ): void;
   dispose(): void;
 }
 
@@ -52,13 +56,19 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
 
   const label = document.createElement("span");
   label.className = "desktop-tool-indicator-label";
+  const prompt = document.createElement("span");
+  prompt.className = "desktop-tool-indicator-prompt";
 
-  root.append(icon, label);
+  const text = document.createElement("span");
+  text.className = "desktop-tool-indicator-text";
+  text.append(label, prompt);
+
+  root.append(icon, text);
   container.append(root);
 
   return {
     root,
-    setTool(toolId, flagType) {
+    setTool(toolId, flagType, indicatorOptions = {}) {
       root.hidden = toolId === "none" || toolId === "aim";
       root.classList.toggle("desktop-tool-indicator-aim", toolId === "aim");
       root.classList.toggle("desktop-tool-indicator-place-flag", toolId === "place-flag");
@@ -83,12 +93,14 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
             : toolId === "place-flag"
               ? "Sign"
               : "";
+      prompt.textContent = toolId === "protractor" ? indicatorOptions.protractorPrompt ?? "select: vertex" : "";
+      prompt.hidden = toolId !== "protractor";
       root.ariaLabel = toolId === "place-flag"
         ? "Selected tool: sign"
         : toolId === "geodesic-cannon"
           ? "Selected tool: geodesic ray"
           : toolId === "protractor"
-            ? "Selected tool: protractor"
+            ? `Selected tool: protractor, ${prompt.textContent}`
           : toolId === "geodesic-cannon-rotate"
             ? "Selected tool: rotate geodesic ray emitter"
             : toolId === "geodesic-cannon-aim"
