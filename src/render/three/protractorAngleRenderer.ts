@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { ProtractorAngleObject } from "../../world-objects/protractorTool";
+import { formatProtractorAngleLabel, type ProtractorAngleObject } from "../../world-objects/protractorTool";
 import { applyWorldRigidTransform } from "./worldAxes";
 
 export interface ProtractorAngleRuntime {
@@ -134,7 +134,7 @@ function createBoundaryLine(name: string, radiusMeters: number, yawRadians = 0):
 }
 
 function createAngleLabel(object: ProtractorAngleObject): THREE.Object3D {
-  const label = `Angle ${formatDegrees(object.angleDegrees)} deg`;
+  const label = formatProtractorAngleLabel(object.first, object.second, object.angleDegrees);
   if (typeof document === "undefined") {
     return createFallbackAngleTooltip(object);
   }
@@ -282,11 +282,6 @@ class AngleArcCurve extends THREE.Curve<THREE.Vector3> {
 
 function resolveSegmentCount(angleRadians: number): number {
   return Math.max(8, Math.ceil(angleRadians / (Math.PI / 36)));
-}
-
-function formatDegrees(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
 function disposeObject3D(object: THREE.Object3D): void {

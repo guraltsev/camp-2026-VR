@@ -12,6 +12,7 @@ import {
   type GeodesicIntersectionObject,
   type GeodesicSegmentObject,
 } from "../../src/world-objects/geodesicCannon";
+import { createProtractorAngleObject } from "../../src/world-objects/protractorTool";
 import { resolveAimTarget } from "../../src/render/three/aimTarget";
 import type { VisiblePortalPath } from "../../src/render/three/visiblePortalPaths";
 import { rigidTransformToThreeMatrix, worldPointToThree } from "../../src/render/three/worldAxes";
@@ -377,6 +378,82 @@ describe("resolveAimTarget", () => {
     expect(target?.rootPoint.z).toBeCloseTo(1.08);
   });
 
+  it("misses protractor angles outside their small aim region", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const angle = createProtractorAngle({
+      centerPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    });
+    const registry = createRuntimeObjectRegistry([angle]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt(
+      { x: 0.12, y: -2, z: geodesicRayBeamHeightMeters },
+      { x: 0.12, y: 0, z: geodesicRayBeamHeightMeters },
+    );
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target).toBeUndefined();
+  });
+
+  it("prioritizes protractor angles over overlapping geodesic emitters", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+    });
+    const angle = createProtractorAngle({
+      centerPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    });
+    const registry = createRuntimeObjectRegistry([cannon, angle]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt(
+      { x: 0, y: -2, z: geodesicRayBeamHeightMeters },
+      { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    );
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("angle-a");
+  });
+
+  it("prioritizes protractor angles over overlapping geodesic intersection vertices", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const vertex = createGeodesicIntersection({
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: geodesicRayBeamHeightMeters }),
+    });
+    const angle = createProtractorAngle({
+      centerPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    });
+    const registry = createRuntimeObjectRegistry([vertex, angle]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const camera = cameraLookingAt(
+      { x: 0, y: -2, z: geodesicRayBeamHeightMeters },
+      { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    );
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("angle-a");
+  });
+
   it("ignores geodesic ray segments for a selected geodesic when requested", () => {
     const world = compileCellComplex(singleRoomWorld());
     const segment = createGeodesicSegment({ geodesicId: "g-active" });
@@ -667,4 +744,28 @@ function createGeodesicIntersection(overrides: Partial<GeodesicIntersectionObjec
     segmentIds: ["segment-a", "segment-b"],
     ...overrides,
   };
+}
+
+function createProtractorAngle(options: {
+  readonly centerPoint: { readonly x: number; readonly y: number; readonly z: number };
+}) {
+  return createProtractorAngleObject({
+    id: "angle-a",
+    center: {
+      objectId: "vertex-a",
+      cellId: "room",
+      point: options.centerPoint,
+      geodesicIds: ["g-a", "g-b"],
+    },
+    first: {
+      geodesicId: "g-a",
+      segmentId: "segment-a",
+      yawRadians: 0,
+    },
+    second: {
+      geodesicId: "g-b",
+      segmentId: "segment-b",
+      yawRadians: Math.PI / 2,
+    },
+  });
 }

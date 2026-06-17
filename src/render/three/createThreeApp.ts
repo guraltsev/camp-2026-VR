@@ -3141,22 +3141,31 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     center: ProtractorCenterSelection,
   ): ProtractorDirectedGeodesic | undefined {
     if (target?.object?.kind === "geodesic-segment") {
-      return resolveProtractorDirectedGeodesicSelection({
+      const selected = resolveProtractorDirectedGeodesicSelection({
         center,
         segment: target.object,
         hitPoint: target.localPoint,
       });
+      return selected ? withProtractorGeodesicLabel(selected) : undefined;
     }
 
     if (target?.object?.kind === "geodesic-cannon") {
-      return resolveProtractorEmitterGeodesicSelection({
+      const selected = resolveProtractorEmitterGeodesicSelection({
         center,
         emitter: target.object,
         geodesicId: target.geodesicEmitterGeodesicId,
       });
+      return selected ? withProtractorGeodesicLabel(selected) : undefined;
     }
 
     return undefined;
+  }
+
+  function withProtractorGeodesicLabel(selection: ProtractorDirectedGeodesic): ProtractorDirectedGeodesic {
+    return {
+      ...selection,
+      label: getGeodesicDisplayName(selection.geodesicId),
+    };
   }
 
   function resolveCurrentAimTarget(ray?: {

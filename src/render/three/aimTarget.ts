@@ -56,6 +56,7 @@ const aimPointToleranceMeters = 1e-5;
 const aimTargetPriorityDistanceToleranceMeters = 0.4;
 const geodesicSegmentVsEmitterPriorityDistanceToleranceMeters = 3;
 const fallbackObjectRadiusMeters = 0.25;
+const protractorAngleAimRadiusMeters = 0.08;
 const geodesicEmitterAimCylinderRadiusPaddingMeters = 0.08;
 const geodesicEmitterAimCylinderHalfHeightPaddingMeters = 0.1;
 const geodesicEmitterGeodesicHandleLengthMeters = 0.65;
@@ -166,7 +167,14 @@ function resolveObjectAimTargets(
     }
 
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
-    const hit = object.kind === "geodesic-segment"
+    const hit = object.kind === "protractor-angle"
+      ? intersectRayWithSphere(
+        ray.origin,
+        ray.direction,
+        object.aimStickyTarget?.localPoint ?? object.localPose.translation,
+        protractorAngleAimRadiusMeters,
+      )
+      : object.kind === "geodesic-segment"
       ? intersectRayWithSelectableSegment(object, ray.origin, ray.direction)
       : object.kind === "geodesic-cannon"
         ? intersectRayWithGeodesicEmitterAimCylinder(ray.origin, ray.direction, object)

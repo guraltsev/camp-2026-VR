@@ -59,7 +59,21 @@ describe("protractor tool objects", () => {
     expect(angle.kind).toBe("protractor-angle");
     expect(angle.radiusMeters).toBe(protractorAngleRadiusMeters);
     expect(angle.angleDegrees).toBeCloseTo(90);
-    expect(angle.tooltip?.label).toBe("Angle 90 deg");
+    expect(angle.tooltip?.label).toBe("g-a ∠ g-b = 90°");
+  });
+
+  it("uses supplied geodesic labels in the displayed angle measurement", () => {
+    const center = resolveProtractorCenterSelection(createEmitter());
+    const angle = createProtractorAngleObject({
+      id: "angle-a",
+      center,
+      first: { geodesicId: "g-a", label: "G1", segmentId: "segment-a", yawRadians: 0 },
+      second: { geodesicId: "g-b", label: "G2", segmentId: "segment-b", yawRadians: Math.PI / 2 },
+    });
+
+    expect(angle.tooltip?.label).toBe("G1 ∠ G2 = 90°");
+    expect(angle.tooltip?.desktopPrompt).toBe("G1 ∠ G2 = 90°\nRMouse - remove");
+    expect(angle.tooltip?.xrPrompt).toBe("G1 ∠ G2 = 90°");
   });
 
   it("wraps clockwise-looking selections into positive counterclockwise angles", () => {

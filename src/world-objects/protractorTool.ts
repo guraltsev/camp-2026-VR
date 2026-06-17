@@ -30,6 +30,7 @@ export interface ProtractorCenterSelection {
 
 export interface ProtractorDirectedGeodesic {
   readonly geodesicId: string;
+  readonly label?: string;
   readonly segmentId: string;
   readonly yawRadians: number;
 }
@@ -126,7 +127,7 @@ export function createProtractorAngleObject(options: {
 }): ProtractorAngleObject {
   const angleRadians = normalizePositiveRadians(options.second.yawRadians - options.first.yawRadians);
   const angleDegrees = angleRadians * 180 / Math.PI;
-  const label = `${formatDegrees(angleDegrees)} deg`;
+  const label = formatProtractorAngleLabel(options.first, options.second, angleDegrees);
 
   return {
     id: options.id,
@@ -138,10 +139,10 @@ export function createProtractorAngleObject(options: {
     },
     portalRenderable: true,
     tooltip: {
-      label: `Angle ${label}`,
+      label,
       rangeMeters: 3,
-      desktopPrompt: `Angle ${label}\nRMouse - remove`,
-      xrPrompt: `Angle ${label}`,
+      desktopPrompt: `${label}\nRMouse - remove`,
+      xrPrompt: label,
     },
     centerObjectId: options.center.objectId,
     centerPoint: options.center.point,
@@ -151,6 +152,14 @@ export function createProtractorAngleObject(options: {
     angleDegrees,
     radiusMeters: protractorAngleRadiusMeters,
   };
+}
+
+export function formatProtractorAngleLabel(
+  first: Pick<ProtractorDirectedGeodesic, "geodesicId" | "label">,
+  second: Pick<ProtractorDirectedGeodesic, "geodesicId" | "label">,
+  angleDegrees: number,
+): string {
+  return `${formatGeodesicLabel(first)} ∠ ${formatGeodesicLabel(second)} = ${formatDegrees(angleDegrees)}°`;
 }
 
 function getDistanceAlongSegment(segment: GeodesicSegmentObject, point: Vec3): number {
@@ -186,4 +195,8 @@ function normalizeSignedRadians(radians: number): number {
 function formatDegrees(value: number): string {
   const rounded = Math.round(value * 10) / 10;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function formatGeodesicLabel(geodesic: Pick<ProtractorDirectedGeodesic, "geodesicId" | "label">): string {
+  return geodesic.label ?? geodesic.geodesicId;
 }
