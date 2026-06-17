@@ -105,8 +105,66 @@ describe("buildPortalPathTables", () => {
     }
   });
 
+  it("builds paths into both orientation sheets for a Mobius cover world", () => {
+    const world = compileCellComplex(mobiusRoom());
+    const table = buildPortalPathTables(world, { maxDepth: 2, skipImmediateReverse: false }).tablesByRootCellId.get("room#positive")!;
+    const destinations = table.paths.map((path) => path.destinationCellId);
+
+    expect(destinations).toContain("room#positive");
+    expect(destinations).toContain("room#negative");
+
+    for (const path of table.paths) {
+      expect(allFinite(path.destinationFromRoot)).toBe(true);
+      expect(determinant(path.destinationFromRoot)).toBeCloseTo(1);
+    }
+  });
 });
 
 function allFinite(transform: RigidTransform3): boolean {
   return [...Object.values(transform.rotation), ...Object.values(transform.translation)].every(Number.isFinite);
+}
+
+function determinant(transform: RigidTransform3): number {
+  const matrix = transform.rotation;
+
+  return (
+    matrix.m00 * (matrix.m11 * matrix.m22 - matrix.m12 * matrix.m21) -
+    matrix.m01 * (matrix.m10 * matrix.m22 - matrix.m12 * matrix.m20) +
+    matrix.m02 * (matrix.m10 * matrix.m21 - matrix.m11 * matrix.m20)
+  );
+}
+
+function mobiusRoom() {
+  const squareRoomBase = [
+    { x: -1, y: -1 },
+    { x: 1, y: -1 },
+    { x: 1, y: 1 },
+    { x: -1, y: 1 },
+  ];
+
+  return {
+    cells: [
+      {
+        id: "room",
+        heightMeters: 3,
+        baseVertices: squareRoomBase,
+        portals: [
+          {
+            id: "east",
+            sideIndex: 1,
+            targetCellId: "room",
+            targetPortalId: "west",
+            orientation: "reversing" as const,
+          },
+          {
+            id: "west",
+            sideIndex: 3,
+            targetCellId: "room",
+            targetPortalId: "east",
+            orientation: "reversing" as const,
+          },
+        ],
+      },
+    ],
+  };
 }

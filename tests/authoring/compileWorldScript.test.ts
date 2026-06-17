@@ -57,6 +57,44 @@ OnFace("triangle-room", [
     expect(front?.objects).toHaveLength(2);
   });
 
+  it("exposes FlippedPortal in world scripts", () => {
+    const spec = compileWorldScript(`
+square = [
+  [-1, -1],
+  [1, -1],
+  [1, 1],
+  [-1, 1],
+];
+
+PolygonFace("room", "#f00", square);
+FlippedPortal("room", 1, "room", 3);
+`);
+
+    expect(spec.cells[0]?.portals.map((portal) => portal.orientation)).toEqual([
+      "reversing",
+      "reversing",
+    ]);
+  });
+
+  it("accepts orientation options on Portal in world scripts", () => {
+    const spec = compileWorldScript(`
+square = [
+  [-1, -1],
+  [1, -1],
+  [1, 1],
+  [-1, 1],
+];
+
+PolygonFace("room", "#f00", square);
+Portal("room", 0, "room", 2, { orientation: "reversing" });
+`);
+
+    expect(spec.cells[0]?.portals.map((portal) => portal.orientation)).toEqual([
+      "reversing",
+      "reversing",
+    ]);
+  });
+
   it("reports readable authoring errors for malformed scripts", () => {
     expect(() =>
       compileWorldScript(

@@ -1,6 +1,17 @@
 import type { CellComplexSpec } from "../cell-complex/specs";
+import {
+  isOrientationCoverReservedCellId,
+  portalOrientation,
+} from "../cell-complex/orientationDoubleCover";
 
-export function validateAuthoringSpec(spec: CellComplexSpec): readonly string[] {
+export interface ValidateAuthoringSpecOptions {
+  readonly allowOrientationCoverCellIds?: boolean;
+}
+
+export function validateAuthoringSpec(
+  spec: CellComplexSpec,
+  options: ValidateAuthoringSpecOptions = {},
+): readonly string[] {
   const errors: string[] = [];
   const cellsById = new Map<string, CellComplexSpec["cells"][number]>();
 
@@ -13,6 +24,10 @@ export function validateAuthoringSpec(spec: CellComplexSpec): readonly string[] 
       errors.push(`Duplicate cell id "${cell.id}".`);
     } else {
       cellsById.set(cell.id, cell);
+    }
+
+    if (!options.allowOrientationCoverCellIds && isOrientationCoverReservedCellId(cell.id)) {
+      errors.push(`Cell id "${cell.id}" uses reserved orientation-cover suffix.`);
     }
 
     if (cell.baseVertices.length < 3) {
@@ -40,6 +55,12 @@ export function validateAuthoringSpec(spec: CellComplexSpec): readonly string[] 
         errors.push(`Cell "${cell.id}" has duplicate portal id "${portal.id}".`);
       } else {
         portalIds.add(portal.id);
+      }
+
+      if (portal.orientation !== undefined && portal.orientation !== "preserving" && portal.orientation !== "reversing") {
+        errors.push(
+          `Portal "${cell.id}:${portal.id}" has invalid orientation "${String(portal.orientation)}"; expected "preserving" or "reversing".`,
+        );
       }
 
       if (!Number.isInteger(portal.sideIndex) || portal.sideIndex < 0 || portal.sideIndex >= cell.baseVertices.length) {
@@ -71,6 +92,12 @@ export function validateAuthoringSpec(spec: CellComplexSpec): readonly string[] 
       if (targetPortal.targetCellId !== cell.id || targetPortal.targetPortalId !== portal.id) {
         errors.push(
           `Portal "${cell.id}:${portal.id}" is not reciprocated by "${targetCell.id}:${targetPortal.id}".`,
+        );
+      }
+
+      if (portalOrientation(portal) !== portalOrientation(targetPortal)) {
+        errors.push(
+          `Portal "${cell.id}:${portal.id}" and reciprocal "${targetCell.id}:${targetPortal.id}" disagree about orientation.`,
         );
       }
     }

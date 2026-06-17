@@ -172,6 +172,60 @@ describe("compileCellComplex", () => {
     expect(errors).toContain('Portal "room:bad" is not reciprocated by "room:bad".');
   });
 
+  it("reports readable orientation authoring errors", () => {
+    const errors = validateAuthoringSpec({
+      cells: [
+        {
+          id: "room#positive",
+          heightMeters: 2,
+          baseVertices: [
+            { x: -1, y: -1 },
+            { x: 1, y: -1 },
+            { x: 1, y: 1 },
+            { x: -1, y: 1 },
+          ],
+          portals: [
+            {
+              id: "side-1",
+              sideIndex: 1,
+              targetCellId: "room#positive",
+              targetPortalId: "side-3",
+              orientation: "reversing",
+            },
+            {
+              id: "side-3",
+              sideIndex: 3,
+              targetCellId: "room#positive",
+              targetPortalId: "side-1",
+              orientation: "preserving",
+            },
+            {
+              id: "side-0",
+              sideIndex: 0,
+              targetCellId: "room#positive",
+              targetPortalId: "side-2",
+              orientation: "flipped",
+            } as never,
+            {
+              id: "side-2",
+              sideIndex: 2,
+              targetCellId: "room#positive",
+              targetPortalId: "side-0",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(errors).toContain('Cell id "room#positive" uses reserved orientation-cover suffix.');
+    expect(errors).toContain(
+      'Portal "room#positive:side-0" has invalid orientation "flipped"; expected "preserving" or "reversing".',
+    );
+    expect(errors).toContain(
+      'Portal "room#positive:side-1" and reciprocal "room#positive:side-3" disagree about orientation.',
+    );
+  });
+
   it("rejects non-convex and clockwise prism bases", () => {
     const nonConvexErrors = validateAuthoringSpec({
       cells: [

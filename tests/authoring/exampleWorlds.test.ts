@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { worldCatalog } from "../../src/authoring/worldCatalog";
-import { cube, dodecahedron, icosahedron, octahedron, tetrahedron, torus } from "../../src/authoring/exampleWorlds";
+import { cube, dodecahedron, icosahedron, mobiusStrip, octahedron, tetrahedron, torus } from "../../src/authoring/exampleWorlds";
+import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder } from "../../src/movement/collision";
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
@@ -12,6 +13,7 @@ const exampleWorlds = [
   ["cube", cube],
   ["dodecahedron", dodecahedron],
   ["icosahedron", icosahedron],
+  ["mobius-strip", mobiusStrip],
   ["octahedron", octahedron],
   ["tetrahedron", tetrahedron],
   ["torus", torus],
@@ -27,6 +29,7 @@ describe("example worlds", () => {
       "cube",
       "dodecahedron",
       "icosahedron",
+      "mobius-strip",
       "octahedron",
       "tetrahedron",
       "torus",
@@ -122,6 +125,33 @@ describe("example worlds", () => {
 
     expect(stopSign?.kind).toBe("asset");
     expect(stopSign?.scale).toBeCloseTo(0.024);
+  });
+
+  it("expands Mobius dynamic creatures into both orientation sheets", () => {
+    const world = compileCellComplex(mobiusStrip);
+    const positive = world.cellsById.get("mobius-room#positive");
+    const negative = world.cellsById.get("mobius-room#negative");
+    const positiveCreatureIds = positive?.objects
+      .filter((object) => object.kind === "geo-mouse" || object.kind === "geo-butterfly")
+      .map((object) => object.id)
+      .sort();
+    const negativeCreatureIds = negative?.objects
+      .filter((object) => object.kind === "geo-mouse" || object.kind === "geo-butterfly")
+      .map((object) => object.id)
+      .sort();
+    const positiveMouse = positive?.objects.find((object) => object.id === "mobius-geodesic-mouse#positive");
+    const negativeMouse = negative?.objects.find((object) => object.id === "mobius-geodesic-mouse#negative");
+
+    expect(positiveCreatureIds).toEqual([
+      "mobius-geodesic-butterfly#positive",
+      "mobius-geodesic-mouse#positive",
+    ]);
+    expect(negativeCreatureIds).toEqual([
+      "mobius-geodesic-butterfly#negative",
+      "mobius-geodesic-mouse#negative",
+    ]);
+    expect(positiveMouse?.position.x).toBeCloseTo(1.2 * -1);
+    expect(negativeMouse?.position.x).toBeCloseTo(1.2 * -1);
   });
 });
 

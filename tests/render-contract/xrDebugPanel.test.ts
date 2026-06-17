@@ -29,6 +29,22 @@ describe("xrDebugPanel", () => {
     ]);
   });
 
+  it("shows orientation-cover metadata when present", () => {
+    expect(buildXrDebugPanelLines({
+      ...state,
+      currentCellId: "room#negative",
+      baseCellId: "room",
+      orientationSheet: "negative",
+    }, ["location"])).toEqual([
+      "Cell: room#negative",
+      "Base: room",
+      "Sheet: negative",
+      "XR: active",
+      "Input: controllers",
+      "Blocked: no",
+    ]);
+  });
+
   it("adds performance, render, and portal details when available", () => {
     expect(buildXrDebugPanelLines({
       ...state,

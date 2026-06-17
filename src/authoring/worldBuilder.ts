@@ -3,6 +3,7 @@ import type {
   CellComplexSpec,
   CellObjectSpec,
   FloorMaterialSpec,
+  PortalOrientation,
   PrismCellSpec,
 } from "../cell-complex/specs";
 import { createConvexPrismBaseVertices, type ConvexPrismBaseVertices } from "../cell-complex/prismBase";
@@ -25,15 +26,61 @@ interface MutableCell {
 
 export interface WorldBuilder {
   PolygonFace(name: string, floor: string | WorldFloorMaterialSpec, vertices: ConvexPrismBaseVertices): void;
-  Portal(face1: string, side1: number, face2: string, side2: number): void;
+  Portal(face1: string, side1: number, face2: string, side2: number, options?: PortalOptions): void;
+  FlippedPortal(face1: string, side1: number, face2: string, side2: number): void;
   OnFace(faceName: string, objects: readonly WorldLibraryObjectSpec[]): void;
   build(): CellComplexSpec;
+}
+
+export interface PortalOptions {
+  readonly orientation?: PortalOrientation;
 }
 
 export function createWorldBuilder(): WorldBuilder {
   const cells = new Map<string, MutableCell>();
   const portalAssignments = new Map<string, Set<string>>();
   const objectIds = new Set<string>();
+
+  function addPortal(face1: string, side1: number, face2: string, side2: number, options: PortalOptions = {}): void {
+    const cell1 = cells.get(face1);
+    const cell2 = cells.get(face2);
+    const orientation = normalizePortalOrientation(options.orientation);
+
+    if (!cell1) {
+      throw new Error(`Unknown face "${face1}" in Portal().`);
+    }
+
+    if (!cell2) {
+      throw new Error(`Unknown face "${face2}" in Portal().`);
+    }
+
+    const authoredSide1 = normalizeSideIndex(side1, cell1.baseVertices.length);
+    const authoredSide2 = normalizeSideIndex(side2, cell2.baseVertices.length);
+
+    if (face1 === face2 && authoredSide1.portalId === authoredSide2.portalId) {
+      throw new Error(`Portal("${face1}", ${side1}, ...) cannot connect a side to itself.`);
+    }
+
+    assertUnassignedSide(portalAssignments, face1, authoredSide1.portalId);
+    assertUnassignedSide(portalAssignments, face2, authoredSide2.portalId);
+
+    cell1.portals.push({
+      id: authoredSide1.portalId,
+      sideIndex: authoredSide1.sideIndex,
+      targetCellId: face2,
+      targetPortalId: authoredSide2.portalId,
+      orientation,
+    });
+    cell2.portals.push({
+      id: authoredSide2.portalId,
+      sideIndex: authoredSide2.sideIndex,
+      targetCellId: face1,
+      targetPortalId: authoredSide1.portalId,
+      orientation,
+    });
+    portalAssignments.get(face1)?.add(authoredSide1.portalId);
+    portalAssignments.get(face2)?.add(authoredSide2.portalId);
+  }
 
   return {
     PolygonFace(name, floor, vertices) {
@@ -63,42 +110,12 @@ export function createWorldBuilder(): WorldBuilder {
       portalAssignments.set(name, new Set());
     },
 
-    Portal(face1, side1, face2, side2) {
-      const cell1 = cells.get(face1);
-      const cell2 = cells.get(face2);
+    Portal(face1, side1, face2, side2, options = {}) {
+      addPortal(face1, side1, face2, side2, options);
+    },
 
-      if (!cell1) {
-        throw new Error(`Unknown face "${face1}" in Portal().`);
-      }
-
-      if (!cell2) {
-        throw new Error(`Unknown face "${face2}" in Portal().`);
-      }
-
-      const authoredSide1 = normalizeSideIndex(side1, cell1.baseVertices.length);
-      const authoredSide2 = normalizeSideIndex(side2, cell2.baseVertices.length);
-
-      if (face1 === face2 && authoredSide1.portalId === authoredSide2.portalId) {
-        throw new Error(`Portal("${face1}", ${side1}, ...) cannot connect a side to itself.`);
-      }
-
-      assertUnassignedSide(portalAssignments, face1, authoredSide1.portalId);
-      assertUnassignedSide(portalAssignments, face2, authoredSide2.portalId);
-
-      cell1.portals.push({
-        id: authoredSide1.portalId,
-        sideIndex: authoredSide1.sideIndex,
-        targetCellId: face2,
-        targetPortalId: authoredSide2.portalId,
-      });
-      cell2.portals.push({
-        id: authoredSide2.portalId,
-        sideIndex: authoredSide2.sideIndex,
-        targetCellId: face1,
-        targetPortalId: authoredSide1.portalId,
-      });
-      portalAssignments.get(face1)?.add(authoredSide1.portalId);
-      portalAssignments.get(face2)?.add(authoredSide2.portalId);
+    FlippedPortal(face1, side1, face2, side2) {
+      addPortal(face1, side1, face2, side2, { orientation: "reversing" });
     },
 
     OnFace(faceName, objects) {
@@ -176,6 +193,10 @@ function normalizeSideIndex(side: number, vertexCount: number): { readonly sideI
     sideIndex,
     portalId: `side-${sideIndex}`,
   };
+}
+
+function normalizePortalOrientation(orientation: PortalOrientation | undefined): PortalOrientation {
+  return orientation ?? "preserving";
 }
 
 function assertUnassignedSide(

@@ -143,6 +143,38 @@ describe("movePlayer", () => {
     expect(secondStep.pose.cellId).toBe("room-b");
     expect(secondStep.pose.position.x).toBeCloseTo(-0.95);
   });
+
+  it("switches orientation sheets through reversing cover portals", () => {
+    const world = compileCellComplex(mobiusRoom());
+    const firstStep = movePlayer({
+      world,
+      pose: {
+        ...createDefaultPlayerPose("room#positive"),
+        position: { x: 0.95, y: 0, z: 0 },
+      },
+      localDisplacement: { x: 0.1, y: 0, z: 0 },
+      yawDeltaRadians: 0,
+      pitchDeltaRadians: 0,
+      coordinateFrame: "global",
+    });
+
+    expect(firstStep.crossedPortal).toBe(true);
+    expect(firstStep.pose.cellId).toBe("room#negative");
+    expect(Number.isFinite(firstStep.pose.yawRadians)).toBe(true);
+
+    const secondStep = movePlayer({
+      world,
+      pose: firstStep.pose,
+      localDisplacement: { x: -0.1, y: 0, z: 0 },
+      yawDeltaRadians: 0,
+      pitchDeltaRadians: 0,
+      coordinateFrame: "global",
+    });
+
+    expect(secondStep.crossedPortal).toBe(true);
+    expect(secondStep.pose.cellId).toBe("room#positive");
+    expect(Number.isFinite(secondStep.pose.yawRadians)).toBe(true);
+  });
 });
 
 function twoRoomsWithPortal() {
@@ -178,6 +210,41 @@ function twoRoomsWithPortal() {
             sideIndex: 3,
             targetCellId: "room-a",
             targetPortalId: "east",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function mobiusRoom() {
+  const squareRoomBase = [
+    { x: -1, y: -1 },
+    { x: 1, y: -1 },
+    { x: 1, y: 1 },
+    { x: -1, y: 1 },
+  ];
+
+  return {
+    cells: [
+      {
+        id: "room",
+        heightMeters: 3,
+        baseVertices: squareRoomBase,
+        portals: [
+          {
+            id: "east",
+            sideIndex: 1,
+            targetCellId: "room",
+            targetPortalId: "west",
+            orientation: "reversing" as const,
+          },
+          {
+            id: "west",
+            sideIndex: 3,
+            targetCellId: "room",
+            targetPortalId: "east",
+            orientation: "reversing" as const,
           },
         ],
       },

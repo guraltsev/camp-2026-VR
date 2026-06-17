@@ -22,6 +22,8 @@ export interface XrDebugRenderState {
   readonly framePerformance?: FramePerformanceRenderState;
   readonly webGlRenderInfo?: WebGlRenderInfoState;
   readonly currentCellId: string;
+  readonly baseCellId?: string;
+  readonly orientationSheet?: string;
   readonly playerPosition: Vec3;
   readonly yawRadians: number;
   readonly lastMovementBlocked: boolean;

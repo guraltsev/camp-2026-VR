@@ -4,6 +4,8 @@ export interface CellComplexSpec {
   readonly cells: readonly PrismCellSpec[];
 }
 
+export type PortalOrientation = "preserving" | "reversing";
+
 export interface PrismCellSpec {
   readonly id: string;
   readonly heightMeters: number;
@@ -17,6 +19,7 @@ export interface AuthoredPortalSpec {
   readonly sideIndex: number;
   readonly targetCellId: string;
   readonly targetPortalId: string;
+  readonly orientation?: PortalOrientation;
 }
 
 export interface CompiledPortal extends AuthoredPortalSpec {

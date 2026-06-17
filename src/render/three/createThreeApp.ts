@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { reversePainterSortStable } from "@pmndrs/uikit";
 import type { AppState } from "../../appState";
+import { getBaseCellId, getOrientationSheet } from "../../cell-complex/compileCellComplex";
 import type { PortalPathTablesByRootCell } from "../../cell-complex/portalPaths";
 import type { PortalRenderPath } from "../../cell-complex/portalPaths";
 import { checkPortalPathString, createPortalPathDebugState } from "../../cell-complex/portalPathDebug";
@@ -147,6 +148,7 @@ import {
   updateRuntimeObjectRenderArchetypeInstances,
   type PortalInstanceRenderDebugState,
 } from "./renderPortalInstances";
+import { applyOrientationCoverPresentationToVisiblePaths } from "./orientationCoverPresentation";
 import {
   buildRuntimeObjectRenderArchetype,
   createRuntimeObjectRenderArchetypeDiagnostics,
@@ -304,7 +306,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let xrSessionState: XrSessionState = createXrSessionState("unknown", {
     secureContext: window.isSecureContext,
   });
-  let xrDebugState: XrDebugRenderState = createInitialXrDebugState(xrSessionState, playerPose);
+  let xrDebugState: XrDebugRenderState = createInitialXrDebugState(xrSessionState, appState.world, playerPose);
   let debugLevel = options.debugLevel;
   let portalPanelMode = options.portalPanelMode;
   let debugOptions = options.debugOptions;
@@ -1276,6 +1278,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       framePerformance: smoothedFramePerformance,
       webGlRenderInfo: latestWebGlRenderInfo,
       currentCellId: playerPose.cellId,
+      baseCellId: getBaseCellId(appState.world, playerPose.cellId),
+      orientationSheet: getOrientationSheet(appState.world, playerPose.cellId),
       playerPosition: playerPose.position,
       yawRadians: playerPose.yawRadians,
       lastMovementBlocked: moveResult?.blocked ?? xrDebugState.lastMovementBlocked,
@@ -1545,7 +1549,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       const unionVisiblePathById = buildUnionVisiblePathById(portalEyeRenderStates.map((state) => state.result));
       const unionVisiblePaths = [...unionVisiblePathById.values()].sort((left, right) => left.pathId - right.pathId);
       portalClipData.updateStereo(portalEyeRenderStates.map((state) => state.result.paths));
-      applyPortalVisiblePaths(unionVisiblePaths, false);
+      applyPortalVisiblePaths(portalEyeRenderStates[0]?.rootCellId ?? playerPose.cellId, unionVisiblePaths, false);
       portalInstanceRenderState = createPortalInstanceRenderStateFromVisibleResult(
         portalEyeRenderStates[0]?.rootCellId ?? playerPose.cellId,
         latestVisibleResult,
@@ -1596,19 +1600,31 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalStaticCull.tables.tablesByRootCellId.get(rootCellId)?.pathsByDestinationCellId ?? new Map(),
       visiblePathById,
     );
-    updatePortalVisiblePathInstances(visiblePathsByDestinationCell);
-    syncRuntimeObjectPortalInstances(flattenVisiblePortalPathGroups(visiblePathsByDestinationCell));
+    const presentedVisiblePaths = applyOrientationCoverPresentationToVisiblePaths(
+      appState.world,
+      rootCellId,
+      flattenVisiblePortalPathGroups(visiblePathsByDestinationCell),
+    );
+    const presentedVisiblePathsByDestinationCell = groupVisiblePortalPathsByDestinationCell(presentedVisiblePaths);
+    updatePortalVisiblePathInstances(presentedVisiblePathsByDestinationCell);
+    syncRuntimeObjectPortalInstances(flattenVisiblePortalPathGroups(visiblePathsByDestinationCell), rootCellId);
   }
 
   function applyPortalVisiblePaths(
+    rootCellId: string,
     visiblePaths: readonly VisiblePortalPath[],
     updateClipData = true,
   ): void {
     if (updateClipData) {
       portalClipData.update(visiblePaths);
     }
-    updatePortalVisiblePathInstances(groupVisiblePortalPathsByDestinationCell(visiblePaths));
-    syncRuntimeObjectPortalInstances(visiblePaths);
+    const presentedVisiblePaths = applyOrientationCoverPresentationToVisiblePaths(
+      appState.world,
+      rootCellId,
+      visiblePaths,
+    );
+    updatePortalVisiblePathInstances(groupVisiblePortalPathsByDestinationCell(presentedVisiblePaths));
+    syncRuntimeObjectPortalInstances(visiblePaths, rootCellId);
   }
 
   function updatePortalVisiblePathInstances(
@@ -1679,11 +1695,17 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function syncRuntimeObjectPortalInstances(
     visiblePaths: readonly VisiblePortalPath[] = getRuntimeObjectVisiblePaths(),
+    rootCellId = latestVisibleResult?.summary.rootCellId ?? playerPose.cellId,
   ): void {
     syncRuntimeObjectRenderSources();
     const records = collectRuntimeObjectRenderRecords();
     const recordsByArchetypeKey = groupRuntimeObjectRenderRecordsByArchetype(records);
-    const visiblePathsByDestinationCell = groupVisiblePortalPathsByDestinationCell(visiblePaths);
+    const presentedVisiblePaths = applyOrientationCoverPresentationToVisiblePaths(
+      appState.world,
+      rootCellId,
+      visiblePaths,
+    );
+    const visiblePathsByDestinationCell = groupVisiblePortalPathsByDestinationCell(presentedVisiblePaths);
     runtimeObjectRenderDiagnostics.reset();
     updateRuntimeObjectRenderArchetypeInstances(
       [...runtimeObjectRenderArchetypesByKey.values()],
@@ -4853,12 +4875,18 @@ function smoothNumber(previous: number, next: number): number {
   return THREE.MathUtils.lerp(previous, next, 0.15);
 }
 
-function createInitialXrDebugState(xrSessionState: XrSessionState, playerPose: PlayerPose): XrDebugRenderState {
+function createInitialXrDebugState(
+  xrSessionState: XrSessionState,
+  world: AppState["world"],
+  playerPose: PlayerPose,
+): XrDebugRenderState {
   return {
     secureContext: xrSessionState.secureContext,
     sessionStatus: xrSessionState.status,
     activeInputSource: "desktop",
     currentCellId: playerPose.cellId,
+    baseCellId: getBaseCellId(world, playerPose.cellId),
+    orientationSheet: getOrientationSheet(world, playerPose.cellId),
     playerPosition: playerPose.position,
     yawRadians: playerPose.yawRadians,
     lastMovementBlocked: false,

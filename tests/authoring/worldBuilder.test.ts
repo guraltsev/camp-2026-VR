@@ -72,6 +72,7 @@ describe("worldBuilder", () => {
         sideIndex: 1,
         targetCellId: "right",
         targetPortalId: "side-3",
+        orientation: "preserving",
       },
     ]);
     expect(right?.portals).toEqual([
@@ -80,7 +81,46 @@ describe("worldBuilder", () => {
         sideIndex: 3,
         targetCellId: "front",
         targetPortalId: "side-1",
+        orientation: "preserving",
       },
+    ]);
+  });
+
+  it("creates reciprocal orientation-reversing portals from FlippedPortal", () => {
+    const builder = createWorldBuilder();
+
+    builder.PolygonFace("room", "#f00", squareBase);
+    builder.FlippedPortal("room", 1, "room", 3);
+
+    const spec = builder.build();
+
+    expect(spec.cells[0]?.portals).toEqual([
+      {
+        id: "side-1",
+        sideIndex: 1,
+        targetCellId: "room",
+        targetPortalId: "side-3",
+        orientation: "reversing",
+      },
+      {
+        id: "side-3",
+        sideIndex: 3,
+        targetCellId: "room",
+        targetPortalId: "side-1",
+        orientation: "reversing",
+      },
+    ]);
+  });
+
+  it("can mark Portal calls as orientation-reversing with options", () => {
+    const builder = createWorldBuilder();
+
+    builder.PolygonFace("room", "#f00", squareBase);
+    builder.Portal("room", 0, "room", 2, { orientation: "reversing" });
+
+    expect(builder.build().cells[0]?.portals.map((portal) => portal.orientation)).toEqual([
+      "reversing",
+      "reversing",
     ]);
   });
 

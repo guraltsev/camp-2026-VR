@@ -98,6 +98,8 @@ export function buildXrDebugPanelLines(
   if (requestedItems.has("location")) {
     lines.push(
       `Cell: ${state.currentCellId}`,
+      ...(state.baseCellId ? [`Base: ${state.baseCellId}`] : []),
+      ...(state.orientationSheet ? [`Sheet: ${state.orientationSheet}`] : []),
       `XR: ${state.sessionStatus}`,
       `Input: ${state.inputMode ?? state.activeInputSource}`,
       `Blocked: ${state.lastMovementBlocked ? state.lastBlockingReason ?? "yes" : "no"}`,

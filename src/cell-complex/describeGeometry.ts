@@ -1,7 +1,9 @@
 import type { AuthoredPortalSpec, CellComplexSpec, PrismCellSpec } from "./specs";
+import { hasOrientationReversingPortal, portalOrientation } from "./orientationDoubleCover";
 
 export function describeGeometrySpec(spec: CellComplexSpec): string {
   const lines = [`Ingested geometry: ${spec.cells.length} cell${spec.cells.length === 1 ? "" : "s"}.`];
+  lines.push(`Orientation cover: ${hasOrientationReversingPortal(spec) ? "will expand" : "not needed"}.`);
 
   lines.push("Cells:");
 
@@ -31,8 +33,9 @@ function describePortalConnection(sourceCell: PrismCellSpec, portal: AuthoredPor
   const targetPortal = targetCell?.portals.find((candidate) => candidate.id === portal.targetPortalId);
   const sourceSide = formatSide(portal.sideIndex);
   const targetSide = targetCell && targetPortal ? formatSide(targetPortal.sideIndex) : `portal=${portal.targetPortalId}`;
+  const orientation = portalOrientation(portal) === "reversing" ? ", orientation=reversing" : "";
 
-  return `(cell=${sourceCell.id}, side=${sourceSide}) -> (cell=${portal.targetCellId}, side=${targetSide})`;
+  return `(cell=${sourceCell.id}, side=${sourceSide}) -> (cell=${portal.targetCellId}, side=${targetSide}${orientation})`;
 }
 
 function formatSide(sideIndex: number): string {

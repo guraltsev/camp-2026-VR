@@ -123,6 +123,8 @@ export function formatLocationLine(state: XrDebugRenderState): string {
   const blocked = state.lastMovementBlocked
     ? `blocked ${state.lastBlockingReason ?? "unknown"}`
     : "not blocked";
+  const baseCell = state.baseCellId ? ` / base ${state.baseCellId}` : "";
+  const sheet = state.orientationSheet ? ` / sheet ${state.orientationSheet}` : "";
   const portal = state.lastCrossedPortalId ? ` / last portal ${state.lastCrossedPortalId}` : "";
   const root = state.sharedRenderRootCellId ? ` / xr root ${state.sharedRenderRootCellId}` : "";
   const inputMode = state.inputMode ? ` / input ${state.inputMode}` : "";
@@ -134,7 +136,7 @@ export function formatLocationLine(state: XrDebugRenderState): string {
     `yaw ${roundNumber(state.yawRadians)}`,
     `xr ${state.sessionStatus}`,
     blocked,
-  ].join(" / ") + inputMode + visiblePaths + portal + root;
+  ].join(" / ") + baseCell + sheet + inputMode + visiblePaths + portal + root;
 }
 
 function formatVec3(point: { readonly x: number; readonly y: number; readonly z: number }): string {

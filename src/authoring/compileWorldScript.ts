@@ -12,6 +12,7 @@ export function compileWorldScript(sourceText: string, options: CompileWorldScri
   const globals = {
     PolygonFace: builder.PolygonFace,
     Portal: builder.Portal,
+    FlippedPortal: builder.FlippedPortal,
     OnFace: builder.OnFace,
     ...worldFloorTextureLibrary,
     ...worldObjectLibrary,
