@@ -10,8 +10,10 @@ import {
   getGeodesicConnection,
   getGeodesicSegments,
   getGeodesicTail,
+  getRememberedGeodesicIntersectionObject,
   isGeodesicLocked,
   placeGeodesicCannonOnGeodesic,
+  pruneMissingGeodesicIntersectionObjects,
   rebuildGeodesicToLength,
   removeGeodesic,
   resolveGeodesicCannonAimYawRadians,
@@ -671,6 +673,116 @@ describe("geodesic cannon world objects", () => {
     });
     expect(vertex.localPose.translation).toEqual({ x: 1, y: 1, z: geodesicRayBeamHeightMeters + 0.25 });
     expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(1);
+  });
+
+  it("keeps vertex identity while a geodesic pair intersection moves continuously", () => {
+    const registry = createRuntimeObjectRegistry([
+      createSegment({
+        id: "g-a:segment:0",
+        geodesicId: "g-a",
+        start: { x: 0, y: 1, z: geodesicRayBeamHeightMeters },
+        direction: { x: 1, y: 0, z: 0 },
+        lengthMeters: 2,
+      }),
+      createSegment({
+        id: "g-b:segment:0",
+        geodesicId: "g-b",
+        start: { x: 1, y: 0, z: geodesicRayBeamHeightMeters },
+        direction: { x: 0, y: 1, z: 0 },
+        lengthMeters: 2,
+      }),
+    ]);
+
+    const [first] = updateGeodesicIntersectionObjects(registry);
+    registry.update(createSegment({
+      id: "g-b:segment:0",
+      geodesicId: "g-b",
+      start: { x: 1.5, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 0, y: 1, z: 0 },
+      lengthMeters: 2,
+    }));
+
+    const [moved] = updateGeodesicIntersectionObjects(registry);
+
+    expect(moved.id).toBe(first.id);
+    expect(moved.aimStickyTarget?.localPoint).toEqual({ x: 1.5, y: 1, z: geodesicRayBeamHeightMeters });
+  });
+
+  it("remembers a missing vertex and recreates it with the same identity within ten meters", () => {
+    const registry = createRuntimeObjectRegistry([
+      createSegment({
+        id: "g-a:segment:0",
+        geodesicId: "g-a",
+        start: { x: 0, y: 1, z: geodesicRayBeamHeightMeters },
+        direction: { x: 1, y: 0, z: 0 },
+        lengthMeters: 2,
+      }),
+      createSegment({
+        id: "g-b:segment:0",
+        geodesicId: "g-b",
+        start: { x: 1, y: 0, z: geodesicRayBeamHeightMeters },
+        direction: { x: 0, y: 1, z: 0 },
+        lengthMeters: 2,
+      }),
+    ]);
+
+    const [first] = updateGeodesicIntersectionObjects(registry);
+    registry.update(createSegment({
+      id: "g-b:segment:0",
+      geodesicId: "g-b",
+      start: { x: 4, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 0, y: 1, z: 0 },
+      lengthMeters: 2,
+    }));
+
+    expect(updateGeodesicIntersectionObjects(registry)).toEqual([]);
+    expect(getRememberedGeodesicIntersectionObject(registry, first.id)?.id).toBe(first.id);
+
+    registry.update(createSegment({
+      id: "g-b:segment:0",
+      geodesicId: "g-b",
+      start: { x: 1.25, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 0, y: 1, z: 0 },
+      lengthMeters: 2,
+    }));
+
+    const [recreated] = updateGeodesicIntersectionObjects(registry);
+
+    expect(recreated.id).toBe(first.id);
+  });
+
+  it("prunes non-existent vertex memory and refuses to match jumps beyond ten meters", () => {
+    const registry = createRuntimeObjectRegistry([
+      createSegment({
+        id: "g-a:segment:0",
+        geodesicId: "g-a",
+        start: { x: 0, y: 1, z: geodesicRayBeamHeightMeters },
+        direction: { x: 1, y: 0, z: 0 },
+        lengthMeters: 20,
+      }),
+      createSegment({
+        id: "g-b:segment:0",
+        geodesicId: "g-b",
+        start: { x: 1, y: 0, z: geodesicRayBeamHeightMeters },
+        direction: { x: 0, y: 1, z: 0 },
+        lengthMeters: 2,
+      }),
+    ]);
+
+    const [first] = updateGeodesicIntersectionObjects(registry);
+    registry.update(createSegment({
+      id: "g-b:segment:0",
+      geodesicId: "g-b",
+      start: { x: 14, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 0, y: 1, z: 0 },
+      lengthMeters: 2,
+    }));
+
+    const [jumped] = updateGeodesicIntersectionObjects(registry);
+
+    expect(jumped.id).not.toBe(first.id);
+    expect(pruneMissingGeodesicIntersectionObjects(registry)).toEqual([first.id]);
+    expect(getRememberedGeodesicIntersectionObject(registry, first.id)).toBeUndefined();
   });
 
   it("removes stale vertex balloons when a geodesic is removed", () => {

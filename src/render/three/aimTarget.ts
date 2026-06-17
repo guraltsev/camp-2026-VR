@@ -162,6 +162,10 @@ function resolveObjectAimTargets(
   const hits: AimTarget[] = [];
 
   for (const object of registry.getObjectsInCell(cell.id)) {
+    if (object.kind === "protractor-angle" && !object.portalRenderable) {
+      continue;
+    }
+
     if (object.kind === "geodesic-segment" && ignoredGeodesicIds.has(object.geodesicId)) {
       continue;
     }

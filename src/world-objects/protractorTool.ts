@@ -2,6 +2,7 @@ import { yawRigidTransform3 } from "../math/rigidTransform3";
 import { dotVec3, type Vec3 } from "../math/vec3";
 import {
   geodesicRayBeamHeightMeters,
+  getRememberedGeodesicIntersectionObject,
   type GeodesicCannonObject,
   type GeodesicIntersectionObject,
   type GeodesicSegmentObject,
@@ -163,7 +164,11 @@ export function refreshProtractorAngleObject(options: {
 }): ProtractorAngleObject | undefined {
   const centerObject = options.registry.get(options.angle.centerObjectId);
   if (centerObject?.kind !== "geodesic-cannon" && centerObject?.kind !== "geodesic-intersection") {
-    return undefined;
+    const rememberedCenter = getRememberedGeodesicIntersectionObject(options.registry, options.angle.centerObjectId);
+    return rememberedCenter ? {
+      ...options.angle,
+      portalRenderable: false,
+    } : undefined;
   }
 
   const center = resolveProtractorCenterSelection(centerObject);

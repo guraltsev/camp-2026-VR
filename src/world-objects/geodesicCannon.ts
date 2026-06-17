@@ -157,8 +157,10 @@ export const geodesicRayBeamStartOffsetMeters = 0.2;
 const defaultTraceLengthMeters = 2;
 const portalStartEpsilonMeters = 1e-4;
 const intersectionTolerance = 1e-7;
+const vertexContinuityToleranceMeters = 10;
 const emitterConnectionToleranceMeters = 0.3;
 const geodesicIntersectionBalloonHeightOffsetMeters = 0.25;
+const geodesicIntersectionMemoryByRegistry = new WeakMap<RuntimeObjectRegistry, Map<string, GeodesicIntersectionObject>>();
 
 export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions): GeodesicCannonObject {
   const aimYawRadians = sanitizeYaw(options.aimYawRadians ?? yawFromPose(options.localPose));
@@ -850,18 +852,50 @@ export function placeGeodesicCannonOnGeodesic(
 }
 
 export function updateGeodesicIntersectionObjects(registry: RuntimeObjectRegistry): readonly GeodesicIntersectionObject[] {
+  const memory = getGeodesicIntersectionMemory(registry);
+  const previous = new Map(memory);
   for (const object of registry.getAll()) {
     if (object.kind === "geodesic-intersection") {
+      previous.set(object.id, object);
       registry.remove(object.id);
     }
   }
 
-  const intersections = findGeodesicIntersections(registry);
+  const intersections = assignGeodesicIntersectionIdentities(findGeodesicIntersections(registry), previous);
+  memory.clear();
   for (const intersection of intersections) {
     registry.add(intersection);
+    memory.set(intersection.id, intersection);
+  }
+  for (const [id, intersection] of previous) {
+    if (!memory.has(id)) {
+      memory.set(id, intersection);
+    }
   }
 
   return intersections;
+}
+
+export function getRememberedGeodesicIntersectionObject(
+  registry: RuntimeObjectRegistry,
+  intersectionId: string,
+): GeodesicIntersectionObject | undefined {
+  return getGeodesicIntersectionMemory(registry).get(intersectionId);
+}
+
+export function pruneMissingGeodesicIntersectionObjects(registry: RuntimeObjectRegistry): readonly string[] {
+  const memory = getGeodesicIntersectionMemory(registry);
+  const prunedIds: string[] = [];
+  for (const [id] of [...memory]) {
+    if (registry.get(id)?.kind === "geodesic-intersection") {
+      continue;
+    }
+
+    memory.delete(id);
+    prunedIds.push(id);
+  }
+
+  return prunedIds;
 }
 
 function createSegmentFromTrace(options: {
@@ -1041,7 +1075,7 @@ function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly Ge
 
       seenKeys.add(key);
       intersections.push(createGeodesicIntersectionObject({
-        id: `geodesic-intersection:${sanitizeIdPart(key)}`,
+        id: createGeodesicIntersectionId(left.cellId, geodesicIds, intersection.point),
         cellId: left.cellId,
         balloonPoint: {
           x: intersection.point.x,
@@ -1056,6 +1090,81 @@ function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly Ge
   }
 
   return intersections;
+}
+
+function assignGeodesicIntersectionIdentities(
+  intersections: readonly GeodesicIntersectionObject[],
+  previousById: ReadonlyMap<string, GeodesicIntersectionObject>,
+): readonly GeodesicIntersectionObject[] {
+  const usedPreviousIds = new Set<string>();
+  return intersections.map((intersection) => {
+    const match = findContinuityMatchedIntersection(intersection, previousById, usedPreviousIds);
+    if (!match) {
+      return intersection;
+    }
+
+    usedPreviousIds.add(match.id);
+    return {
+      ...intersection,
+      id: match.id,
+    };
+  });
+}
+
+function findContinuityMatchedIntersection(
+  intersection: GeodesicIntersectionObject,
+  previousById: ReadonlyMap<string, GeodesicIntersectionObject>,
+  usedPreviousIds: ReadonlySet<string>,
+): GeodesicIntersectionObject | undefined {
+  let best: { readonly object: GeodesicIntersectionObject; readonly distance: number } | undefined;
+  for (const previous of previousById.values()) {
+    if (
+      usedPreviousIds.has(previous.id) ||
+      previous.cellId !== intersection.cellId ||
+      !sameGeodesicPair(previous.geodesicIds, intersection.geodesicIds)
+    ) {
+      continue;
+    }
+
+    const distance = distanceBetweenIntersectionTargets(previous, intersection);
+    if (distance > vertexContinuityToleranceMeters || (best && distance >= best.distance)) {
+      continue;
+    }
+
+    best = { object: previous, distance };
+  }
+
+  return best?.object;
+}
+
+function sameGeodesicPair(left: readonly [string, string], right: readonly [string, string]): boolean {
+  return left[0] === right[0] && left[1] === right[1];
+}
+
+function distanceBetweenIntersectionTargets(left: GeodesicIntersectionObject, right: GeodesicIntersectionObject): number {
+  const leftPoint = left.aimStickyTarget?.localPoint ?? left.localPose.translation;
+  const rightPoint = right.aimStickyTarget?.localPoint ?? right.localPose.translation;
+  return Math.sqrt(distanceSquared(leftPoint, rightPoint));
+}
+
+function createGeodesicIntersectionId(
+  cellId: string,
+  geodesicIds: readonly [string, string],
+  point: Vec3,
+): string {
+  return `geodesic-intersection:${sanitizeIdPart(
+    `${cellId}:${geodesicIds.join(":")}:${point.x.toFixed(5)}:${point.y.toFixed(5)}`,
+  )}`;
+}
+
+function getGeodesicIntersectionMemory(registry: RuntimeObjectRegistry): Map<string, GeodesicIntersectionObject> {
+  let memory = geodesicIntersectionMemoryByRegistry.get(registry);
+  if (!memory) {
+    memory = new Map();
+    geodesicIntersectionMemoryByRegistry.set(registry, memory);
+  }
+
+  return memory;
 }
 
 function createGeodesicIntersectionObject(options: {

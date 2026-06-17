@@ -11,6 +11,7 @@ import {
 } from "../../src/world-objects/protractorTool";
 import {
   geodesicRayBeamHeightMeters,
+  updateGeodesicIntersectionObjects,
   type GeodesicCannonObject,
   type GeodesicIntersectionObject,
   type GeodesicSegmentObject,
@@ -182,6 +183,68 @@ describe("protractor tool objects", () => {
     expect(refreshed?.first.yawRadians).toBeCloseTo(0);
     expect(refreshed?.second.yawRadians).toBeCloseTo(Math.PI / 3);
     expect(refreshed?.angleDegrees).toBeCloseTo(60);
+  });
+
+  it("hides vertex-centered angles while their vertex is temporarily missing and restores them when it returns", () => {
+    const firstSegment = createSegment({
+      id: "g-a:segment:0",
+      geodesicId: "g-a",
+      start: { x: -1, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 1, y: 0, z: 0 },
+      lengthMeters: 2,
+    });
+    const secondSegment = createSegment({
+      id: "g-b:segment:0",
+      geodesicId: "g-b",
+      start: { x: 0, y: -1, z: geodesicRayBeamHeightMeters },
+      direction: { x: 0, y: 1, z: 0 },
+      lengthMeters: 2,
+    });
+    const registry = createRuntimeObjectRegistry([firstSegment, secondSegment]);
+    const [vertex] = updateGeodesicIntersectionObjects(registry);
+    const center = resolveProtractorCenterSelection(vertex);
+    const first = resolveProtractorDirectedGeodesicSelection({
+      center,
+      segment: firstSegment,
+      hitPoint: { x: 0.5, y: 0, z: geodesicRayBeamHeightMeters },
+    });
+    const second = resolveProtractorDirectedGeodesicSelection({
+      center,
+      segment: secondSegment,
+      hitPoint: { x: 0, y: 0.5, z: geodesicRayBeamHeightMeters },
+    });
+    if (!first || !second) {
+      throw new Error("Expected vertex protractor selections.");
+    }
+    const angle = createProtractorAngleObject({ id: "angle-a", center, first, second });
+
+    registry.update(createSegment({
+      id: "g-b:segment:0",
+      geodesicId: "g-b",
+      start: { x: 4, y: -1, z: geodesicRayBeamHeightMeters },
+      direction: { x: 0, y: 1, z: 0 },
+      lengthMeters: 2,
+    }));
+    updateGeodesicIntersectionObjects(registry);
+
+    const hidden = refreshProtractorAngleObject({ registry, angle });
+
+    expect(hidden?.portalRenderable).toBe(false);
+
+    registry.update(createSegment({
+      id: "g-b:segment:0",
+      geodesicId: "g-b",
+      start: { x: 0.25, y: -1, z: geodesicRayBeamHeightMeters },
+      direction: { x: 0, y: 1, z: 0 },
+      lengthMeters: 2,
+    }));
+    updateGeodesicIntersectionObjects(registry);
+
+    const restored = hidden ? refreshProtractorAngleObject({ registry, angle: hidden }) : undefined;
+
+    expect(restored?.portalRenderable).toBe(true);
+    expect(restored?.centerObjectId).toBe(vertex.id);
+    expect(restored?.centerPoint).toEqual({ x: 0.25, y: 0, z: geodesicRayBeamHeightMeters });
   });
 });
 

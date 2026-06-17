@@ -67,6 +67,7 @@ import {
   isGeodesicLocked,
   placeGeodesicCannonOnGeodesic,
   placeGeodesicCannonAtFloorPoint,
+  pruneMissingGeodesicIntersectionObjects,
   rebuildGeodesicToLength,
   removeGeodesic,
   resolveGeodesicNumber,
@@ -3039,6 +3040,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function finishActiveGeodesicCannonEdit(cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>): void {
     rebuildActiveGeodesicFromCannon(cannon, { connectEmitters: true, snapToEmitter: true });
+    removeProtractorAnglesForMissingVertices(pruneMissingGeodesicIntersectionObjects(runtimeObjectRegistry));
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
   }
@@ -3533,6 +3535,20 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         object.kind === "protractor-angle" &&
         (object.first.geodesicId === geodesicId || object.second.geodesicId === geodesicId)
       ) {
+        runtimeObjectRegistry.remove(object.id);
+        removeProtractorAngleRuntime(object.id);
+      }
+    }
+  }
+
+  function removeProtractorAnglesForMissingVertices(vertexIds: readonly string[]): void {
+    if (vertexIds.length === 0) {
+      return;
+    }
+
+    const missingVertexIds = new Set(vertexIds);
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "protractor-angle" && missingVertexIds.has(object.centerObjectId)) {
         runtimeObjectRegistry.remove(object.id);
         removeProtractorAngleRuntime(object.id);
       }
