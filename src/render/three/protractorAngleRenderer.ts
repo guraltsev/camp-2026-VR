@@ -14,6 +14,7 @@ const arcColor = 0xffd166;
 const fillColor = 0x38f2ff;
 const boundaryColor = 0xffffff;
 const arcTubeRadiusMeters = 0.008;
+const angleLabelHeightMeters = 0.3;
 
 export function createProtractorAngleRuntime(object: ProtractorAngleObject): ProtractorAngleRuntime {
   let root = createProtractorAngleRoot(object);
@@ -183,13 +184,8 @@ function createAngleLabel(object: ProtractorAngleObject): THREE.Object3D {
     side: THREE.FrontSide,
   });
   const badge = createDoubleFacedTooltipBadge(material);
-  const labelAngle = object.angleRadians / 2;
   badge.name = "protractor-angle-floating-tooltip";
-  badge.position.set(
-    Math.cos(labelAngle) * object.radiusMeters * 0.42,
-    0.28,
-    -Math.sin(labelAngle) * object.radiusMeters * 0.42,
-  );
+  positionAngleLabelBadge(badge, object);
   badge.renderOrder = 57;
   return badge;
 }
@@ -203,15 +199,20 @@ function createFallbackAngleTooltip(object: ProtractorAngleObject): THREE.Group 
     side: THREE.FrontSide,
   });
   const badge = createDoubleFacedTooltipBadge(material);
-  const labelAngle = object.angleRadians / 2;
   badge.name = "protractor-angle-floating-tooltip";
-  badge.position.set(
-    Math.cos(labelAngle) * object.radiusMeters * 0.42,
-    0.28,
-    -Math.sin(labelAngle) * object.radiusMeters * 0.42,
-  );
+  positionAngleLabelBadge(badge, object);
   badge.renderOrder = 57;
   return badge;
+}
+
+function positionAngleLabelBadge(badge: THREE.Object3D, object: ProtractorAngleObject): void {
+  const labelAngle = object.angleRadians / 2;
+  badge.position.set(
+    Math.cos(labelAngle) * object.radiusMeters,
+    angleLabelHeightMeters,
+    -Math.sin(labelAngle) * object.radiusMeters,
+  );
+  badge.rotation.y = labelAngle + Math.PI / 2;
 }
 
 function createDoubleFacedTooltipBadge(material: THREE.MeshBasicMaterial): THREE.Group {

@@ -13,7 +13,7 @@ import {
   type GeodesicSegmentObject,
 } from "../../src/world-objects/geodesicCannon";
 import { createProtractorAngleObject } from "../../src/world-objects/protractorTool";
-import { resolveAimTarget } from "../../src/render/three/aimTarget";
+import { getGeodesicEmitterAimCylinderBounds, resolveAimTarget } from "../../src/render/three/aimTarget";
 import type { VisiblePortalPath } from "../../src/render/three/visiblePortalPaths";
 import { rigidTransformToThreeMatrix, worldPointToThree } from "../../src/render/three/worldAxes";
 
@@ -77,7 +77,7 @@ describe("resolveAimTarget", () => {
     });
     const registry = createRuntimeObjectRegistry([emitter]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
-    const camera = cameraLookingAt({ x: 0, y: 0, z: 1.08 }, { x: 40, y: 0.35, z: 1.08 });
+    const camera = cameraLookingAt({ x: 0, y: 0, z: 1.08 }, { x: 40, y: 0.18, z: 1.08 });
 
     const target = resolveAimTarget({
       world,
@@ -93,7 +93,19 @@ describe("resolveAimTarget", () => {
     expect(target?.distanceMeters).toBeGreaterThan(39);
   });
 
-  it("misses geodesic emitters just outside the enlarged cylindrical aim outline", () => {
+  it("uses a halved geodesic emitter aim cylinder radius", () => {
+    const emitter = createGeodesicCannonObject({
+      id: "emitter-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 40, y: 0, z: 0 }),
+    });
+
+    const bounds = getGeodesicEmitterAimCylinderBounds(emitter);
+
+    expect(bounds?.radius).toBeCloseTo(0.19);
+  });
+
+  it("misses geodesic emitters just outside the narrowed cylindrical aim outline", () => {
     const world = compileCellComplex(largeRoomWorld());
     const emitter = createGeodesicCannonObject({
       id: "emitter-a",
@@ -102,7 +114,7 @@ describe("resolveAimTarget", () => {
     });
     const registry = createRuntimeObjectRegistry([emitter]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
-    const camera = cameraLookingAt({ x: 0, y: 0.42, z: 1.08 }, { x: 40, y: 0.42, z: 1.08 });
+    const camera = cameraLookingAt({ x: 0, y: 0.2, z: 1.08 }, { x: 40, y: 0.2, z: 1.08 });
 
     const target = resolveAimTarget({
       world,
@@ -191,7 +203,7 @@ describe("resolveAimTarget", () => {
     });
     const registry = createRuntimeObjectRegistry([cannon, segment]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
-    const camera = cameraLookingAt({ x: 0.5, y: -2, z: 1.08 }, { x: 0.5, y: 0, z: 1.08 });
+    const camera = cameraLookingAt({ x: 0.5, y: 0.12, z: 1.5 }, { x: 0.5, y: 0.12, z: 1.08 });
 
     const target = resolveAimTarget({
       world,
@@ -272,6 +284,42 @@ describe("resolveAimTarget", () => {
     expect(firstTarget?.geodesicEmitterGeodesicId).toBe("g-a");
     expect(secondTarget?.object?.id).toBe("cannon-a");
     expect(secondTarget?.geodesicEmitterGeodesicId).toBe("g-b");
+  });
+
+  it("misses geodesic emitter handle capsules outside the narrowed radius", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+      activeGeodesicId: "g-a",
+      geodesicIds: ["g-a"],
+    });
+    const registry = createRuntimeObjectRegistry([cannon]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const bodyTarget = resolveAimTarget({
+      world,
+      registry,
+      camera: cameraLookingAt(
+        { x: 0.5, y: 0.14, z: 1.5 },
+        { x: 0.5, y: 0.14, z: geodesicRayBeamHeightMeters },
+      ),
+      visiblePortalPaths: [visiblePath(rootPath)],
+      maxDistanceMeters: 0.5,
+    });
+    const endTarget = resolveAimTarget({
+      world,
+      registry,
+      camera: cameraLookingAt(
+        { x: 0.85, y: 0.14, z: 1.5 },
+        { x: 0.85, y: 0.14, z: geodesicRayBeamHeightMeters },
+      ),
+      visiblePortalPaths: [visiblePath(rootPath)],
+      maxDistanceMeters: 0.5,
+    });
+
+    expect(bodyTarget).toBeUndefined();
+    expect(endTarget).toBeUndefined();
   });
 
   it("keeps short geodesic ray segments selectable near their emitter when the emitter hitbox is missed", () => {

@@ -75,6 +75,7 @@ import {
 } from "../../world-objects/geodesicCannon";
 import {
   createProtractorAngleObject,
+  refreshProtractorAngleObject,
   resolveProtractorCenterSelection,
   resolveProtractorDirectedGeodesicSelection,
   resolveProtractorEmitterGeodesicSelection,
@@ -91,7 +92,12 @@ import { createDesktopFlagEditor } from "../dom/desktopFlagEditor";
 import { createDesktopToolIndicator } from "../dom/desktopToolIndicator";
 import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
 import { createAimCrossMarker } from "./aimCrossMarker";
-import { getGeodesicEmitterAimCylinderBounds, geodesicSegmentAimRadiusMeters, resolveAimTarget } from "./aimTarget";
+import {
+  getGeodesicEmitterAimCylinderBounds,
+  getGeodesicEmitterAimSphereCenter,
+  geodesicSegmentAimRadiusMeters,
+  resolveAimTarget,
+} from "./aimTarget";
 import { resolveGeodesicCannonAimYawFromAbsolutePoints } from "./geodesicCannonAimTarget";
 import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRenderer";
 import { createProtractorAngleRuntime, type ProtractorAngleRuntime } from "./protractorAngleRenderer";
@@ -2252,10 +2258,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     if (!runtime) {
       runtime = createProtractorAngleRuntime(object);
       protractorAngleRuntimes.set(object.id, runtime);
-      runtimeObjectRootsById.set(object.id, runtime.root);
+    } else {
+      invalidateRuntimeObjectRenderState(object.id);
     }
 
     runtime.syncFromObject(object);
+    runtimeObjectRootsById.set(object.id, runtime.root);
     syncRuntimeObjectPortalInstances();
   }
 
@@ -2267,9 +2275,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     runtimeObjectRootsById.delete(objectId);
+    invalidateRuntimeObjectRenderState(objectId);
+  }
+
+  function invalidateRuntimeObjectRenderState(objectId: string): void {
     for (const [key, source] of [...runtimeObjectRenderSourcesByKey]) {
       if (source.objectId === objectId) {
         runtimeObjectRenderSourcesByKey.delete(key);
+        const archetype = runtimeObjectRenderArchetypesByKey.get(key);
+        if (archetype) {
+          runtimeObjectRenderRoot.remove(archetype.mesh);
+          disposeRuntimeObjectRenderArchetypes([archetype]);
+          runtimeObjectRenderArchetypesByKey.delete(key);
+        }
       }
     }
   }
@@ -3000,7 +3018,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     const totalLengthMeters = geodesicCannonRotationTargetLengthMeters ?? getGeodesicTotalLengthMeters(geodesicId);
-    removeProtractorAnglesForGeodesic(geodesicId);
     rebuildGeodesicToLength({
       world: appState.world,
       registry: runtimeObjectRegistry,
@@ -3010,6 +3027,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       connectEmitters: options.connectEmitters,
       snapToEmitter: options.snapToEmitter,
     });
+    refreshProtractorAnglesForGeodesic(geodesicId);
     activeGeodesicCannonToolState = {
       selectedCannonId: cannon.id,
       activeGeodesicId: geodesicId,
@@ -3486,6 +3504,30 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
+  function refreshProtractorAnglesForGeodesic(geodesicId: string): void {
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (
+        object.kind !== "protractor-angle" ||
+        (object.first.geodesicId !== geodesicId && object.second.geodesicId !== geodesicId)
+      ) {
+        continue;
+      }
+
+      const refreshed = refreshProtractorAngleObject({
+        registry: runtimeObjectRegistry,
+        angle: object,
+      });
+      if (!refreshed) {
+        runtimeObjectRegistry.remove(object.id);
+        removeProtractorAngleRuntime(object.id);
+        continue;
+      }
+
+      runtimeObjectRegistry.update(refreshed);
+      syncProtractorAngleRuntime(refreshed);
+    }
+  }
+
   function getCameraForwardVector(): { readonly x: number; readonly y: number; readonly z: number } {
     const forward = new THREE.Vector3(0, 0, -1);
     const quaternion = new THREE.Quaternion();
@@ -3593,10 +3635,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     if (object.kind === "geodesic-cannon") {
       const bounds = getGeodesicEmitterAimCylinderBounds(object);
-      return bounds ? buildCylinderAimCollisionOutlineDebugMesh(
-        bounds,
-        "aim-collision-outline:geodesic-emitter-cylinder",
-      ) : undefined;
+      return bounds ? buildGeodesicEmitterAimCollisionOutlineDebugMesh(object, bounds) : undefined;
     }
 
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
@@ -4203,6 +4242,25 @@ function buildSphereAimCollisionOutlineDebugMesh(
   mesh.renderOrder = aimCollisionOutlineDebugRenderOrder;
   mesh.frustumCulled = false;
   return mesh;
+}
+
+function buildGeodesicEmitterAimCollisionOutlineDebugMesh(
+  object: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+  bounds: SimpleCylinderBounds,
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "aim-collision-outline:geodesic-emitter";
+  group.renderOrder = aimCollisionOutlineDebugRenderOrder;
+  group.frustumCulled = false;
+  group.add(
+    buildCylinderAimCollisionOutlineDebugMesh(bounds, "aim-collision-outline:geodesic-emitter-cylinder"),
+    buildSphereAimCollisionOutlineDebugMesh(
+      getGeodesicEmitterAimSphereCenter(object),
+      bounds.radius,
+      "aim-collision-outline:geodesic-emitter-top-sphere",
+    ),
+  );
+  return group;
 }
 
 function buildGeodesicSegmentSelectableHitboxDebugMesh(

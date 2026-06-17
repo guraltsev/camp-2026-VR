@@ -60,7 +60,7 @@ const protractorAngleAimRadiusMeters = 0.08;
 const geodesicEmitterAimCylinderRadiusPaddingMeters = 0.08;
 const geodesicEmitterAimCylinderHalfHeightPaddingMeters = 0.1;
 const geodesicEmitterGeodesicHandleLengthMeters = 0.65;
-const geodesicEmitterGeodesicHandleRadiusMeters = 0.16;
+const geodesicEmitterGeodesicHandleRadiusMeters = 0.16 / 2.5;
 const defaultMaxEmitterAimDistanceMeters = 200;
 export const geodesicSegmentAimRadiusMeters = 0.28 / 1.5;
 
@@ -544,8 +544,18 @@ export function getGeodesicEmitterAimCylinderBounds(
 
   return {
     center: bounds.center,
-    radius: bounds.radius + geodesicEmitterAimCylinderRadiusPaddingMeters,
+    radius: (bounds.radius + geodesicEmitterAimCylinderRadiusPaddingMeters) / 2,
     halfHeight: bounds.halfHeight + geodesicEmitterAimCylinderHalfHeightPaddingMeters,
+  };
+}
+
+export function getGeodesicEmitterAimSphereCenter(
+  emitter: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+): Vec3 {
+  return {
+    x: emitter.localPose.translation.x,
+    y: emitter.localPose.translation.y,
+    z: emitter.localPose.translation.z + geodesicRayBeamHeightMeters,
   };
 }
 
@@ -601,23 +611,19 @@ function intersectRayWithGeodesicEmitterAimCylinder(
     return undefined;
   }
 
+  const sphereCenter = getGeodesicEmitterAimSphereCenter(emitter);
   const cylinderHit = intersectRayWithVerticalCylinder(origin, direction, bounds);
-  const geodesicHit = cylinderHit
-    ? intersectRayWithEmitterGeodesicHandles(origin, direction, emitter)
-    : undefined;
-  const hit = chooseEmitterAimHit(cylinderHit, geodesicHit);
+  const sphereHit = intersectRayWithSphere(origin, direction, sphereCenter, bounds.radius);
+  const emitterHit = chooseNearestHit(cylinderHit, sphereHit);
+  const geodesicHit = intersectRayWithEmitterGeodesicHandles(origin, direction, emitter);
+  const hit = chooseEmitterAimHit(emitterHit, geodesicHit);
   if (!hit) {
     return undefined;
   }
 
-  const targetPoint = {
-    x: emitter.localPose.translation.x,
-    y: emitter.localPose.translation.y,
-    z: emitter.localPose.translation.z + geodesicRayBeamHeightMeters,
-  };
   return {
     ...hit,
-    targetPoint,
+    targetPoint: sphereCenter,
   };
 }
 
@@ -685,6 +691,20 @@ function chooseEmitterAimHit(
   return geodesicHit.distance <= cylinderHit.distance + aimTargetPriorityDistanceToleranceMeters
     ? geodesicHit
     : cylinderHit;
+}
+
+function chooseNearestHit(
+  left: ObjectAimHit | undefined,
+  right: ObjectAimHit | undefined,
+): ObjectAimHit | undefined {
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+
+  return left.distance <= right.distance ? left : right;
 }
 
 function pushCylinderSideHit(

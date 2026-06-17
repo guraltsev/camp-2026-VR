@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
+import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
 import {
   createProtractorAngleObject,
   protractorAngleRadiusMeters,
+  refreshProtractorAngleObject,
   resolveProtractorCenterSelection,
   resolveProtractorDirectedGeodesicSelection,
   resolveProtractorEmitterGeodesicSelection,
@@ -108,7 +110,78 @@ describe("protractor tool objects", () => {
       geodesicId: "g-b",
       segmentId: "emitter-a:g-b:emitter",
       yawRadians: Math.PI / 4,
+      directionSign: 1,
     });
+  });
+
+  it("refreshes emitter-selected angle measurements from live emitter yaw", () => {
+    const emitter = createEmitter({
+      geodesicEmitterYawRadiansById: { "g-a": 0, "g-b": Math.PI / 2 },
+    });
+    const registry = createRuntimeObjectRegistry([emitter]);
+    const center = resolveProtractorCenterSelection(emitter);
+    const first = resolveProtractorEmitterGeodesicSelection({ center, emitter, geodesicId: "g-a" });
+    const second = resolveProtractorEmitterGeodesicSelection({ center, emitter, geodesicId: "g-b" });
+    if (!first || !second) {
+      throw new Error("Expected emitter protractor selections.");
+    }
+    const angle = createProtractorAngleObject({ id: "angle-a", center, first, second });
+
+    registry.update({
+      ...emitter,
+      aimYawRadians: Math.PI,
+      localPose: yawRigidTransform3(Math.PI, emitter.localPose.translation),
+      geodesicEmitterYawRadiansById: { "g-a": 0, "g-b": Math.PI },
+    });
+
+    const refreshed = refreshProtractorAngleObject({ registry, angle });
+
+    expect(refreshed?.first.yawRadians).toBeCloseTo(0);
+    expect(refreshed?.second.yawRadians).toBeCloseTo(Math.PI);
+    expect(refreshed?.angleDegrees).toBeCloseTo(180);
+  });
+
+  it("refreshes segment-selected angle measurements from live segment directions", () => {
+    const emitter = createEmitter();
+    const firstSegment = createSegment({
+      id: "g-a:segment:0",
+      geodesicId: "g-a",
+      start: { x: 0.2, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 1, y: 0, z: 0 },
+    });
+    const secondSegment = createSegment({
+      id: "g-b:segment:0",
+      geodesicId: "g-b",
+      start: { x: 0, y: 0.2, z: geodesicRayBeamHeightMeters },
+      direction: { x: 0, y: 1, z: 0 },
+    });
+    const registry = createRuntimeObjectRegistry([emitter, firstSegment, secondSegment]);
+    const center = resolveProtractorCenterSelection(emitter);
+    const first = resolveProtractorDirectedGeodesicSelection({
+      center,
+      segment: firstSegment,
+      hitPoint: { x: 0.5, y: 0, z: geodesicRayBeamHeightMeters },
+    });
+    const second = resolveProtractorDirectedGeodesicSelection({
+      center,
+      segment: secondSegment,
+      hitPoint: { x: 0, y: 0.5, z: geodesicRayBeamHeightMeters },
+    });
+    if (!first || !second) {
+      throw new Error("Expected segment protractor selections.");
+    }
+    const angle = createProtractorAngleObject({ id: "angle-a", center, first, second });
+
+    registry.update({
+      ...secondSegment,
+      direction: { x: 0.5, y: Math.sqrt(3) / 2, z: 0 },
+    });
+
+    const refreshed = refreshProtractorAngleObject({ registry, angle });
+
+    expect(refreshed?.first.yawRadians).toBeCloseTo(0);
+    expect(refreshed?.second.yawRadians).toBeCloseTo(Math.PI / 3);
+    expect(refreshed?.angleDegrees).toBeCloseTo(60);
   });
 });
 

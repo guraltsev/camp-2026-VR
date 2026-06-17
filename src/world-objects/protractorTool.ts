@@ -6,7 +6,7 @@ import {
   type GeodesicIntersectionObject,
   type GeodesicSegmentObject,
 } from "./geodesicCannon";
-import type { RuntimeWorldObjectBase } from "./runtimeObjectRegistry";
+import type { RuntimeObjectRegistry, RuntimeWorldObjectBase } from "./runtimeObjectRegistry";
 
 export const protractorAngleRadiusMeters = 0.3;
 
@@ -33,6 +33,7 @@ export interface ProtractorDirectedGeodesic {
   readonly label?: string;
   readonly segmentId: string;
   readonly yawRadians: number;
+  readonly directionSign?: 1 | -1;
 }
 
 export function resolveProtractorCenterSelection(
@@ -81,9 +82,9 @@ export function resolveProtractorDirectedGeodesicSelection(options: {
     z: 0,
   };
   const hitDirectionDot = dotVec3(hitOffset, segment.direction);
-  const sign = Math.abs(hitDirectionDot) > 1e-6
+  const sign = toDirectionSign(Math.abs(hitDirectionDot) > 1e-6
     ? Math.sign(hitDirectionDot)
-    : centerDistance <= 0 ? 1 : centerDistance >= segment.lengthMeters ? -1 : 1;
+    : centerDistance <= 0 ? 1 : centerDistance >= segment.lengthMeters ? -1 : 1);
   const yawRadians = normalizeSignedRadians(
     Math.atan2(segment.direction.y * sign, segment.direction.x * sign),
   );
@@ -92,6 +93,7 @@ export function resolveProtractorDirectedGeodesicSelection(options: {
     geodesicId: segment.geodesicId,
     segmentId: segment.id,
     yawRadians,
+    directionSign: sign,
   };
 }
 
@@ -116,6 +118,7 @@ export function resolveProtractorEmitterGeodesicSelection(options: {
     geodesicId,
     segmentId: `${emitter.id}:${geodesicId}:emitter`,
     yawRadians: normalizeSignedRadians(emitter.geodesicEmitterYawRadiansById?.[geodesicId] ?? emitter.aimYawRadians),
+    directionSign: 1,
   };
 }
 
@@ -154,6 +157,30 @@ export function createProtractorAngleObject(options: {
   };
 }
 
+export function refreshProtractorAngleObject(options: {
+  readonly registry: RuntimeObjectRegistry;
+  readonly angle: ProtractorAngleObject;
+}): ProtractorAngleObject | undefined {
+  const centerObject = options.registry.get(options.angle.centerObjectId);
+  if (centerObject?.kind !== "geodesic-cannon" && centerObject?.kind !== "geodesic-intersection") {
+    return undefined;
+  }
+
+  const center = resolveProtractorCenterSelection(centerObject);
+  const first = resolveLiveProtractorDirectedGeodesic(options.registry, center, options.angle.first);
+  const second = resolveLiveProtractorDirectedGeodesic(options.registry, center, options.angle.second);
+  if (!first || !second) {
+    return undefined;
+  }
+
+  return createProtractorAngleObject({
+    id: options.angle.id,
+    center,
+    first,
+    second,
+  });
+}
+
 export function formatProtractorAngleLabel(
   first: Pick<ProtractorDirectedGeodesic, "geodesicId" | "label">,
   second: Pick<ProtractorDirectedGeodesic, "geodesicId" | "label">,
@@ -166,6 +193,115 @@ function getDistanceAlongSegment(segment: GeodesicSegmentObject, point: Vec3): n
   return (point.x - segment.start.x) * segment.direction.x +
     (point.y - segment.start.y) * segment.direction.y +
     (point.z - segment.start.z) * segment.direction.z;
+}
+
+function resolveLiveProtractorDirectedGeodesic(
+  registry: RuntimeObjectRegistry,
+  center: ProtractorCenterSelection,
+  previous: ProtractorDirectedGeodesic,
+): ProtractorDirectedGeodesic | undefined {
+  const emitter = resolveEmitterSelectionObject(registry, previous);
+  if (emitter) {
+    const selected = resolveProtractorEmitterGeodesicSelection({
+      center,
+      emitter,
+      geodesicId: previous.geodesicId,
+    });
+    return selected ? { ...selected, label: previous.label } : undefined;
+  }
+
+  const segment = resolveSegmentSelectionObject(registry, center, previous);
+  if (!segment) {
+    return undefined;
+  }
+
+  return {
+    geodesicId: segment.geodesicId,
+    label: previous.label,
+    segmentId: segment.id,
+    yawRadians: resolveSegmentYawFromCenter(segment, center, previous),
+    directionSign: resolveSegmentDirectionSign(segment, center, previous),
+  };
+}
+
+function resolveEmitterSelectionObject(
+  registry: RuntimeObjectRegistry,
+  previous: ProtractorDirectedGeodesic,
+): GeodesicCannonObject | undefined {
+  const suffix = `:${previous.geodesicId}:emitter`;
+  if (!previous.segmentId.endsWith(suffix)) {
+    return undefined;
+  }
+
+  const object = registry.get(previous.segmentId.slice(0, -suffix.length));
+  return object?.kind === "geodesic-cannon" ? object : undefined;
+}
+
+function resolveSegmentSelectionObject(
+  registry: RuntimeObjectRegistry,
+  center: ProtractorCenterSelection,
+  previous: ProtractorDirectedGeodesic,
+): GeodesicSegmentObject | undefined {
+  const current = registry.get(previous.segmentId);
+  if (current?.kind === "geodesic-segment" && segmentCanAnchorProtractorSelection(center, current)) {
+    return current;
+  }
+
+  return registry.getAll()
+    .filter((object): object is GeodesicSegmentObject => object.kind === "geodesic-segment")
+    .filter((segment) => segment.geodesicId === previous.geodesicId && segmentCanAnchorProtractorSelection(center, segment))
+    .sort((left, right) =>
+      Math.abs(getDistanceAlongSegment(left, center.point)) -
+      Math.abs(getDistanceAlongSegment(right, center.point))
+    )[0];
+}
+
+function segmentCanAnchorProtractorSelection(
+  center: ProtractorCenterSelection,
+  segment: GeodesicSegmentObject,
+): boolean {
+  if (center.cellId !== segment.cellId || !center.geodesicIds.includes(segment.geodesicId)) {
+    return false;
+  }
+
+  const centerDistance = getDistanceAlongSegment(segment, center.point);
+  const clampedCenterDistance = Math.min(segment.lengthMeters, Math.max(0, centerDistance));
+  return distance2(center.point, getPointOnSegment(segment, clampedCenterDistance)) <=
+    protractorAngleRadiusMeters * protractorAngleRadiusMeters;
+}
+
+function resolveSegmentYawFromCenter(
+  segment: GeodesicSegmentObject,
+  center: ProtractorCenterSelection,
+  previous: ProtractorDirectedGeodesic,
+): number {
+  const sign = resolveSegmentDirectionSign(segment, center, previous);
+  return normalizeSignedRadians(Math.atan2(segment.direction.y * sign, segment.direction.x * sign));
+}
+
+function resolveSegmentDirectionSign(
+  segment: GeodesicSegmentObject,
+  center: ProtractorCenterSelection,
+  previous: ProtractorDirectedGeodesic,
+): 1 | -1 {
+  if (previous.directionSign) {
+    return previous.directionSign;
+  }
+
+  const centerDistance = getDistanceAlongSegment(segment, center.point);
+  if (centerDistance <= 0) {
+    return 1;
+  }
+  if (centerDistance >= segment.lengthMeters) {
+    return -1;
+  }
+
+  const forwardYaw = normalizeSignedRadians(Math.atan2(segment.direction.y, segment.direction.x));
+  const backwardYaw = normalizeSignedRadians(forwardYaw + Math.PI);
+  return Math.abs(normalizeSignedRadians(forwardYaw - previous.yawRadians)) <=
+      Math.abs(normalizeSignedRadians(backwardYaw - previous.yawRadians))
+    ? 1
+    : -1;
 }
 
 function getPointOnSegment(segment: GeodesicSegmentObject, distanceMeters: number): Vec3 {
@@ -190,6 +326,10 @@ function normalizePositiveRadians(radians: number): number {
 
 function normalizeSignedRadians(radians: number): number {
   return Math.atan2(Math.sin(radians), Math.cos(radians));
+}
+
+function toDirectionSign(value: number): 1 | -1 {
+  return value < 0 ? -1 : 1;
 }
 
 function formatDegrees(value: number): string {
