@@ -1,5 +1,5 @@
 import type { CellComplexSpec } from "../cell-complex/specs";
-import { cube, dodecahedron, tetrahedron, torus, twoPrismLoop } from "./exampleWorlds";
+import { cube, dodecahedron, icosahedron, octahedron, tetrahedron, torus } from "./exampleWorlds";
 
 export interface WorldCatalogEntry {
   readonly id: string;
@@ -14,12 +14,13 @@ interface WorldCatalogRecord extends WorldCatalogEntry {
 const worldCatalogRecords = [
   createWorldCatalogRecord("cube", "Cube", cube),
   createWorldCatalogRecord("dodecahedron", "Dodecahedron", dodecahedron),
+  createWorldCatalogRecord("icosahedron", "Icosahedron", icosahedron),
+  createWorldCatalogRecord("octahedron", "Octahedron", octahedron),
   createWorldCatalogRecord("tetrahedron", "Tetrahedron", tetrahedron),
   createWorldCatalogRecord("torus", "Torus", torus),
-  createWorldCatalogRecord("twoPrismLoop", "Two Prism Loop", twoPrismLoop),
 ] as const satisfies readonly WorldCatalogRecord[];
 
-export const defaultWorldId = "twoPrismLoop";
+export const defaultWorldId = "cube";
 
 export const worldCatalog: readonly WorldCatalogEntry[] = [...worldCatalogRecords]
   .sort((a, b) => a.label.localeCompare(b.label))

@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
-import { dodecahedron, twoPrismLoop } from "../../src/authoring/exampleWorlds";
+import { dodecahedron } from "../../src/authoring/exampleWorlds";
+import { twoPrismLoop } from "../fixtures/twoPrismLoop";
 import { buildCellMesh } from "../../src/render/three/buildCellMesh";
 import { SCENE_BACKGROUND_COLOR } from "../../src/render/three/sceneColors";
 import { PORTAL_WALL_TEXTURE_URL } from "../../src/render/three/portalWallTexture";

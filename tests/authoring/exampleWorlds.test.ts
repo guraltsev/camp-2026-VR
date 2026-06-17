@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cube, dodecahedron, tetrahedron, torus, twoPrismLoop } from "../../src/authoring/exampleWorlds";
+import { worldCatalog } from "../../src/authoring/worldCatalog";
+import { cube, dodecahedron, icosahedron, octahedron, tetrahedron, torus } from "../../src/authoring/exampleWorlds";
 import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder } from "../../src/movement/collision";
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
@@ -10,14 +11,26 @@ import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 const exampleWorlds = [
   ["cube", cube],
   ["dodecahedron", dodecahedron],
+  ["icosahedron", icosahedron],
+  ["octahedron", octahedron],
   ["tetrahedron", tetrahedron],
   ["torus", torus],
-  ["twoPrismLoop", twoPrismLoop],
 ] as const;
 
 describe("example worlds", () => {
   it.each(exampleWorlds)("does not repeat object assets within %s", (_name, world) => {
     expect(repeatedObjectAssetPaths(world)).toEqual([]);
+  });
+
+  it("exposes every Platonic solid as a selectable world", () => {
+    expect(worldCatalog.map((entry) => entry.id).sort()).toEqual([
+      "cube",
+      "dodecahedron",
+      "icosahedron",
+      "octahedron",
+      "tetrahedron",
+      "torus",
+    ]);
   });
 
   it("keeps tetrahedron faces equilateral so portal-glued corners align", () => {
@@ -32,24 +45,47 @@ describe("example worlds", () => {
     }
   });
 
+  it.each(exampleWorlds)("keeps houses away from the starting player in %s", (_name, world) => {
+    const startCell = world.cells[0];
+    const playerBounds = getPlayerBounds(startCell.id);
+    const collidingHouses: string[] = [];
+
+    for (const object of startCell.visuals?.objects ?? []) {
+      if (object.kind !== "asset" || object.assetPath !== "small_house/small_house.glb") {
+        continue;
+      }
+
+      if (!object.collision) {
+        throw new Error(`Expected house ${object.id} to have collision bounds.`);
+      }
+
+      const objectBounds = getDynamicObjectCollisionBounds({
+        cellId: startCell.id,
+        localPose: yawRigidTransform3(object.yawRadians ?? 0, object.position),
+        collision: object.collision,
+      });
+
+      if (!objectBounds) {
+        throw new Error(`Expected house ${object.id} collision bounds to compile.`);
+      }
+
+      if (simpleCylinderIntersectsSimpleCylinder(playerBounds, objectBounds)) {
+        collidingHouses.push(object.id);
+      }
+    }
+
+    expect(collidingHouses).toEqual([]);
+  });
+
   it("keeps tetrahedron decorative collisions away from the starting player", () => {
     const faceA = tetrahedron.cells.find((cell) => cell.id === "face-a");
     const house = faceA?.visuals?.objects?.find((object) => object.id === "face-a-centerpiece");
     const mouse = faceA?.visuals?.objects?.find((object) => object.id === "face-a-geo-mouse");
-    const playerBounds = getDynamicObjectCollisionBounds(
-      playerPoseToDynamicObject(
-        createDefaultPlayerPose("face-a"),
-        simpleCollisionCylinder(DEFAULT_PLAYER_RADIUS_METERS, DEFAULT_PLAYER_HEIGHT_METERS, {
-          x: 0,
-          y: 0,
-          z: DEFAULT_PLAYER_HEIGHT_METERS / 2,
-        }),
-      ),
-    );
+    const playerBounds = getPlayerBounds("face-a");
 
     expect(house?.kind).toBe("asset");
     expect(house?.collision).toMatchObject({
-      radius: 0.855,
+      radius: 1.09,
       height: 1.8900000000000001,
     });
     expect(mouse?.kind).toBe("geo-mouse");
@@ -59,7 +95,7 @@ describe("example worlds", () => {
       offset: { x: 0, y: 0.75, z: 0.31 },
     });
 
-    if (!house?.collision || !mouse?.collision || !playerBounds) {
+    if (!house?.collision || !mouse?.collision) {
       throw new Error("Expected house, mouse, and player collision bounds.");
     }
 
@@ -102,4 +138,23 @@ function repeatedObjectAssetPaths(world: CellComplexSpec): string[] {
     .filter(([, count]) => count > 1)
     .map(([assetPath]) => assetPath)
     .sort();
+}
+
+function getPlayerBounds(cellId: string) {
+  const playerBounds = getDynamicObjectCollisionBounds(
+    playerPoseToDynamicObject(
+      createDefaultPlayerPose(cellId),
+      simpleCollisionCylinder(DEFAULT_PLAYER_RADIUS_METERS, DEFAULT_PLAYER_HEIGHT_METERS, {
+        x: 0,
+        y: 0,
+        z: DEFAULT_PLAYER_HEIGHT_METERS / 2,
+      }),
+    ),
+  );
+
+  if (!playerBounds) {
+    throw new Error("Expected player collision bounds.");
+  }
+
+  return playerBounds;
 }

@@ -63,7 +63,7 @@ Portal("bottom", 3, "lower-3", 2);
 Portal("bottom", 4, "lower-4", 2);
 
 top_house = small_house("top-house", {
-  position: [0, 0, 0],
+  position: [2.8, 0, 0],
   scale: 0.9,
 });
 

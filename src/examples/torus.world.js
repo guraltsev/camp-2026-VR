@@ -11,7 +11,7 @@ Portal("torus-room", 0, "torus-room", 2);
 Portal("torus-room", 1, "torus-room", 3);
 
 torus_house = small_house("torus-center-house", {
-  position: [0, 0, 0],
+  position: [2.8, 0, 0],
   scale: 0.9,
 });
 

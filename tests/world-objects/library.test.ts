@@ -98,11 +98,11 @@ describe("worldObjectLibrary", () => {
 
     expect(object.kind).toBe("asset");
     expect(object.collision).toEqual({
-      radius: 0.95,
+      radius: 1.2000000000000002,
       height: 2.1,
       offset: {
-        x: 0,
-        y: 0,
+        x: 0.17220746725797653,
+        y: -0.08449252694845199,
         z: 1.05,
       },
     });

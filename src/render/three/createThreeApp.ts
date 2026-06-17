@@ -129,6 +129,7 @@ import {
 } from "./geodesicCreatureDebug";
 import { createScenePaletteController } from "./scenePaletteController";
 import { buildForbiddenZoneWireframe } from "./debugCollisionWireframes";
+import { buildStaticObjectCollisionWireframeGroup } from "./staticObjectCollisionWireframes";
 import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
 import { createPortalInstanceDebugRenderer, type PortalInstanceDebugRenderer } from "./portalInstanceDebug";
 import {
@@ -532,6 +533,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const runtimeObjectRootsById = new Map<string, THREE.Object3D>();
   const runtimeObjectRenderSourcesByKey = new Map<string, RuntimeObjectRenderSourceMesh>();
   const runtimeObjectRenderArchetypesByKey = new Map<string, RuntimeObjectRenderArchetype>();
+  const staticObjectCollisionWireframeGroupsByCellId = new Map<string, THREE.Group>();
   const selectableHitboxDebugGroupsByCellId = new Map<string, THREE.Group>();
   const aimCollisionOutlineDebugGroupsByCellId = new Map<string, THREE.Group>();
   const geodesicEmitterLabelsByKey = new Map<string, {
@@ -607,6 +609,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
   }
+  syncStaticObjectCollisionWireframes();
   syncRuntimeObjectPortalInstances();
   disableFrustumCulling(scene);
   disableShadows(scene);
@@ -876,6 +879,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtime.syncParent(cellMeshes);
     }
     syncDynamicObjectDebugWireframes();
+    syncStaticObjectCollisionWireframes();
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
     applyDesktopCameraPose();
@@ -1356,6 +1360,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     for (const runtime of placedFlagRuntimes.values()) {
       runtime.syncParent(cellMeshes);
     }
+    syncStaticObjectCollisionWireframes();
     visibleCellId = currentlyVisibleCellId;
   }
 
@@ -3660,6 +3665,33 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     for (const runtime of dynamicObjectRuntimes) {
       runtime.setCollisionWireframeVisible(visible);
+    }
+  }
+
+  function syncStaticObjectCollisionWireframes(): void {
+    for (const group of staticObjectCollisionWireframeGroupsByCellId.values()) {
+      group.removeFromParent();
+      disposeObject3D(group);
+    }
+    staticObjectCollisionWireframeGroupsByCellId.clear();
+
+    if (!hasActiveDebugOption(debugLevel, debugOptions, "object-collision-wireframes")) {
+      return;
+    }
+
+    for (const cell of appState.world.cells) {
+      const cellRoot = cellMeshes.get(cell.id);
+      if (!cellRoot) {
+        continue;
+      }
+
+      const group = buildStaticObjectCollisionWireframeGroup(cell.id, runtimeObjectRegistry.getObjectsInCell(cell.id));
+      if (!group) {
+        continue;
+      }
+
+      staticObjectCollisionWireframeGroupsByCellId.set(cell.id, group);
+      cellRoot.add(group);
     }
   }
 

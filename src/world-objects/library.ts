@@ -4,6 +4,13 @@ import { createSimpleGeoCreature, type SimpleGeoCreatureAuthoringParams } from "
 import { createStaticAssetObject, type StaticObjectAuthoringParams } from "./staticAssets";
 
 const libraryObjectBrand = Symbol("world-library-object");
+const smallHouseAssetScale = 2.5;
+const smallHouseFootprintCenter = {
+  // Center of public/assets/small_house/small_house.glb in authoring world axes,
+  // measured from the asset bounds after the library's base model scale.
+  x: 0.17220746725797653,
+  y: -0.084492526948451995,
+};
 
 export interface GeodesicMarmotAuthoringParams {
   readonly position: readonly [x: number, y: number, z: number];
@@ -40,14 +47,14 @@ export const worldObjectLibrary: WorldObjectLibrary = {
   small_house: (name, params) =>
     createStaticLibraryObject(name, "small_house/small_house.glb", {
       ...params,
-      scale: (params.scale ?? 1) * 2.5,
-      modelOffset: [0, (params.scale ?? 1) * 2.5 * 0.5, 0],
+      scale: (params.scale ?? 1) * smallHouseAssetScale,
+      modelOffset: [0, (params.scale ?? 1) * smallHouseAssetScale * 0.5, 0],
       collision: params.collision ?? {
-        radius: (params.scale ?? 1) * 0.95,
+        radius: (params.scale ?? 1) * 1.1 + 0.1,
         height: (params.scale ?? 1) * 2.1,
         offset: {
-          x: 0,
-          y: 0,
+          x: (params.scale ?? 1) * smallHouseFootprintCenter.x,
+          y: (params.scale ?? 1) * smallHouseFootprintCenter.y,
           z: (params.scale ?? 1) * 1.05,
         },
       },

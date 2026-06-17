@@ -41,6 +41,21 @@ export function buildObjectCollisionWireframe(
   objectId: string,
   object: DynamicObjectState,
 ): THREE.LineSegments {
+  const mesh = createObjectCollisionWireframe(objectId);
+  updateObjectCollisionWireframe(mesh, object);
+  return mesh;
+}
+
+export function buildObjectCollisionWireframeInCellAxes(
+  objectId: string,
+  object: DynamicObjectState,
+): THREE.LineSegments {
+  const mesh = createObjectCollisionWireframe(objectId);
+  updateObjectCollisionWireframeInCellAxes(mesh, object);
+  return mesh;
+}
+
+function createObjectCollisionWireframe(objectId: string): THREE.LineSegments {
   const geometry = buildSimpleCylinderOutlineGeometry();
   const material = new THREE.LineBasicMaterial({
     color: objectCollisionWireframeColor,
@@ -56,7 +71,6 @@ export function buildObjectCollisionWireframe(
     debugWireframeKind: "object-collision",
     objectId,
   };
-  updateObjectCollisionWireframe(mesh, object);
   return mesh;
 }
 
@@ -77,6 +91,19 @@ export function updateObjectCollisionWireframe(mesh: THREE.Object3D, object: Dyn
   const localMatrix = rootMatrix.clone().invert().multiply(desiredCellMatrix);
 
   localMatrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+}
+
+export function updateObjectCollisionWireframeInCellAxes(mesh: THREE.Object3D, object: DynamicObjectState): void {
+  const bounds = getDynamicObjectCollisionBounds(object);
+
+  if (!bounds) {
+    mesh.visible = false;
+    return;
+  }
+
+  mesh.position.copy(worldPointToThree(bounds.center));
+  mesh.quaternion.identity();
+  mesh.scale.set(bounds.radius * 2, bounds.halfHeight * 2, bounds.radius * 2);
 }
 
 function buildSimpleCylinderOutlineGeometry(): THREE.BufferGeometry {

@@ -1,9 +1,13 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
+import { getDynamicObjectCollisionBounds } from "../../src/movement/collision";
 import { simpleCollisionCylinder, type DynamicObjectState } from "../../src/movement/dynamicObject";
 import { buildObjectCollisionWireframe } from "../../src/render/three/debugCollisionWireframes";
-import { applyWorldRigidTransform } from "../../src/render/three/worldAxes";
+import { buildStaticObjectCollisionWireframeGroup } from "../../src/render/three/staticObjectCollisionWireframes";
+import { applyWorldRigidTransform, worldPointToThree } from "../../src/render/three/worldAxes";
+import { createRuntimeStaticAssetObject, runtimeObjectToDynamicObjectState } from "../../src/world-objects/runtimeObjectRegistry";
+import { cube } from "../../src/authoring/exampleWorlds";
 
 describe("debug collision wireframes", () => {
   it("draws object collision wireframes as runtime cylinders in cell axes", () => {
@@ -37,5 +41,28 @@ describe("debug collision wireframes", () => {
     expect(worldScale.x).toBeCloseTo(0.5);
     expect(worldScale.y).toBeCloseTo(1);
     expect(worldScale.z).toBeCloseTo(0.5);
+  });
+
+  it("builds collision wireframes for static collidable assets such as the cube house", () => {
+    const front = cube.cells.find((cell) => cell.id === "front");
+    const house = front?.visuals?.objects?.find((object) => object.id === "front-house");
+
+    expect(house?.kind).toBe("asset");
+    if (!front || !house || house.kind !== "asset") {
+      throw new Error("Expected cube front house fixture.");
+    }
+
+    const runtimeHouse = createRuntimeStaticAssetObject(house, front.id);
+    const group = buildStaticObjectCollisionWireframeGroup(front.id, [runtimeHouse]);
+    const wireframe = group?.getObjectByName("object-collision-wireframe:front-house");
+    const expectedBounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(runtimeHouse));
+
+    expect(group?.name).toBe("static-object-collision-wireframes:front");
+    expect(wireframe).toBeInstanceOf(THREE.LineSegments);
+    expect(expectedBounds).toBeDefined();
+    expect(wireframe?.position).toEqual(worldPointToThree(expectedBounds!.center));
+    expect(wireframe?.scale.x).toBeCloseTo(expectedBounds!.radius * 2);
+    expect(wireframe?.scale.y).toBeCloseTo(expectedBounds!.halfHeight * 2);
+    expect(wireframe?.scale.z).toBeCloseTo(expectedBounds!.radius * 2);
   });
 });

@@ -33,7 +33,7 @@ Portal("left", 0, "bottom", 3);
 Portal("left", 2, "top", 3);
 
 front_house = small_house("front-house", {
-  position: [-1.2, 0, 0.6],
+  position: [-3.0, 0, 0.6],
   scale: 1,
   turn: 12,
 });

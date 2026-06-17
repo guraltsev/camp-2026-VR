@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { buildPortalPathTables } from "../../src/cell-complex/portalPaths";
-import { cube, twoPrismLoop } from "../../src/authoring/exampleWorlds";
+import { cube } from "../../src/authoring/exampleWorlds";
+import { twoPrismLoop } from "../fixtures/twoPrismLoop";
 import { composeRigidTransform3, transformPoint3, type RigidTransform3 } from "../../src/math/rigidTransform3";
 import { almostEqualVec3, vec3 } from "../../src/math/vec3";
 

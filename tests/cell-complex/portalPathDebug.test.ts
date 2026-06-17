@@ -3,7 +3,8 @@ import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { checkPortalPathString, createPortalPathDebugState } from "../../src/cell-complex/portalPathDebug";
 import { buildPortalPathTables } from "../../src/cell-complex/portalPaths";
 import { staticallyCullPortalPathTables } from "../../src/cell-complex/staticPortalPathCull";
-import { cube, twoPrismLoop } from "../../src/authoring/exampleWorlds";
+import { cube } from "../../src/authoring/exampleWorlds";
+import { twoPrismLoop } from "../fixtures/twoPrismLoop";
 
 describe("portal path debug helpers", () => {
   it("checks an empty path as the root path", () => {

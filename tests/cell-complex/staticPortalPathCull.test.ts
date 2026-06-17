@@ -3,7 +3,8 @@ import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { checkPortalPathString } from "../../src/cell-complex/portalPathDebug";
 import { buildPortalPathTables, createPortalPathTable, type PortalPathTablesByRootCell } from "../../src/cell-complex/portalPaths";
 import { buildStaticallyCulledPortalPathTables, staticallyCullPortalPathTables } from "../../src/cell-complex/staticPortalPathCull";
-import { cube, dodecahedron, twoPrismLoop } from "../../src/authoring/exampleWorlds";
+import { cube, dodecahedron } from "../../src/authoring/exampleWorlds";
+import { twoPrismLoop } from "../fixtures/twoPrismLoop";
 import { identityMat3, invertRigidTransform3, type RigidTransform3 } from "../../src/math/rigidTransform3";
 
 describe("staticallyCullPortalPathTables", () => {
