@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { publicAssetUrl } from "../../glue/assetUrls";
+import type { RuntimeToolId } from "../../runtime/runtimeMenuState";
+import type { PlacedFlagType } from "../../world-objects/placedFlags";
 import { xrRigidTransformLocalMatrix } from "./xrPlayerRig";
 
 export interface XrControllerHandModelsUpdate {
@@ -9,6 +11,8 @@ export interface XrControllerHandModelsUpdate {
   readonly xrFrame: XRFrame;
   readonly referenceSpace: XRReferenceSpace;
   readonly referenceSpaceToWorldMatrix: THREE.Matrix4;
+  readonly selectedTool?: RuntimeToolId;
+  readonly placeFlagType?: PlacedFlagType;
 }
 
 export interface XrControllerHandModels {
@@ -24,6 +28,9 @@ const handLocalLengthAxis = new THREE.Vector3(0, 1, 0);
 const handLocalForwardBendAxis = new THREE.Vector3(1, 0, 0);
 const handMeshQuaternion = createHandMeshQuaternion();
 const handSideSplitEpsilon = 1e-5;
+const wristToolIndicatorLocalOffset = new THREE.Vector3(0, 0.18, -0.06);
+const wristToolIndicatorScaleMeters = 0.082;
+const wristToolIndicatorRenderOrder = 1004;
 
 type XrFrameWithJointPose = XRFrame & {
   getJointPose?(jointSpace: XRSpace, baseSpace: XRReferenceSpace): Pick<XRPose, "transform"> | undefined;
@@ -36,6 +43,15 @@ type XrHandLike = {
 export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHandModels {
   const loader = new GLTFLoader();
   const instances = new Map<"left" | "right", THREE.Object3D>();
+  const rightToolIndicator = createWristToolIndicator();
+  for (const handedness of ["left", "right"] as const) {
+    const anchor = new THREE.Group();
+    anchor.name = `xr-controller-${handedness}-hand`;
+    anchor.visible = false;
+    scene.add(anchor);
+    instances.set(handedness, anchor);
+  }
+  scene.add(rightToolIndicator.root);
   let templates: HandModelTemplates | undefined;
   let disposed = false;
 
@@ -48,10 +64,8 @@ export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHa
     templates = createHandModelTemplates(gltf.scene);
     for (const handedness of ["left", "right"] as const) {
       const model = cloneSkeleton(templates[handedness]);
-      model.name = `xr-controller-${handedness}-hand`;
-      model.visible = false;
-      scene.add(model);
-      instances.set(handedness, model);
+      model.name = `xr-controller-${handedness}-hand-model`;
+      instances.get(handedness)?.add(model);
     }
   }, () => {
     // The app should remain usable even if this optional cosmetic model fails.
@@ -60,6 +74,9 @@ export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHa
   return {
     update(frame) {
       const seenHands = new Set<"left" | "right">();
+
+      const selectedTool = frame.selectedTool ?? "aim";
+      const placeFlagType = frame.placeFlagType ?? "WoodenSign1";
 
       for (const source of frame.inputSources) {
         const handedness = source.handedness === "left" || source.handedness === "right" ? source.handedness : undefined;
@@ -74,8 +91,11 @@ export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHa
         }
 
         seenHands.add(handedness);
-        applyXrPoseToObject(model, pose.transform, frame.referenceSpaceToWorldMatrix);
+        applyXrPoseToObject(model, pose.transform, frame.referenceSpaceToWorldMatrix, 1);
         model.visible = true;
+        if (handedness === "right") {
+          updateWristToolIndicator(rightToolIndicator, model, selectedTool, placeFlagType);
+        }
       }
 
       for (const [handedness, model] of instances) {
@@ -83,12 +103,18 @@ export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHa
           model.visible = false;
         }
       }
+      if (!seenHands.has("right")) {
+        rightToolIndicator.root.visible = false;
+      }
     },
     reset() {
       hideInstances(instances);
+      rightToolIndicator.root.visible = false;
     },
     dispose() {
       disposed = true;
+      rightToolIndicator.root.removeFromParent();
+      disposeWristToolIndicator(rightToolIndicator);
       for (const model of instances.values()) {
         model.removeFromParent();
         disposeObject3D(model);
@@ -100,6 +126,69 @@ export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHa
       }
     },
   };
+}
+
+export interface WristToolIndicatorVisual {
+  readonly icon: "aim" | "image";
+  readonly imageSource?: string;
+  readonly color: string;
+  readonly label: string;
+}
+
+const wristToolIndicatorSignIconSources: Record<PlacedFlagType, string> = {
+  WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
+  WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
+};
+const wristToolIndicatorRotateIconSource = "/assets/icons/arrow-circle-inverted.png";
+const wristToolIndicatorAimIconSource = "/assets/icons/aim-inverted.png";
+const wristToolIndicatorRayIconSource = "/assets/flashlight/Lightsaber.png";
+const wristToolIndicatorProtractorIconSource = "/assets/icons/protractor.png";
+
+export function resolveWristToolIndicatorVisual(
+  toolId: RuntimeToolId,
+  flagType: PlacedFlagType,
+): WristToolIndicatorVisual | undefined {
+  switch (toolId) {
+    case "aim":
+      return undefined;
+    case "place-flag":
+      return {
+        icon: "image",
+        imageSource: wristToolIndicatorSignIconSources[flagType],
+        color: flagType === "WoodenSign2" ? "#f59e0b" : "#22c55e",
+        label: "Sign",
+      };
+    case "geodesic-cannon":
+      return {
+        icon: "image",
+        imageSource: wristToolIndicatorRayIconSource,
+        color: "#facc15",
+        label: "Ray",
+      };
+    case "protractor":
+      return {
+        icon: "image",
+        imageSource: wristToolIndicatorProtractorIconSource,
+        color: "#fb7185",
+        label: "Protractor",
+      };
+    case "geodesic-cannon-rotate":
+      return {
+        icon: "image",
+        imageSource: wristToolIndicatorRotateIconSource,
+        color: "#a78bfa",
+        label: "Turn",
+      };
+    case "geodesic-cannon-aim":
+      return {
+        icon: "image",
+        imageSource: wristToolIndicatorAimIconSource,
+        color: "#facc15",
+        label: "Aim ray",
+      };
+    case "none":
+      return undefined;
+  }
 }
 
 export interface HandModelTemplates {
@@ -226,10 +315,259 @@ function applyXrPoseToObject(
   object: THREE.Object3D,
   transform: Pick<XRRigidTransform, "position" | "orientation">,
   referenceSpaceToWorldMatrix: THREE.Matrix4,
+  scaleMultiplier = handScale,
 ): void {
   const worldMatrix = referenceSpaceToWorldMatrix.clone().multiply(xrRigidTransformLocalMatrix(transform));
   worldMatrix.decompose(object.position, object.quaternion, object.scale);
-  object.scale.multiplyScalar(handScale);
+  object.scale.multiplyScalar(scaleMultiplier);
+}
+
+interface WristToolIndicator {
+  readonly root: THREE.Sprite;
+  readonly material: THREE.SpriteMaterial;
+  readonly texturesByKey: Map<string, THREE.CanvasTexture>;
+  readonly imagesBySource: Map<string, HTMLImageElement>;
+  visualKey?: string;
+}
+
+function createWristToolIndicator(): WristToolIndicator {
+  const material = new THREE.SpriteMaterial({
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+    opacity: 0.96,
+    sizeAttenuation: true,
+  });
+  const root = new THREE.Sprite(material);
+  root.name = "xr-right-wrist-tool-indicator";
+  root.visible = false;
+  root.renderOrder = wristToolIndicatorRenderOrder;
+  root.scale.setScalar(wristToolIndicatorScaleMeters);
+  root.frustumCulled = false;
+  return {
+    root,
+    material,
+    texturesByKey: new Map(),
+    imagesBySource: new Map(),
+  };
+}
+
+function updateWristToolIndicator(
+  indicator: WristToolIndicator,
+  wrist: THREE.Object3D,
+  selectedTool: RuntimeToolId,
+  placeFlagType: PlacedFlagType,
+): void {
+  const visual = resolveWristToolIndicatorVisual(selectedTool, placeFlagType);
+  if (!visual) {
+    indicator.root.visible = false;
+    return;
+  }
+
+  const visualKey = `${visual.icon}:${visual.imageSource ?? ""}:${visual.color}:${visual.label}`;
+  if (indicator.visualKey !== visualKey) {
+    indicator.visualKey = visualKey;
+    indicator.material.map = getWristToolIndicatorTexture(indicator, visualKey, visual);
+    indicator.material.needsUpdate = true;
+  }
+
+  indicator.root.position.copy(wristToolIndicatorLocalOffset).applyQuaternion(wrist.quaternion).add(wrist.position);
+  indicator.root.visible = wrist.visible;
+}
+
+function getWristToolIndicatorTexture(
+  indicator: WristToolIndicator,
+  visualKey: string,
+  visual: WristToolIndicatorVisual,
+): THREE.CanvasTexture {
+  const existing = indicator.texturesByKey.get(visualKey);
+  if (existing) {
+    refreshPendingWristToolIndicatorImage(indicator, visual);
+    return existing;
+  }
+
+  const texture = createWristToolIndicatorTexture(indicator, visual);
+  indicator.texturesByKey.set(visualKey, texture);
+  return texture;
+}
+
+function createWristToolIndicatorTexture(
+  indicator: WristToolIndicator,
+  visual: WristToolIndicatorVisual,
+): THREE.CanvasTexture {
+  const size = 192;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Unable to create wrist tool indicator canvas.");
+  }
+
+  context.clearRect(0, 0, size, size);
+  context.fillStyle = "rgba(15, 23, 42, 0.88)";
+  context.beginPath();
+  context.arc(size / 2, size / 2, 78, 0, Math.PI * 2);
+  context.fill();
+  context.lineWidth = 8;
+  context.strokeStyle = visual.color;
+  context.stroke();
+
+  context.strokeStyle = "#f8fafc";
+  context.fillStyle = "#f8fafc";
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  drawWristToolIcon(indicator, context, visual, size / 2, 76);
+
+  context.font = "700 24px system-ui, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(visual.label, size / 2, 134, 128);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function drawWristToolIcon(
+  indicator: WristToolIndicator,
+  context: CanvasRenderingContext2D,
+  visual: WristToolIndicatorVisual,
+  x: number,
+  y: number,
+): void {
+  if (visual.icon === "image" && visual.imageSource) {
+    const image = getWristToolIndicatorImage(indicator, visual.imageSource, () => {
+      const visualKey = `${visual.icon}:${visual.imageSource ?? ""}:${visual.color}:${visual.label}`;
+      const texture = indicator.texturesByKey.get(visualKey);
+      if (!texture) {
+        return;
+      }
+      redrawWristToolIndicatorTexture(indicator, texture, visual);
+    });
+    if (image.complete && image.naturalWidth > 0) {
+      const imageSize = getWristToolIndicatorImageSize(visual);
+      drawContainedImage(context, image, x - imageSize / 2, y - imageSize / 2, imageSize, imageSize);
+      return;
+    }
+  }
+
+  context.save();
+  context.translate(x, y);
+  context.lineWidth = 8;
+  switch (visual.icon) {
+    case "aim":
+      context.beginPath();
+      context.arc(0, 0, 23, 0, Math.PI * 2);
+      context.moveTo(-44, 0);
+      context.lineTo(-24, 0);
+      context.moveTo(24, 0);
+      context.lineTo(44, 0);
+      context.moveTo(0, -44);
+      context.lineTo(0, -24);
+      context.moveTo(0, 24);
+      context.lineTo(0, 44);
+      context.stroke();
+      break;
+    case "image":
+      context.font = "700 48px system-ui, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("...", 0, 0);
+      break;
+  }
+  context.restore();
+}
+
+function redrawWristToolIndicatorTexture(
+  indicator: WristToolIndicator,
+  texture: THREE.CanvasTexture,
+  visual: WristToolIndicatorVisual,
+): void {
+  const canvas = texture.image as HTMLCanvasElement | undefined;
+  const context = canvas?.getContext("2d");
+  if (!canvas || !context) {
+    return;
+  }
+
+  const refreshed = createWristToolIndicatorTexture(indicator, visual);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(refreshed.image, 0, 0);
+  refreshed.dispose();
+  texture.needsUpdate = true;
+}
+
+function getWristToolIndicatorImage(
+  indicator: WristToolIndicator,
+  source: string,
+  onLoaded: () => void,
+): HTMLImageElement {
+  const existing = indicator.imagesBySource.get(source);
+  if (existing) {
+    return existing;
+  }
+
+  const image = new window.Image();
+  image.decoding = "async";
+  image.onload = onLoaded;
+  image.src = source;
+  indicator.imagesBySource.set(source, image);
+  return image;
+}
+
+function refreshPendingWristToolIndicatorImage(
+  indicator: WristToolIndicator,
+  visual: WristToolIndicatorVisual,
+): void {
+  if (visual.icon !== "image" || !visual.imageSource) {
+    return;
+  }
+
+  getWristToolIndicatorImage(indicator, visual.imageSource, () => {
+    const visualKey = `${visual.icon}:${visual.imageSource ?? ""}:${visual.color}:${visual.label}`;
+    const texture = indicator.texturesByKey.get(visualKey);
+    if (texture) {
+      redrawWristToolIndicatorTexture(indicator, texture, visual);
+    }
+  });
+}
+
+function drawContainedImage(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  const sourceRatio = image.naturalWidth / image.naturalHeight;
+  const targetRatio = width / height;
+  const drawWidth = sourceRatio > targetRatio ? width : height * sourceRatio;
+  const drawHeight = sourceRatio > targetRatio ? width / sourceRatio : height;
+  context.drawImage(
+    image,
+    x + (width - drawWidth) / 2,
+    y + (height - drawHeight) / 2,
+    drawWidth,
+    drawHeight,
+  );
+}
+
+function getWristToolIndicatorImageSize(visual: WristToolIndicatorVisual): number {
+  if (visual.imageSource === wristToolIndicatorRayIconSource) {
+    return 120;
+  }
+
+  return 104;
+}
+
+function disposeWristToolIndicator(indicator: WristToolIndicator): void {
+  indicator.material.dispose();
+  for (const texture of indicator.texturesByKey.values()) {
+    texture.dispose();
+  }
+  indicator.texturesByKey.clear();
 }
 
 function hideInstances(instances: Map<"left" | "right", THREE.Object3D>): void {

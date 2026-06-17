@@ -1141,6 +1141,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         xrFrame,
         referenceSpace: xrReferenceSpace,
         referenceSpaceToWorldMatrix: xrRig.root.matrixWorld,
+        selectedTool: menuState.selectedTool,
+        placeFlagType: menuState.placeFlagOptions.flagType,
       });
       return;
     }

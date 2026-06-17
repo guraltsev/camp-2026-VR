@@ -1,6 +1,9 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { createHandModelTemplates } from "../../src/render/three/xrControllerHandModels";
+import {
+  createHandModelTemplates,
+  resolveWristToolIndicatorVisual,
+} from "../../src/render/three/xrControllerHandModels";
 
 describe("xrControllerHandModels", () => {
   it("keeps all meshes for each side of a split low-poly hand asset", () => {
@@ -16,6 +19,31 @@ describe("xrControllerHandModels", () => {
 
     expect(collectMeshNames(templates.left)).toEqual(["left-palm", "left-finger"]);
     expect(collectMeshNames(templates.right)).toEqual(["right-palm", "right-finger"]);
+  });
+
+  it("maps runtime tool state to a right-wrist indicator visual", () => {
+    expect(resolveWristToolIndicatorVisual("aim", "WoodenSign1")).toBeUndefined();
+    expect(resolveWristToolIndicatorVisual("place-flag", "WoodenSign2")).toMatchObject({
+      icon: "image",
+      imageSource: "/assets/WoodenSign2/WoodenSign2.png",
+      label: "Sign",
+    });
+    expect(resolveWristToolIndicatorVisual("geodesic-cannon", "WoodenSign1")).toMatchObject({
+      icon: "image",
+      imageSource: "/assets/flashlight/Lightsaber.png",
+      label: "Ray",
+    });
+    expect(resolveWristToolIndicatorVisual("protractor", "WoodenSign1")).toMatchObject({
+      icon: "image",
+      imageSource: "/assets/icons/protractor.png",
+      label: "Protractor",
+    });
+    expect(resolveWristToolIndicatorVisual("geodesic-cannon-rotate", "WoodenSign1")).toMatchObject({
+      icon: "image",
+      imageSource: "/assets/icons/arrow-circle-inverted.png",
+      label: "Turn",
+    });
+    expect(resolveWristToolIndicatorVisual("none", "WoodenSign1")).toBeUndefined();
   });
 });
 
