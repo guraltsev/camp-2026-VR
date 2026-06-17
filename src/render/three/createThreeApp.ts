@@ -266,6 +266,8 @@ const selectableHitboxDebugOpacity = 0.24;
 const aimCollisionOutlineDebugOpacity = 0.82;
 const selectableHitboxDebugRenderOrder = 930;
 const aimCollisionOutlineDebugRenderOrder = 935;
+const xrObjectTooltipRenderOrder = 960;
+const xrObjectTooltipYOffsetMeters = 0.18;
 const geodesicEmitterLabelRangeMeters = 3;
 const geodesicEmitterLabelRenderOrder = 940;
 const geodesicEmitterLabelLocalForwardOffsetMeters = 0.12;
@@ -338,6 +340,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let previousXrPaletteQuaternion: THREE.Quaternion | undefined;
   let geodesicCannonRotationHeadHeightMeters: number | undefined;
   let geodesicCannonRotationTargetLengthMeters: number | undefined;
+  let xrObjectTooltip: { readonly text: string; readonly root: THREE.Object3D } | undefined;
   const debugOverlay = createDebugOverlay(container);
   const commandDispatcher = createAppCommandDispatcher({
     get currentUrl() {
@@ -758,20 +761,28 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
 
-    const activeAimRay = xrActive ? resolveXrControllerRootRay(xrFrame, xrReferenceSpace) : undefined;
+    if (xrActive) {
+      xrRig.syncXrRig(playerPose, effectiveHeadLocalMeters, headLocalYawRadians);
+    } else {
+      applyDesktopCameraPose();
+    }
+    const activeAimRay = resolveActiveRootAimRay(xrActive, xrFrame, xrReferenceSpace);
     const worldPrimaryActionRequested = frame.primaryActionRequested && !menuState.isOpen && !desktopFlagEditor.isOpen();
     let primaryActionConsumed = false;
     if (menuState.selectedTool === "geodesic-cannon-rotate") {
       updateActiveGeodesicCannonRotation(frame.yawDeltaRadians, frame.primaryActionRequested);
       primaryActionConsumed = frame.primaryActionRequested;
     } else if (menuState.selectedTool === "geodesic-cannon-aim") {
-      updateActiveGeodesicCannonAim(frame.primaryActionRequested, xrActive, xrFrame, xrReferenceSpace);
+      updateActiveGeodesicCannonAim(frame.primaryActionRequested, activeAimRay);
       primaryActionConsumed = frame.primaryActionRequested;
     } else if (worldPrimaryActionRequested && menuState.selectedTool === "place-flag") {
       tryPlaceFlagFromAim(activeAimRay);
     }
     if (worldPrimaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "aim") {
-      tryExtendFocusedGeodesicFromAim(activeAimRay);
+      primaryActionConsumed = tryOpenFocusedObjectMenu(activeAimRay);
+      if (!primaryActionConsumed) {
+        tryExtendFocusedGeodesicFromAim(activeAimRay);
+      }
     }
     if (worldPrimaryActionRequested && !primaryActionConsumed && menuState.selectedTool === "geodesic-cannon") {
       tryUseGeodesicCannonToolFromAim(activeAimRay);
@@ -781,7 +792,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     if (!xrActive && frame.interactRequested) {
-      tryOpenFocusedObjectMenu();
+      tryOpenFocusedObjectMenu(activeAimRay);
     }
     const frameAfterMoveMs = performance.now();
     const frameBeforeObjectsMs = frameAfterMoveMs;
@@ -810,7 +821,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else {
       applyDesktopCameraPose();
     }
-    updateFloatingObjectTooltip(xrActive, xrFrame, xrReferenceSpace);
+    updateFloatingObjectTooltip(xrActive, activeAimRay);
     const frameAfterCameraMs = performance.now();
     const frameBeforePortalMs = frameAfterCameraMs;
 
@@ -828,8 +839,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameAfterPortalMs = performance.now();
     const frameBeforeUiMs = frameAfterPortalMs;
 
-    updateAimCrossMarker(xrActive, xrFrame, xrReferenceSpace);
-    updateProtractorToolFeedback(xrActive, xrFrame, xrReferenceSpace);
+    updateAimCrossMarker(activeAimRay);
+    updateProtractorToolFeedback(activeAimRay);
     updateGeodesicEmitterLabels();
     syncXrDebugState(frame.source, moveResult);
     updateScenePalette(xrActive, xrFrame, xrReferenceSpace, deltaSeconds, frame);
@@ -1023,6 +1034,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       desktopFlagEditor.dispose();
       aimCrossMarker.dispose();
       floatingObjectTooltip.dispose();
+      clearXrObjectTooltip();
       controls.dispose();
       clearProtractorToolFeedback();
       for (const runtime of placedFlagRuntimes.values()) {
@@ -1197,11 +1209,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    if (!menuState.isOpen && tryRemoveFocusedProtractorAngle()) {
+    if (!menuState.isOpen && tryRemoveFocusedProtractorAngle(resolveActiveRootAimRay(false))) {
       return;
     }
 
-    if (!menuState.isOpen && tryOpenFocusedObjectMenu()) {
+    if (!menuState.isOpen && tryOpenFocusedObjectMenu(resolveActiveRootAimRay(false))) {
       return;
     }
 
@@ -2585,6 +2597,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function tryPlaceFlagFromAim(ray?: RootAimRay): void {
+    if (!ray) {
+      return;
+    }
+
     const target = resolveCurrentAimTarget(ray);
     if (target?.kind !== "floor") {
       return;
@@ -2609,6 +2625,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function tryUseGeodesicCannonToolFromAim(ray?: RootAimRay): void {
+    if (!ray) {
+      return;
+    }
+
     const target = resolveCurrentAimTarget(ray);
     if (targetIsWithinInteractionRange(target) && target?.object?.kind === "geodesic-cannon") {
       addGeodesicToCannon(target.object.id, { afterAdd: "return-to-aim" });
@@ -2617,6 +2637,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     if (target?.object?.kind === "geodesic-segment") {
       const forward = getAimForwardVector(ray);
+      if (!forward) {
+        return;
+      }
       let horizontalForward: { readonly x: number; readonly y: number; readonly z: number };
       try {
         horizontalForward = normalizeVec3({ x: forward.x, y: forward.y, z: 0 });
@@ -2655,6 +2678,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     const forward = getAimForwardVector(ray);
+    if (!forward) {
+      return;
+    }
     let horizontalForward: { readonly x: number; readonly y: number; readonly z: number };
     try {
       horizontalForward = normalizeVec3({ x: forward.x, y: forward.y, z: 0 });
@@ -2692,6 +2718,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function tryExtendFocusedGeodesicFromAim(ray?: RootAimRay): void {
+    if (!ray) {
+      return;
+    }
+
     const target = resolveCurrentAimTarget(ray);
     logVerboseAimClick(target);
     if (!targetIsWithinInteractionRange(target)) {
@@ -2721,6 +2751,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function tryUseProtractorToolFromAim(ray?: RootAimRay): void {
+    if (!ray) {
+      return;
+    }
+
     const target = resolveCurrentAimTarget(ray);
     logVerboseAimClick(target);
     if (!targetIsWithinInteractionRange(target)) {
@@ -2768,8 +2802,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncSelectableHitboxDebug();
   }
 
-  function tryRemoveFocusedProtractorAngle(): boolean {
-    const focused = findFocusedRuntimeObject();
+  function tryRemoveFocusedProtractorAngle(ray?: RootAimRay): boolean {
+    const focused = findFocusedRuntimeObject(ray);
     if (focused?.object.kind !== "protractor-angle") {
       return false;
     }
@@ -2781,8 +2815,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return true;
   }
 
-  function tryOpenFocusedObjectMenu(): boolean {
-    const focused = findFocusedRuntimeObject();
+  function tryOpenFocusedObjectMenu(ray?: RootAimRay): boolean {
+    const focused = findFocusedRuntimeObject(ray);
     if (!focused) {
       return false;
     }
@@ -3011,9 +3045,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function updateActiveGeodesicCannonAim(
     finishRequested: boolean,
-    xrActive: boolean,
-    xrFrame: XRFrame | undefined,
-    xrReferenceSpace: XRReferenceSpace | null,
+    activeAimRay: RootAimRay | undefined,
   ): void {
     const cannonId = activeGeodesicCannonToolState.selectedCannonId;
     const cannon = cannonId ? runtimeObjectRegistry.get(cannonId) : undefined;
@@ -3029,11 +3061,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    const xrAimRay = xrActive ? resolveXrControllerRootRay(xrFrame, xrReferenceSpace) : undefined;
-    const centerRay = xrAimRay ?? resolveCameraRootRay();
-    const aimTarget = resolveCurrentAimTarget(xrAimRay);
+    const aimTarget = activeAimRay ? resolveCurrentAimTarget(activeAimRay) : undefined;
     const targetAbsolutePoint = aimTarget?.rootPoint
-      ?? (centerRay ? intersectRootRayWithFloor(centerRay.origin, centerRay.direction) : undefined);
+      ?? (activeAimRay ? intersectRootRayWithFloor(activeAimRay.origin, activeAimRay.direction) : undefined);
     const nextYaw = resolveGeodesicCannonAimYawFromAbsolutePoints({
       source: resolveGeodesicCannonAbsoluteEmitterPoint(cannon),
       target: targetAbsolutePoint,
@@ -3203,19 +3233,27 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function updateFloatingObjectTooltip(
     xrActive: boolean,
-    xrFrame: XRFrame | undefined,
-    xrReferenceSpace: XRReferenceSpace | null,
+    activeAimRay: RootAimRay | undefined,
   ): void {
     if (menuState.isOpen || desktopFlagEditor.isOpen()) {
       floatingObjectTooltip.update({ visible: false });
+      updateXrObjectTooltip(undefined);
       return;
     }
 
-    const focused = findFocusedRuntimeObject();
+    const focused = findFocusedRuntimeObject(activeAimRay);
     const text = focused ? getRuntimeObjectTooltipText(focused.object, xrActive ? "xr" : "desktop") : undefined;
-    const screenPosition = focused && xrActive
-      ? projectWorldPointToScreen(resolveXrTooltipAnchor(xrFrame, xrReferenceSpace) ?? focused.tooltipAnchor)
-      : focused ? resolveDesktopTooltipScreenPosition() : undefined;
+    if (xrActive) {
+      floatingObjectTooltip.update({ visible: false });
+      updateXrObjectTooltip(text && focused ? {
+        text,
+        anchor: focused.tooltipAnchor,
+      } : undefined);
+      return;
+    }
+
+    updateXrObjectTooltip(undefined);
+    const screenPosition = focused ? resolveDesktopTooltipScreenPosition() : undefined;
 
     floatingObjectTooltip.update({
       visible: Boolean(text && screenPosition),
@@ -3225,11 +3263,98 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
-  function updateAimCrossMarker(
-    xrActive: boolean,
-    xrFrame: XRFrame | undefined,
-    xrReferenceSpace: XRReferenceSpace | null,
-  ): void {
+  function updateXrObjectTooltip(options: {
+    readonly text: string;
+    readonly anchor: { readonly x: number; readonly y: number; readonly z: number };
+  } | undefined): void {
+    if (!options) {
+      if (xrObjectTooltip) {
+        xrObjectTooltip.root.visible = false;
+      }
+      return;
+    }
+
+    const tooltip = syncXrObjectTooltip(options.text);
+    tooltip.root.visible = true;
+    tooltip.root.position.copy(worldPointToThree({
+      x: options.anchor.x,
+      y: options.anchor.y,
+      z: options.anchor.z + xrObjectTooltipYOffsetMeters,
+    }));
+    tooltip.root.quaternion.copy(camera.quaternion);
+    tooltip.root.updateMatrixWorld(true);
+  }
+
+  function syncXrObjectTooltip(text: string): { readonly text: string; readonly root: THREE.Object3D } {
+    if (xrObjectTooltip?.text === text) {
+      return xrObjectTooltip;
+    }
+
+    clearXrObjectTooltip();
+    const root = createXrObjectTooltip(text);
+    root.name = "xr-object-tooltip";
+    scene.add(root);
+    xrObjectTooltip = { text, root };
+    return xrObjectTooltip;
+  }
+
+  function clearXrObjectTooltip(): void {
+    if (!xrObjectTooltip) {
+      return;
+    }
+
+    xrObjectTooltip.root.removeFromParent();
+    disposeObject3D(xrObjectTooltip.root);
+    xrObjectTooltip = undefined;
+  }
+
+  function createXrObjectTooltip(text: string): THREE.Object3D {
+    const canvas = document.createElement("canvas");
+    canvas.width = 768;
+    canvas.height = 256;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Could not create XR object tooltip canvas context.");
+    }
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "rgba(10, 17, 20, 0.9)";
+    roundRect(context, 42, 34, canvas.width - 84, canvas.height - 68, 18);
+    context.fill();
+    context.strokeStyle = "rgba(226, 232, 240, 0.66)";
+    context.lineWidth = 5;
+    context.stroke();
+    context.fillStyle = "#f8fafc";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+
+    const lines = text.split("\n").slice(0, 3);
+    const fontSize = lines.length > 2 ? 44 : 50;
+    const lineHeight = fontSize * 1.18;
+    const firstLineY = canvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+    context.font = `bold ${fontSize}px system-ui, sans-serif`;
+    lines.forEach((line, index) => {
+      context.fillText(line, canvas.width / 2, firstLineY + index * lineHeight, canvas.width - 120);
+    });
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.31), material);
+    mesh.name = "xr-object-tooltip:billboard";
+    mesh.renderOrder = xrObjectTooltipRenderOrder;
+    mesh.frustumCulled = false;
+    mesh.visible = false;
+    return mesh;
+  }
+
+  function updateAimCrossMarker(activeAimRay: RootAimRay | undefined): void {
     if (
       (
         menuState.selectedTool !== "aim" &&
@@ -3245,33 +3370,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    if (xrActive) {
-      const ray = resolveXrControllerRootRay(xrFrame, xrReferenceSpace);
-      aimCrossMarker.update(ray ? resolveCurrentAimTarget(ray) : undefined, ray);
-      return;
-    }
-
-    const cameraQuaternion = new THREE.Quaternion();
-    camera.getWorldQuaternion(cameraQuaternion);
-    aimCrossMarker.update(resolveCurrentAimTarget(), { quaternion: cameraQuaternion });
+    aimCrossMarker.update(
+      activeAimRay ? resolveCurrentAimTarget(activeAimRay) : undefined,
+      activeAimRay,
+    );
   }
 
-  function updateProtractorToolFeedback(
-    xrActive: boolean,
-    xrFrame: XRFrame | undefined,
-    xrReferenceSpace: XRReferenceSpace | null,
-  ): void {
+  function updateProtractorToolFeedback(activeAimRay: RootAimRay | undefined): void {
     if (menuState.selectedTool !== "protractor" || menuState.isOpen || desktopFlagEditor.isOpen()) {
       clearProtractorToolFeedback();
       return;
     }
 
-    const target = xrActive
-      ? (() => {
-          const ray = resolveXrControllerRootRay(xrFrame, xrReferenceSpace);
-          return ray ? resolveCurrentAimTarget(ray) : undefined;
-        })()
-      : resolveCurrentAimTarget();
+    const target = activeAimRay ? resolveCurrentAimTarget(activeAimRay) : undefined;
     const usableTarget = targetIsWithinInteractionRange(target) ? target : undefined;
     const center = activeProtractorToolState.center ??
       (usableTarget?.object?.kind === "geodesic-cannon" || usableTarget?.object?.kind === "geodesic-intersection"
@@ -3331,12 +3442,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     };
   }
 
-  function resolveCurrentAimTarget(ray?: RootAimRay) {
+  function resolveCurrentAimTarget(ray: RootAimRay) {
     const ignoredGeodesicIds = menuState.selectedTool === "geodesic-cannon-aim" &&
         activeGeodesicCannonToolState.activeGeodesicId
       ? [activeGeodesicCannonToolState.activeGeodesicId]
       : undefined;
-    const aimCamera = ray ? syncAimRayCamera(ray) : camera;
+    const aimCamera = syncAimRayCamera(ray);
 
     return resolveAimTarget({
       world: appState.world,
@@ -3386,13 +3497,23 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     protractorToolFeedback = undefined;
   }
 
-  function resolveCameraRootRay(): { readonly origin: THREE.Vector3; readonly direction: THREE.Vector3 } {
+  function resolveActiveRootAimRay(
+    xrActive: boolean,
+    xrFrame?: XRFrame,
+    xrReferenceSpace?: XRReferenceSpace | null,
+  ): RootAimRay | undefined {
+    return xrActive
+      ? resolveXrControllerRootRay(xrFrame, xrReferenceSpace ?? null)
+      : resolveCameraRootRay();
+  }
+
+  function resolveCameraRootRay(): RootAimRay {
     camera.updateMatrixWorld(true);
     const origin = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
     const cameraQuaternion = new THREE.Quaternion();
     camera.getWorldQuaternion(cameraQuaternion);
     const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuaternion).normalize();
-    return { origin, direction };
+    return { origin, direction, quaternion: cameraQuaternion };
   }
 
   function resolveXrControllerRootRay(
@@ -3474,12 +3595,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     console.info("Aim click:", fields);
   }
 
-  function findFocusedRuntimeObject(): {
+  function findFocusedRuntimeObject(ray?: RootAimRay): {
     readonly object: RuntimeWorldObject;
     readonly distance: number;
     readonly tooltipAnchor: { readonly x: number; readonly y: number; readonly z: number };
   } | undefined {
-    const target = resolveCurrentAimTarget();
+    if (!ray) {
+      return undefined;
+    }
+
+    const target = resolveCurrentAimTarget(ray);
     const object = target?.object;
     if (target?.kind !== "object" || !object || (!object.tooltip && !object.interactable)) {
       return undefined;
@@ -3521,44 +3646,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     };
   }
 
-  function resolveXrTooltipAnchor(
-    xrFrame: XRFrame | undefined,
-    xrReferenceSpace: XRReferenceSpace | null,
-  ): { readonly x: number; readonly y: number; readonly z: number } | undefined {
-    const session = renderer.xr.getSession();
-    if (!xrFrame || !xrReferenceSpace || !session) {
-      return undefined;
-    }
-
-    const source = resolveXrTooltipInputSource([...session.inputSources]);
-    if (!source?.targetRaySpace) {
-      return undefined;
-    }
-
-    const pose = xrFrame.getPose(source.targetRaySpace, xrReferenceSpace);
-    if (!pose) {
-      return undefined;
-    }
-
-    const worldMatrix = xrRig.root.matrixWorld.clone().multiply(xrRigidTransformLocalMatrix(pose.transform));
-    const origin = new THREE.Vector3().setFromMatrixPosition(worldMatrix);
-    const direction = new THREE.Vector3(0, 0, -1).transformDirection(worldMatrix).normalize();
-    const anchor = origin.addScaledVector(direction, 0.35).add(new THREE.Vector3(0, 0.12, 0));
-    return threePointToWorld(anchor);
-  }
-
-  function resolveXrTooltipInputSource(inputSources: readonly XRInputSource[]): XRInputSource | undefined {
-    const targetingSources = inputSources.filter((source) => source.targetRaySpace);
-    return targetingSources.find((source) => isXrSourceSelectPressed(source))
-      ?? targetingSources.find((source) => source.handedness === "right")
-      ?? targetingSources.find((source) => source.targetRayMode === "tracked-pointer")
-      ?? targetingSources[0];
-  }
-
-  function isXrSourceSelectPressed(source: XRInputSource): boolean {
-    return source.gamepad?.buttons?.[0]?.pressed === true;
-  }
-
   function getRuntimeObjectTooltipText(object: RuntimeWorldObject, inputMode: "desktop" | "xr"): string | undefined {
     if (inputMode === "desktop" && object.tooltip?.desktopPrompt) {
       return object.tooltip.desktopPrompt;
@@ -3569,27 +3656,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     return object.tooltip?.label ?? object.interactable?.label;
-  }
-
-  function projectWorldPointToScreen(point: { readonly x: number; readonly y: number; readonly z: number }):
-    | { readonly x: number; readonly y: number }
-    | undefined {
-    const projected = worldPointToThree(point).project(camera);
-    if (
-      !Number.isFinite(projected.x) ||
-      !Number.isFinite(projected.y) ||
-      !Number.isFinite(projected.z) ||
-      projected.z < -1 ||
-      projected.z > 1
-    ) {
-      return undefined;
-    }
-
-    const rect = renderer.domElement.getBoundingClientRect();
-    return {
-      x: rect.left + ((projected.x + 1) / 2) * rect.width,
-      y: rect.top + ((1 - projected.y) / 2) * rect.height,
-    };
   }
 
   function removePlacedFlags(): void {
@@ -3676,20 +3742,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
-  function getCameraForwardVector(): { readonly x: number; readonly y: number; readonly z: number } {
-    const forward = new THREE.Vector3(0, 0, -1);
-    const quaternion = new THREE.Quaternion();
-    camera.getWorldQuaternion(quaternion);
-    forward.applyQuaternion(quaternion);
-    return {
-      x: forward.x,
-      y: -forward.z,
-      z: forward.y,
-    };
-  }
-
-  function getAimForwardVector(ray?: RootAimRay): { readonly x: number; readonly y: number; readonly z: number } {
-    return ray ? threeDirectionToWorld(ray.direction) : getCameraForwardVector();
+  function getAimForwardVector(ray?: RootAimRay): { readonly x: number; readonly y: number; readonly z: number } | undefined {
+    return ray ? threeDirectionToWorld(ray.direction) : undefined;
   }
 
   function syncDynamicObjectDebugWireframes(): void {
