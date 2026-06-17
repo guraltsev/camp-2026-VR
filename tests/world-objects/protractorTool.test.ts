@@ -50,6 +50,38 @@ describe("protractor tool objects", () => {
     expect(Math.abs(left?.yawRadians ?? 0)).toBeCloseTo(Math.PI);
   });
 
+  it("uses the outgoing side from an endpoint-centered locked geodesic selection", () => {
+    const center = resolveProtractorCenterSelection(createEmitter({
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0, z: 0 }),
+      geodesicIds: ["g-a"],
+      geodesicEmitterYawRadiansById: { "g-a": Math.PI },
+      geodesicConnectionsById: {
+        "g-a": {
+          outgoingEmitterId: "source-a",
+          incomingEmitterId: "emitter-a",
+          state: "connected",
+        },
+      },
+    }));
+    const segment = createSegment({
+      geodesicId: "g-a",
+      start: { x: -1, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 1, y: 0, z: 0 },
+      lengthMeters: 2,
+      terminal: { kind: "emitter-hit", emitterId: "emitter-a" },
+      connectionState: "connected",
+    });
+
+    const selected = resolveProtractorDirectedGeodesicSelection({
+      center,
+      segment,
+      hitPoint: { x: 1.05, y: 0, z: geodesicRayBeamHeightMeters },
+    });
+
+    expect(Math.abs(selected?.yawRadians ?? 0)).toBeCloseTo(Math.PI);
+    expect(selected?.directionSign).toBe(-1);
+  });
+
   it("measures the second selected side counterclockwise from the first", () => {
     const center = resolveProtractorCenterSelection(createEmitter());
     const angle = createProtractorAngleObject({

@@ -122,7 +122,11 @@ import {
 } from "./cellRenderArchetypes";
 import { createDebugOverlay } from "./debugOverlay";
 import { createDesktopControls } from "./desktopControls";
-import { createDesktopScenePaletteInput, reduceDesktopScenePaletteToggle } from "./desktopScenePaletteInput";
+import {
+  createDesktopScenePaletteInput,
+  desktopTooltipHintRequestsAimCycle,
+  reduceDesktopScenePaletteToggle,
+} from "./desktopScenePaletteInput";
 import { resolveDesktopScenePalettePlacement } from "./desktopScenePalettePlacement";
 import {
   collectGeodesicCreatureDebugDump,
@@ -1209,8 +1213,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     event.preventDefault();
     const activeAimRay = resolveActiveRootAimRay(false);
-    if (!menuState.isOpen && cycleFocusedAimTarget(activeAimRay)) {
-      return;
+    if (!menuState.isOpen) {
+      if (cycleFocusedAimTarget(activeAimRay) || focusedDesktopTooltipRequestsAimCycle(activeAimRay)) {
+        return;
+      }
     }
 
     applyDesktopScenePaletteToggle(reduceDesktopScenePaletteToggle(menuState.isOpen, "secondary-click"));
@@ -2837,6 +2843,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       index: (previousIndex + 1) % targets.length,
     };
     return true;
+  }
+
+  function focusedDesktopTooltipRequestsAimCycle(ray?: RootAimRay): boolean {
+    const focused = findFocusedRuntimeObject(ray);
+    return desktopTooltipHintRequestsAimCycle(
+      focused ? getRuntimeObjectTooltipText(focused.object, "desktop") : undefined,
+    );
   }
 
   function tryOpenFocusedObjectMenu(ray?: RootAimRay): boolean {

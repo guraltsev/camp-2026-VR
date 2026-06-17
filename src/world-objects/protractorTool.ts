@@ -83,9 +83,7 @@ export function resolveProtractorDirectedGeodesicSelection(options: {
     z: 0,
   };
   const hitDirectionDot = dotVec3(hitOffset, segment.direction);
-  const sign = toDirectionSign(Math.abs(hitDirectionDot) > 1e-6
-    ? Math.sign(hitDirectionDot)
-    : centerDistance <= 0 ? 1 : centerDistance >= segment.lengthMeters ? -1 : 1);
+  const sign = resolveSelectedSegmentDirectionSign(segment, centerDistance, hitDirectionDot);
   const yawRadians = normalizeSignedRadians(
     Math.atan2(segment.direction.y * sign, segment.direction.x * sign),
   );
@@ -294,11 +292,9 @@ function resolveSegmentDirectionSign(
   }
 
   const centerDistance = getDistanceAlongSegment(segment, center.point);
-  if (centerDistance <= 0) {
-    return 1;
-  }
-  if (centerDistance >= segment.lengthMeters) {
-    return -1;
+  const endpointSign = resolveSegmentEndpointDirectionSign(segment, centerDistance);
+  if (endpointSign) {
+    return endpointSign;
   }
 
   const forwardYaw = normalizeSignedRadians(Math.atan2(segment.direction.y, segment.direction.x));
@@ -307,6 +303,34 @@ function resolveSegmentDirectionSign(
       Math.abs(normalizeSignedRadians(backwardYaw - previous.yawRadians))
     ? 1
     : -1;
+}
+
+function resolveSelectedSegmentDirectionSign(
+  segment: GeodesicSegmentObject,
+  centerDistance: number,
+  hitDirectionDot: number,
+): 1 | -1 {
+  const endpointSign = resolveSegmentEndpointDirectionSign(segment, centerDistance);
+  if (endpointSign) {
+    return endpointSign;
+  }
+
+  return toDirectionSign(Math.abs(hitDirectionDot) > 1e-6 ? Math.sign(hitDirectionDot) : 1);
+}
+
+function resolveSegmentEndpointDirectionSign(
+  segment: GeodesicSegmentObject,
+  centerDistance: number,
+): 1 | -1 | undefined {
+  const endpointToleranceMeters = protractorAngleRadiusMeters;
+  if (centerDistance <= endpointToleranceMeters) {
+    return 1;
+  }
+  if (centerDistance >= segment.lengthMeters - endpointToleranceMeters) {
+    return -1;
+  }
+
+  return undefined;
 }
 
 function getPointOnSegment(segment: GeodesicSegmentObject, distanceMeters: number): Vec3 {
