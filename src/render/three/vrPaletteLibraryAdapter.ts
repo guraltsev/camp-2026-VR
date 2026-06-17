@@ -333,7 +333,7 @@ function buildMainContent(
   row.add(
     createToolTile("place-flag", "Sign", content.selectedTool, options, content.placeFlagType),
     createToolTile("geodesic-cannon", "Ray", content.selectedTool, options),
-    createToolTile("protractor", "Angle", content.selectedTool, options),
+    createToolTile("protractor", "Protractor", content.selectedTool, options),
   );
 
   panel.add(row);

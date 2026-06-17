@@ -87,7 +87,7 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
         : toolId === "geodesic-cannon-aim"
           ? "Aim"
           : toolId === "protractor"
-            ? "Angle"
+            ? "Protractor"
           : toolId === "geodesic-cannon"
             ? "Ray"
             : toolId === "place-flag"

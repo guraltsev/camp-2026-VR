@@ -335,7 +335,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
 
     const protractorLabel = document.createElement("span");
     protractorLabel.className = "desktop-tool-tile-label";
-    protractorLabel.textContent = "angle";
+    protractorLabel.textContent = "protractor";
     protractorButton.append(createProtractorTileIcon(), protractorLabel);
 
     tools.append(flagTile, cannonButton, protractorButton);

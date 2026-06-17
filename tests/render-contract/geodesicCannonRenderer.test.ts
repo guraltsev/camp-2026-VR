@@ -105,6 +105,24 @@ describe("geodesic cannon renderer", () => {
 
     expect(bounds.min.y).toBeGreaterThanOrEqual(0);
   });
+
+  it("styles emitter source meshes to ignore collision-depth clipping", () => {
+    const sources = createGeodesicRuntimeRenderSources(createPreparedRayAssets());
+    const emitterSources = sources.filter((source) =>
+      source.archetypeKey.startsWith(`${geodesicRayPostArchetypePrefix}:`) ||
+      source.archetypeKey.startsWith(`${geodesicRayHeadArchetypePrefix}:`)
+    );
+
+    expect(emitterSources.length).toBeGreaterThan(0);
+    for (const source of emitterSources) {
+      expect(source.mesh.renderOrder).toBeGreaterThan(0);
+      expect(allDepthTestsDisabled(source.mesh.material)).toBe(true);
+      expect(allDepthWritesDisabled(source.mesh.material)).toBe(true);
+
+      const archetype = buildRuntimeObjectRenderArchetype(source, 1, undefined);
+      expect(archetype.mesh.renderOrder).toBe(source.mesh.renderOrder);
+    }
+  });
 });
 
 function createSegment(overrides: Partial<GeodesicSegmentObject> = {}): GeodesicSegmentObject {
@@ -186,4 +204,12 @@ function getSourceMeshWorldBounds(source: { readonly mesh: THREE.Mesh }): THREE.
   const geometry = source.mesh.geometry;
   geometry.computeBoundingBox();
   return geometry.boundingBox!.clone().applyMatrix4(source.mesh.matrixWorld);
+}
+
+function allDepthTestsDisabled(material: THREE.Material | THREE.Material[]): boolean {
+  return Array.isArray(material) ? material.every((entry) => !entry.depthTest) : !material.depthTest;
+}
+
+function allDepthWritesDisabled(material: THREE.Material | THREE.Material[]): boolean {
+  return Array.isArray(material) ? material.every((entry) => !entry.depthWrite) : !material.depthWrite;
 }

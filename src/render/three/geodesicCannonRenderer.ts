@@ -19,6 +19,7 @@ const geodesicRayAssetScale = 0.42;
 const geodesicRayPostAssetFloorOffsetMeters = 0.74;
 const geodesicIntersectionBalloonScale = 0.825;
 export const geodesicRayEmitterPosition = { x: 0.06, y: 1.08, z: 0 } as const;
+const geodesicEmitterRenderOrder = 80;
 
 export function createGeodesicRuntimeRenderSources(
   assets?: PreparedWorldAssets,
@@ -163,6 +164,7 @@ function createRayEmitterOnPostSources(
   if (preparedPost) {
     post.position.y = geodesicRayPostAssetFloorOffsetMeters;
   }
+  configureEmitterVisual(post);
   postRoot.add(post);
 
   const lightsaber = assets?.instantiateGltf(geodesicRayAssetPaths.lightsaber)?.scene ?? createFallbackLightsaber();
@@ -173,6 +175,7 @@ function createRayEmitterOnPostSources(
     geodesicRayEmitterPosition.y,
     geodesicRayEmitterPosition.z,
   );
+  configureEmitterVisual(lightsaber);
   headRoot.add(lightsaber);
 
   postRoot.updateMatrixWorld(true);
@@ -277,4 +280,24 @@ function createFallbackLightsaber(): THREE.Object3D {
   blade.position.x = 0.34;
   root.add(hilt, blade);
   return root;
+}
+
+function configureEmitterVisual(root: THREE.Object3D): void {
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) {
+      return;
+    }
+
+    object.renderOrder = geodesicEmitterRenderOrder;
+    applyEmitterMaterialStyle(object.material);
+  });
+}
+
+function applyEmitterMaterialStyle(material: THREE.Material | readonly THREE.Material[]): void {
+  const materials = Array.isArray(material) ? material : [material];
+
+  for (const entry of materials) {
+    entry.depthTest = false;
+    entry.depthWrite = false;
+  }
 }
