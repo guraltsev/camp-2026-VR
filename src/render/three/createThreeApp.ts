@@ -205,6 +205,7 @@ import {
 } from "./visiblePortalPaths";
 import { rigidTransformToThreeMatrix, threeDirectionToWorld, threePointToWorld, worldPointToThree } from "./worldAxes";
 import { createXrControls } from "./xrControls";
+import { createXrControllerHandModels } from "./xrControllerHandModels";
 import { createXrEntryUi } from "./xrEntryUi";
 import { resolveXrPortalEyeRenderRoot, type XrPortalEyeRenderRoot } from "./xrPortalEye";
 import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose, xrRigidTransformLocalMatrix } from "./xrPlayerRig";
@@ -349,6 +350,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const desktopToolIndicator = createDesktopToolIndicator(document.body);
   const desktopScenePaletteInput = createDesktopScenePaletteInput();
   const xrScenePaletteInput = createXrScenePaletteInput();
+  const xrControllerHandModels = createXrControllerHandModels(scene);
   const runtimeObjectRegistry = createRuntimeObjectRegistry();
   const desktopFlagEditor = createDesktopFlagEditor(document.body, {
     onMessageChanged(flagId, message) {
@@ -1007,6 +1009,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       window.removeEventListener("mousedown", onDesktopMouseDown);
       window.removeEventListener("keydown", onDesktopPaletteKeyDown);
       scenePaletteController.dispose();
+      xrControllerHandModels.dispose();
       desktopScenePaletteInput.dispose();
       desktopToolIndicator.dispose();
       desktopFlagEditor.dispose();
@@ -1073,12 +1076,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     try {
       const session = await xr.requestSession("immersive-vr", {
-        optionalFeatures: ["local-floor", "bounded-floor"],
+        optionalFeatures: ["local-floor", "bounded-floor", "hand-tracking"],
       });
       session.addEventListener("end", () => {
         xrSessionState = transitionXrSessionState(xrSessionState, "ended");
         xrRig.reset();
         xrScenePaletteInput.reset();
+        xrControllerHandModels.reset();
         scenePaletteController.setVisible(false);
         xrEntryUi.update(xrSessionState);
         syncXrDebugState("desktop");
@@ -1103,6 +1107,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     frame: RuntimeInputFrame,
   ): void {
     if (xrActive && xrFrame && xrReferenceSpace) {
+      const inputSources = [...(renderer.xr.getSession()?.inputSources ?? [])];
       camera.updateMatrixWorld(true);
       const headPosition = new THREE.Vector3();
       const headQuaternion = new THREE.Quaternion();
@@ -1126,10 +1131,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           xrFrame,
           referenceSpace: xrReferenceSpace,
           referenceSpaceToWorldMatrix: xrRig.root.matrixWorld,
-          inputSources: [...(renderer.xr.getSession()?.inputSources ?? [])],
+          inputSources,
         }),
         definition: createPaletteDefinition(menuState),
         placement,
+      });
+      xrControllerHandModels.update({
+        inputSources,
+        xrFrame,
+        referenceSpace: xrReferenceSpace,
+        referenceSpaceToWorldMatrix: xrRig.root.matrixWorld,
       });
       return;
     }
