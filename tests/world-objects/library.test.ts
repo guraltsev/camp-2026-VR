@@ -91,13 +91,21 @@ describe("worldObjectLibrary", () => {
     });
   });
 
-  it("keeps static wrappers non-collidable by default", () => {
+  it("adds a player collision cylinder to small houses", () => {
     const object = worldObjectLibrary.small_house("front-house", {
       position: [0, 0, 0],
     });
 
     expect(object.kind).toBe("asset");
-    expect("collision" in object).toBe(false);
+    expect(object.collision).toEqual({
+      radius: 0.95,
+      height: 2.1,
+      offset: {
+        x: 0,
+        y: 0,
+        z: 1.05,
+      },
+    });
   });
 
   it("makes trees taller and narrower using per-axis scaling", () => {
@@ -110,6 +118,20 @@ describe("worldObjectLibrary", () => {
     expect(object.scaleXYZ?.x).toBeCloseTo(0.04);
     expect(object.scaleXYZ?.y).toBeCloseTo(0.05);
     expect(object.scaleXYZ?.z).toBeCloseTo(0.04);
+  });
+
+  it("scales stop signs down from their oversized source model", () => {
+    expect(
+      worldObjectLibrary.stop_sign("tiny-stop", {
+        position: [0, 0, 0],
+        scale: 0.8,
+      }),
+    ).toMatchObject({
+      id: "tiny-stop",
+      kind: "asset",
+      assetPath: "stopsign/stop_sign.glb",
+      scale: 0.024,
+    });
   });
 
   it("creates geo mice as dynamic specs with authored speed and oscillation", () => {
@@ -197,4 +219,5 @@ describe("worldObjectLibrary", () => {
     expect(nextBucketRate).not.toBe(firstBucketRate);
     expect(butterflyVerticalOscillationHeightMagnitudeMeters(object)).toBeCloseTo(0.073859);
   });
+
 });

@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import type { CompiledCellComplex } from "../cell-complex/compileCellComplex";
 import type { CompiledPrismCell } from "../cell-complex/prismCells";
-import type { CellObjectSpec, SimpleGeoCreatureObjectSpec } from "../cell-complex/specs";
+import type { CellObjectSpec, SimpleCollisionCylinderSpec, SimpleGeoCreatureObjectSpec } from "../cell-complex/specs";
 import { yawRigidTransform3, transformDirection3, type RigidTransform3 } from "../math/rigidTransform3";
 import { vec3 } from "../math/vec3";
-import { getDynamicObjectCollisionBounds } from "../movement/collision";
+import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder } from "../movement/collision";
 import type { DynamicObjectState } from "../movement/dynamicObject";
 import {
   AUTONOMOUS_DYNAMIC_OBJECT_PORTAL_CROSSING_MODE,
@@ -30,13 +30,14 @@ export interface SimpleGeoCreatureAuthoringParams {
   readonly speed?: number;
   readonly oscillationRate?: number;
   readonly oscillationMagnitude?: number;
+  readonly collision?: SimpleCollisionCylinderSpec;
 }
 
 export interface SimpleGeoCreatureRuntime {
   readonly root: THREE.Object3D;
   readonly objectId: string;
   readonly cellId: string;
-  update(world: CompiledCellComplex, deltaSeconds: number): void;
+  update(world: CompiledCellComplex, deltaSeconds: number, obstacles?: readonly DynamicObjectState[]): void;
   syncParent(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
   setCollisionWireframeVisible(visible: boolean): void;
   reset(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
@@ -100,7 +101,7 @@ export function createSimpleGeoCreature(
     speedMetersPerSecond: params.speed ?? defaultSpeed(kind),
     oscillationRateHz: params.oscillationRate ?? 0,
     oscillationMagnitudeMeters: params.oscillationMagnitude ?? 0,
-    collision: defaultCreatureCollision(kind, authorScale),
+    collision: params.collision ?? defaultCreatureCollision(kind, authorScale),
   };
 }
 
@@ -154,7 +155,7 @@ export function createSimpleGeoCreatureRuntime(
     get cellId() {
       return state.cellId;
     },
-    update(world, deltaSeconds) {
+    update(world, deltaSeconds, obstacles = []) {
       if (deltaSeconds <= 0) {
         return;
       }
@@ -181,8 +182,8 @@ export function createSimpleGeoCreatureRuntime(
         portalCrossingMode: AUTONOMOUS_DYNAMIC_OBJECT_PORTAL_CROSSING_MODE,
         ignoreForbiddenZones: true,
       });
-      state = result.object;
-      syncRegistryObject(registry, objectSpec.id, result.object);
+      state = creatureIntersectsObstacle(result.object, obstacles) ? state : result.object;
+      syncRegistryObject(registry, objectSpec.id, state);
       applyObjectPose(root, state.localPose);
       updateObjectCollisionWireframe(collisionWireframe, state);
     },
@@ -261,6 +262,25 @@ function syncRegistryObject(
     cellId: state.cellId,
     localPose: state.localPose,
     collision: state.collision,
+  });
+}
+
+function creatureIntersectsObstacle(
+  state: DynamicObjectState,
+  obstacles: readonly DynamicObjectState[],
+): boolean {
+  const bounds = getDynamicObjectCollisionBounds(state);
+  if (!bounds) {
+    return false;
+  }
+
+  return obstacles.some((obstacle) => {
+    if (obstacle.cellId !== state.cellId) {
+      return false;
+    }
+
+    const obstacleBounds = getDynamicObjectCollisionBounds(obstacle);
+    return obstacleBounds ? simpleCylinderIntersectsSimpleCylinder(bounds, obstacleBounds) : false;
   });
 }
 

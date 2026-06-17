@@ -22,7 +22,7 @@ Portal("face-b", 2, "face-d", 0);
 Portal("face-c", 0, "face-d", 2);
 
 face_a_house = small_house("face-a-centerpiece", {
-  position: [0, 0, 0],
+  position: [2.4, 0, 0],
   scale: 0.9,
 });
 
@@ -32,6 +32,11 @@ face_a_mouse = geo_mouse("face-a-geo-mouse", {
   speed: 1.7,
   oscillationRate: 1.4,
   oscillationMagnitude: 0.15,
+  collision: {
+    radius: 0.42,
+    height: 0.6,
+    offset: { x: 0, y: 0.75, z: 0.31 },
+  },
 });
 
 face_b_butterfly = geo_butterfly("face-b-centerpiece", {

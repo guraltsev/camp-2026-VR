@@ -63,6 +63,7 @@ export interface PositionedCellObjectSpec {
 export interface AssetObjectSpec extends PositionedCellObjectSpec {
   readonly kind: "asset";
   readonly assetPath: string;
+  readonly collision?: SimpleCollisionCylinderSpec;
 }
 
 export interface SimpleCollisionCylinderSpec {

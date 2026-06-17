@@ -42,6 +42,15 @@ export const worldObjectLibrary: WorldObjectLibrary = {
       ...params,
       scale: (params.scale ?? 1) * 2.5,
       modelOffset: [0, (params.scale ?? 1) * 2.5 * 0.5, 0],
+      collision: params.collision ?? {
+        radius: (params.scale ?? 1) * 0.95,
+        height: (params.scale ?? 1) * 2.1,
+        offset: {
+          x: 0,
+          y: 0,
+          z: (params.scale ?? 1) * 1.05,
+        },
+      },
     }),
   tree: (name, params) =>
     createStaticLibraryObject(name, "Tree1/Tree.glb", {
@@ -78,7 +87,7 @@ export const worldObjectLibrary: WorldObjectLibrary = {
   stop_sign: (name, params) =>
     createStaticLibraryObject(name, "stopsign/stop_sign.glb", {
       ...params,
-      scale: (params.scale ?? 1) * 0.75,
+      scale: (params.scale ?? 1) * 0.03,
     }),
   traffic_cone: (name, params) =>
     createStaticLibraryObject(name, "trafficCone/Cone.glb", {

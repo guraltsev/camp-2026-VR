@@ -46,7 +46,7 @@ import {
 } from "../../runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../ui/paletteDefinition";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
-import { createDefaultPlayerPose, type PlayerPose } from "../../movement/playerPose";
+import { createDefaultPlayerPose, playerPoseToDynamicObject, type PlayerPose } from "../../movement/playerPose";
 import {
   createGeodesciMarmotRuntime,
   isGeodesciMarmotObjectSpec,
@@ -85,10 +85,16 @@ import {
 } from "../../world-objects/protractorTool";
 import {
   createRuntimeObjectRegistry,
+  createRuntimeStaticAssetObject,
   runtimeObjectToDynamicObjectState,
   type RuntimeWorldObject,
 } from "../../world-objects/runtimeObjectRegistry";
-import { getDynamicObjectCollisionBounds, type SimpleCylinderBounds } from "../../movement/collision";
+import {
+  getDynamicObjectCollisionBounds,
+  simpleCylinderIntersectsSimpleCylinder,
+  type SimpleCylinderBounds,
+} from "../../movement/collision";
+import { simpleCollisionCylinder } from "../../movement/dynamicObject";
 import { createDesktopFlagEditor } from "../dom/desktopFlagEditor";
 import { createDesktopToolIndicator } from "../dom/desktopToolIndicator";
 import { createFloatingObjectTooltip } from "../dom/floatingObjectTooltip";
@@ -593,6 +599,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         dynamicObjectRuntimes.push(runtime);
         runtimeObjectRootsById.set(runtime.objectId, runtime.root);
         syncDynamicObjectDebugWireframes();
+        continue;
+      }
+
+      if (objectSpec.kind === "asset" && objectSpec.collision) {
+        runtimeObjectRegistry.add(createRuntimeStaticAssetObject(objectSpec, cell.id));
       }
     }
   }
@@ -708,6 +719,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         pitchDeltaRadians: rotatingGeodesicCannon ? 0 : frame.pitchDeltaRadians,
         coordinateFrame: "global",
       });
+      moveResult = blockPlayerMoveAgainstRuntimeObjects(playerPose, moveResult);
       playerPose = moveResult.pose;
       recordCellTransition(previousCellId, moveResult);
 
@@ -723,10 +735,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           pitchDeltaRadians: 0,
           coordinateFrame: "global",
         });
-        playerPose = physicalMoveResult.pose;
-        xrRig.acceptPhysicalMove(physicalMoveResult, effectiveHeadLocalMeters);
-        moveResult = physicalMoveResult.blocked || physicalMoveResult.crossedPortal ? physicalMoveResult : moveResult;
-        recordCellTransition(beforePhysicalCellId, physicalMoveResult);
+        const runtimeCollisionPhysicalMoveResult = blockPlayerMoveAgainstRuntimeObjects(playerPose, physicalMoveResult);
+        playerPose = runtimeCollisionPhysicalMoveResult.pose;
+        xrRig.acceptPhysicalMove(runtimeCollisionPhysicalMoveResult, effectiveHeadLocalMeters);
+        moveResult = runtimeCollisionPhysicalMoveResult.blocked || runtimeCollisionPhysicalMoveResult.crossedPortal
+          ? runtimeCollisionPhysicalMoveResult
+          : moveResult;
+        recordCellTransition(beforePhysicalCellId, runtimeCollisionPhysicalMoveResult);
       }
     }
 
@@ -755,9 +770,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     const frameAfterMoveMs = performance.now();
     const frameBeforeObjectsMs = frameAfterMoveMs;
+    const playerObstacle = createPlayerCollisionState(playerPose);
 
     for (const runtime of dynamicObjectRuntimes) {
-      runtime.update(appState.world, frame.resetRequested ? 0 : deltaSeconds);
+      runtime.update(appState.world, frame.resetRequested ? 0 : deltaSeconds, [playerObstacle]);
       runtime.syncParent(cellMeshes);
     }
     updateGeodesicCreatureDebug(deltaSeconds);
@@ -3030,6 +3046,54 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       y: cannon.localPose.translation.y,
       z: geodesicRayBeamHeightMeters,
     };
+  }
+
+  function blockPlayerMoveAgainstRuntimeObjects(
+    previousPose: PlayerPose,
+    result: ReturnType<typeof movePlayer>,
+  ): ReturnType<typeof movePlayer> {
+    if (!playerIntersectsRuntimeObject(result.pose)) {
+      return result;
+    }
+
+    return {
+      ...result,
+      pose: {
+        ...previousPose,
+        yawRadians: result.pose.yawRadians,
+        pitchRadians: result.pose.pitchRadians,
+      },
+      blocked: true,
+      crossedPortal: false,
+      crossedPortalId: undefined,
+    };
+  }
+
+  function playerIntersectsRuntimeObject(pose: PlayerPose): boolean {
+    const playerBounds = getDynamicObjectCollisionBounds(createPlayerCollisionState(pose));
+    if (!playerBounds) {
+      return false;
+    }
+
+    for (const object of runtimeObjectRegistry.getCollidableObjectsInCell(pose.cellId)) {
+      const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
+      if (bounds && simpleCylinderIntersectsSimpleCylinder(playerBounds, bounds)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function createPlayerCollisionState(pose: PlayerPose) {
+    return playerPoseToDynamicObject(
+      pose,
+      simpleCollisionCylinder(appState.playerBody.radiusMeters, appState.playerBody.heightMeters, {
+        x: 0,
+        y: 0,
+        z: appState.playerBody.heightMeters / 2,
+      }),
+    );
   }
 
   function finishGeodesicCannonAimMode(): void {

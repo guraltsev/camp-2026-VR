@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { tetrahedron } from "../../src/authoring/exampleWorlds";
-import { identityMat3 } from "../../src/math/rigidTransform3";
+import { identityMat3, yawRigidTransform3 } from "../../src/math/rigidTransform3";
 import { simpleCollisionCylinder, type DynamicObjectState } from "../../src/movement/dynamicObject";
 import { collectGeodesicCreatureDebugDump } from "../../src/render/three/geodesicCreatureDebug";
 import type { PreparedWorldAssets } from "../../src/render/three/preloadWorldAssets";
@@ -112,6 +112,67 @@ describe("simple geo creature movement", () => {
 
       expect(dump.issueCount, `frame ${frame}: ${JSON.stringify(dump.records[0])}`).toBe(0);
     }
+  });
+
+  it("lets a mouse ignore collidable static runtime objects", () => {
+    const world = compileCellComplex(singleRoom());
+    const registry = createRuntimeObjectRegistry();
+    const mouse = createSimpleGeoCreature("geo-mouse", "mouse", "mouse/Mouse.glb", {
+      position: [0, 0, 0],
+      speed: 1,
+      collision: {
+        radius: 0.25,
+        height: 0.4,
+        offset: { x: 0, y: 0, z: 0.2 },
+      },
+    });
+    registry.add({
+      id: "house",
+      kind: "asset",
+      assetPath: "small_house/small_house.glb",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0.65, z: 0 }),
+      collision: {
+        radius: 0.35,
+        height: 1,
+        offset: { x: 0, y: 0, z: 0.5 },
+      },
+      portalRenderable: false,
+    });
+    const runtime = createSimpleGeoCreatureRuntime(mouse, "room", stubAssets(), registry);
+
+    runtime.update(world, 1);
+
+    const object = registry.get("mouse");
+    expect(object?.kind).toBe("geo-mouse");
+    expect(object?.localPose.translation.y).toBeCloseTo(1);
+  });
+
+  it("blocks a mouse from penetrating a supplied player obstacle", () => {
+    const world = compileCellComplex(singleRoom());
+    const registry = createRuntimeObjectRegistry();
+    const mouse = createSimpleGeoCreature("geo-mouse", "mouse", "mouse/Mouse.glb", {
+      position: [0, 0, 0],
+      speed: 1,
+      collision: {
+        radius: 0.25,
+        height: 0.4,
+        offset: { x: 0, y: 0, z: 0.2 },
+      },
+    });
+    const runtime = createSimpleGeoCreatureRuntime(mouse, "room", stubAssets(), registry);
+
+    runtime.update(world, 1, [
+      {
+        cellId: "room",
+        localPose: yawRigidTransform3(0, { x: 0, y: 0.65, z: 0 }),
+        collision: simpleCollisionCylinder(0.25, 0.4, { x: 0, y: 0, z: 0.2 }),
+      },
+    ]);
+
+    const object = registry.get("mouse");
+    expect(object?.kind).toBe("geo-mouse");
+    expect(object?.localPose.translation.y).toBeCloseTo(0);
   });
 });
 

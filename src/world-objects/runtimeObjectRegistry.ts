@@ -1,5 +1,7 @@
 import type { RigidTransform3 } from "../math/rigidTransform3";
 import type { DynamicObjectState, SimpleCollisionCylinder } from "../movement/dynamicObject";
+import type { AssetObjectSpec } from "../cell-complex/specs";
+import { yawRigidTransform3 } from "../math/rigidTransform3";
 import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "./geodesicCannon";
 import type { PlacedFlagObject } from "./placedFlags";
 import type { ProtractorAngleObject } from "./protractorTool";
@@ -34,8 +36,14 @@ export interface RuntimeCreatureObject extends RuntimeWorldObjectBase {
   readonly kind: "geodesci-marmot" | "geo-mouse" | "geo-butterfly";
 }
 
+export interface RuntimeStaticAssetObject extends RuntimeWorldObjectBase {
+  readonly kind: "asset";
+  readonly assetPath: string;
+}
+
 export type RuntimeWorldObject =
   | RuntimeCreatureObject
+  | RuntimeStaticAssetObject
   | PlacedFlagObject
   | GeodesicCannonObject
   | GeodesicSegmentObject
@@ -159,5 +167,23 @@ export function runtimeObjectToDynamicObjectState(object: RuntimeWorldObjectBase
     cellId: object.cellId,
     localPose: object.localPose,
     collision: object.collision,
+  };
+}
+
+export function createRuntimeStaticAssetObject(
+  objectSpec: AssetObjectSpec,
+  cellId: string,
+): RuntimeStaticAssetObject {
+  return {
+    id: objectSpec.id,
+    kind: "asset",
+    assetPath: objectSpec.assetPath,
+    cellId,
+    localPose: yawRigidTransform3(
+      objectSpec.turnRadians ?? objectSpec.yawRadians ?? 0,
+      objectSpec.position,
+    ),
+    collision: objectSpec.collision,
+    portalRenderable: false,
   };
 }

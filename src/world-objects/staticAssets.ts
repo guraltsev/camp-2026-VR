@@ -1,10 +1,11 @@
-import type { AssetObjectSpec } from "../cell-complex/specs";
+import type { AssetObjectSpec, SimpleCollisionCylinderSpec } from "../cell-complex/specs";
 
 export interface StaticObjectAuthoringParams {
   readonly position: readonly [x: number, y: number, z: number];
   readonly scale?: number;
   readonly scaleXYZ?: readonly [x: number, y: number, z: number];
   readonly modelOffset?: readonly [x: number, y: number, z: number];
+  readonly collision?: SimpleCollisionCylinderSpec;
   readonly forwardTilt?: number;
   readonly sideTilt?: number;
   readonly turn?: number;
@@ -43,6 +44,7 @@ export function createStaticAssetObject(
     sideTiltRadians: degreesToRadians(params.sideTilt ?? 0),
     turnRadians: degreesToRadians(params.turn ?? 0),
     yawRadians: degreesToRadians(params.turn ?? 0),
+    collision: params.collision,
   };
 }
 
