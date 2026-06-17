@@ -59,8 +59,8 @@ describe("geodesic cannon world objects", () => {
     });
     expect(cannon.tooltip?.label).toBe("Geodesic emitter");
     expect(cannon.tooltip?.rangeMeters).toBe(2.5);
-    expect(cannon.tooltip?.desktopPrompt).toBe("Geodesic emitter\nLMouse / RMouse - menu");
-    expect(cannon.tooltip?.xrPrompt).toBe("Geodesic emitter\nSelect - menu");
+    expect(cannon.tooltip?.desktopPrompt).toBe("Geodesic emitter\nLMouse / F - menu\nRMouse - cycle");
+    expect(cannon.tooltip?.xrPrompt).toBe("Geodesic emitter\nA / X - menu");
     expect(first.lengthMeters).toBe(2);
     expect(first.geodesicNumber).toBe(1);
     expect(first.tooltip?.label).toBe("Geodesic G1");

@@ -115,8 +115,8 @@ export function createPlacedFlagObject(options: CreatePlacedFlagOptions): Placed
     tooltip: {
       label: "Sign",
       rangeMeters: 2.5,
-      desktopPrompt: "Sign\nRMouse / F - edit",
-      xrPrompt: "Sign\nSelect - edit",
+      desktopPrompt: "Sign\nLMouse / F - edit",
+      xrPrompt: "Sign\nA / X - edit",
     },
     interactable: defaultFlagInteraction,
     flagType: options.flagType,

@@ -103,7 +103,8 @@ import {
   getGeodesicEmitterAimCylinderBounds,
   getGeodesicEmitterAimSphereCenter,
   geodesicSegmentAimRadiusMeters,
-  resolveAimTarget,
+  type AimTarget,
+  resolveAimTargets,
 } from "./aimTarget";
 import { resolveGeodesicCannonAimYawFromAbsolutePoints } from "./geodesicCannonAimTarget";
 import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRenderer";
@@ -340,6 +341,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let previousXrPaletteQuaternion: THREE.Quaternion | undefined;
   let geodesicCannonRotationHeadHeightMeters: number | undefined;
   let geodesicCannonRotationTargetLengthMeters: number | undefined;
+  let aimTargetCycleState: { readonly signature: string; readonly index: number } | undefined;
   let xrObjectTooltip: { readonly text: string; readonly root: THREE.Object3D } | undefined;
   const debugOverlay = createDebugOverlay(container);
   const commandDispatcher = createAppCommandDispatcher({
@@ -792,7 +794,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       primaryActionConsumed = tryUseFocusedObjectPrimaryInteraction(activeAimRay);
     }
 
-    if (!xrActive && frame.interactRequested) {
+    if (frame.interactRequested && !menuState.isOpen && !desktopFlagEditor.isOpen()) {
       tryOpenFocusedObjectMenu(activeAimRay);
     }
     const frameAfterMoveMs = performance.now();
@@ -1207,11 +1209,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     event.preventDefault();
     const activeAimRay = resolveActiveRootAimRay(false);
-    if (!menuState.isOpen && tryOpenFocusedObjectMenu(activeAimRay)) {
-      return;
-    }
-
-    if (!menuState.isOpen && isPointingAtRuntimeObject(activeAimRay)) {
+    if (!menuState.isOpen && cycleFocusedAimTarget(activeAimRay)) {
       return;
     }
 
@@ -2822,6 +2820,25 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
+  function cycleFocusedAimTarget(ray?: RootAimRay): boolean {
+    if (!ray) {
+      return false;
+    }
+
+    const targets = resolveCurrentAimTargetCycleCandidates(ray);
+    if (targets.length < 2) {
+      return false;
+    }
+
+    const signature = createAimTargetCycleSignature(targets);
+    const previousIndex = aimTargetCycleState?.signature === signature ? aimTargetCycleState.index : 0;
+    aimTargetCycleState = {
+      signature,
+      index: (previousIndex + 1) % targets.length,
+    };
+    return true;
+  }
+
   function tryOpenFocusedObjectMenu(ray?: RootAimRay): boolean {
     const focused = findFocusedRuntimeObject(ray);
     if (!focused) {
@@ -3450,14 +3467,35 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     };
   }
 
-  function resolveCurrentAimTarget(ray: RootAimRay) {
+  function resolveCurrentAimTarget(ray: RootAimRay): AimTarget | undefined {
+    const targets = resolveCurrentAimTargets(ray);
+    const cycleTargets = getAimTargetCycleCandidates(targets);
+    if (cycleTargets.length === 0) {
+      aimTargetCycleState = undefined;
+      return targets[0];
+    }
+
+    const signature = createAimTargetCycleSignature(cycleTargets);
+    if (aimTargetCycleState?.signature !== signature) {
+      aimTargetCycleState = undefined;
+      return cycleTargets[0];
+    }
+
+    return cycleTargets[aimTargetCycleState.index % cycleTargets.length] ?? cycleTargets[0];
+  }
+
+  function resolveCurrentAimTargetCycleCandidates(ray: RootAimRay): readonly AimTarget[] {
+    return getAimTargetCycleCandidates(resolveCurrentAimTargets(ray));
+  }
+
+  function resolveCurrentAimTargets(ray: RootAimRay): readonly AimTarget[] {
     const ignoredGeodesicIds = menuState.selectedTool === "geodesic-cannon-aim" &&
         activeGeodesicCannonToolState.activeGeodesicId
       ? [activeGeodesicCannonToolState.activeGeodesicId]
       : undefined;
     const aimCamera = syncAimRayCamera(ray);
 
-    return resolveAimTarget({
+    return resolveAimTargets({
       world: appState.world,
       registry: runtimeObjectRegistry,
       camera: aimCamera,
@@ -3465,6 +3503,22 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       maxDistanceMeters: 24,
       ignoredGeodesicIds,
     });
+  }
+
+  function getAimTargetCycleCandidates(targets: readonly AimTarget[]): readonly AimTarget[] {
+    return targets.filter((target) =>
+      target.kind === "object" &&
+      target.object !== undefined &&
+      targetIsWithinInteractionRange(target)
+    );
+  }
+
+  function createAimTargetCycleSignature(targets: readonly AimTarget[]): string {
+    return targets.map((target) => [
+      target.object?.id ?? "",
+      target.geodesicEmitterGeodesicId ?? "",
+      target.portalPathId,
+    ].join(":")).join("|");
   }
 
   function syncAimRayCamera(ray: RootAimRay): THREE.Camera {
@@ -3631,15 +3685,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         z: target.rootPoint.z + 0.18,
       },
     };
-  }
-
-  function isPointingAtRuntimeObject(ray?: RootAimRay): boolean {
-    if (!ray) {
-      return false;
-    }
-
-    const target = resolveCurrentAimTarget(ray);
-    return target?.kind === "object" && target.object !== undefined && targetIsWithinInteractionRange(target);
   }
 
   function targetIsWithinInteractionRange(target: ReturnType<typeof resolveCurrentAimTarget>): boolean {

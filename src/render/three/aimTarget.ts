@@ -65,6 +65,10 @@ const defaultMaxEmitterAimDistanceMeters = 200;
 export const geodesicSegmentAimRadiusMeters = 0.28 / 1.5;
 
 export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | undefined {
+  return resolveAimTargets(request)[0];
+}
+
+export function resolveAimTargets(request: ResolveAimTargetRequest): readonly AimTarget[] {
   const maxDistanceMeters = request.maxDistanceMeters ?? 24;
   request.camera.updateMatrixWorld(true);
   const originRootThree = new THREE.Vector3().setFromMatrixPosition(request.camera.matrixWorld);
@@ -73,7 +77,7 @@ export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | 
   request.camera.getWorldQuaternion(cameraQuaternion);
   directionRootThree.applyQuaternion(cameraQuaternion).normalize();
 
-  return resolveAimTargetFromRootThreeRay({
+  return resolveAimTargetsFromRootThreeRay({
     world: request.world,
     registry: request.registry,
     rootOriginThree: originRootThree,
@@ -86,7 +90,7 @@ export function resolveAimTarget(request: ResolveAimTargetRequest): AimTarget | 
   });
 }
 
-function resolveAimTargetFromRootThreeRay(request: {
+function resolveAimTargetsFromRootThreeRay(request: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
   readonly rootOriginThree: THREE.Vector3;
@@ -96,10 +100,10 @@ function resolveAimTargetFromRootThreeRay(request: {
   readonly maxDistanceMeters: number;
   readonly maxEmitterDistanceMeters: number;
   readonly ignoredGeodesicIds: ReadonlySet<string>;
-}): AimTarget | undefined {
+}): readonly AimTarget[] {
   const rootDirectionThree = request.rootDirectionThree.clone().normalize();
 
-  let best: AimTarget | undefined;
+  const candidates: AimTarget[] = [];
 
   for (const path of request.visiblePortalPaths) {
     if (!pathContainsNdcPoint(path, request.ndcPoint)) {
@@ -112,7 +116,7 @@ function resolveAimTargetFromRootThreeRay(request: {
     }
 
     const ray = buildCellRayFromRootThreeRay(request.rootOriginThree, rootDirectionThree, path);
-    const candidates = [
+    candidates.push(
       ...resolveObjectAimTargets(
         request.registry,
         cell,
@@ -122,16 +126,20 @@ function resolveAimTargetFromRootThreeRay(request: {
         request.ignoredGeodesicIds,
       ),
       ...resolveFloorAimTarget(cell, ray, request.maxDistanceMeters),
-    ];
-
-    for (const candidate of candidates) {
-      if (!best || isBetterAimTarget(candidate, best)) {
-        best = candidate;
-      }
-    }
+    );
   }
 
-  return best;
+  return candidates.sort(compareAimTargets);
+}
+
+function compareAimTargets(left: AimTarget, right: AimTarget): number {
+  if (isBetterAimTarget(left, right)) {
+    return -1;
+  }
+  if (isBetterAimTarget(right, left)) {
+    return 1;
+  }
+  return 0;
 }
 
 function buildCellRayFromRootThreeRay(

@@ -178,8 +178,8 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
     tooltip: {
       label: "Geodesic emitter",
       rangeMeters: 2.5,
-      desktopPrompt: "Geodesic emitter\nLMouse / RMouse - menu",
-      xrPrompt: "Geodesic emitter\nSelect - menu",
+      desktopPrompt: "Geodesic emitter\nLMouse / F - menu\nRMouse - cycle",
+      xrPrompt: "Geodesic emitter\nA / X - menu",
     },
     activeGeodesicId: options.activeGeodesicId,
     geodesicIds: options.geodesicIds ?? (options.activeGeodesicId ? [options.activeGeodesicId] : []),

@@ -141,8 +141,8 @@ describe("placedFlags", () => {
     expect(flag.tooltip).toMatchObject({
       label: "Sign",
       rangeMeters: 2.5,
-      desktopPrompt: "Sign\nRMouse / F - edit",
-      xrPrompt: "Sign\nSelect - edit",
+      desktopPrompt: "Sign\nLMouse / F - edit",
+      xrPrompt: "Sign\nA / X - edit",
     });
     expect(flag.interactable).toMatchObject({
       label: "Edit sign",
