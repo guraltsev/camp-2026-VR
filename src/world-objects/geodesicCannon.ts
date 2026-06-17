@@ -489,10 +489,11 @@ export function findNearestEmitterHitOnTrace(input: {
   let nearest: { readonly emitter: GeodesicCannonObject; readonly distanceMeters: number } | undefined;
 
   for (const object of input.registry.getObjectsInCell(input.cellId)) {
-    if (object.kind !== "geodesic-cannon" || object.id === input.sourceEmitterId) {
+    if (object.kind !== "geodesic-cannon") {
       continue;
     }
-    if (input.geodesicId && object.geodesicIds.includes(input.geodesicId)) {
+    const isSourceEmitter = object.id === input.sourceEmitterId;
+    if (!isSourceEmitter && input.geodesicId && object.geodesicIds.includes(input.geodesicId)) {
       continue;
     }
 
@@ -982,6 +983,35 @@ function markGeodesicConnected(
   const incomingYawRadians = tail
     ? sanitizeYaw(Math.atan2(tail.direction.y, tail.direction.x) + Math.PI)
     : undefined;
+
+  if (source?.kind === "geodesic-cannon" && incoming?.kind === "geodesic-cannon" && source.id === incoming.id) {
+    registry.update({
+      ...source,
+      geodesicIds: source.geodesicIds.includes(geodesicId)
+        ? source.geodesicIds
+        : [...source.geodesicIds, geodesicId],
+      geodesicEmitterYawRadiansById: {
+        ...source.geodesicEmitterYawRadiansById,
+        [geodesicId]: source.geodesicEmitterYawRadiansById?.[geodesicId] ?? incomingYawRadians ?? source.aimYawRadians,
+      },
+      geodesicConnectionsById: {
+        ...source.geodesicConnectionsById,
+        [geodesicId]: {
+          outgoingEmitterId: sourceEmitterId,
+          incomingEmitterId,
+          state: "connected",
+        },
+      },
+    });
+    for (const segment of getGeodesicSegments(registry, geodesicId)) {
+      registry.update({
+        ...segment,
+        connectionState: "connected",
+      });
+    }
+    return;
+  }
+
   if (source?.kind === "geodesic-cannon") {
     registry.update({
       ...source,

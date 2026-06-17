@@ -173,6 +173,7 @@ import {
 import { renderCameraFarMeters, renderCameraNearMeters } from "./renderCameraClip";
 import { installRuntimeDiagnostics, runtimeDiagnostics } from "./runtimeDiagnostics";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
+import { createPlayerRoverRenderModel } from "./playerRoverModel";
 import type {
   FramePerformanceRenderState,
   PortalEyeRenderDebugState,
@@ -543,6 +544,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const geodesicRuntimeRenderSources = createGeodesicRuntimeRenderSources(options.assets);
   const geodesicRuntimeArchetypeKeys = geodesicRuntimeRenderSources.map((source) => source.archetypeKey);
   const runtimeObjectRenderDiagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
+  const playerRoverRenderModel = createPlayerRoverRenderModel(options.assets);
   const portalInstanceDiagnostics = createPortalInstanceDiagnostics();
   const portalClipData = createPortalClipData({ maxVisiblePaths });
   const portalClipMaterialState = createPortalClipMaterialState(
@@ -1708,6 +1710,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
 
+    if (playerRoverRenderModel) {
+      for (const source of playerRoverRenderModel.collectSources()) {
+        activeKeys.add(source.archetypeKey);
+        if (!runtimeObjectRenderSourcesByKey.has(source.archetypeKey)) {
+          runtimeObjectRenderSourcesByKey.set(source.archetypeKey, source);
+        }
+      }
+    }
+
     for (const object of runtimeObjectRegistry.getAll()) {
       if (!object.portalRenderable) {
         continue;
@@ -1775,7 +1786,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function collectRuntimeObjectRenderRecords(): readonly RuntimeObjectRenderRecord[] {
-    return runtimeObjectRegistry.getAll().flatMap((object) => {
+    const records = runtimeObjectRegistry.getAll().flatMap((object) => {
       if (object.portalRenderable && isGeodesicRuntimeRenderObject(object)) {
         return collectGeodesicRuntimeRenderRecords(object, geodesicRuntimeArchetypeKeys);
       }
@@ -1795,6 +1806,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           localMatrix,
         }));
     });
+
+    return playerRoverRenderModel
+      ? [
+          ...records,
+          ...playerRoverRenderModel.collectRecords(playerPose, runtimeObjectRenderSourcesByKey.keys()),
+        ]
+      : records;
   }
 
   function runtimeObjectArchetypeKeyPrefix(object: RuntimeWorldObject): string {

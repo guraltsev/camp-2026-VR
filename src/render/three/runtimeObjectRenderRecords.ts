@@ -5,6 +5,7 @@ export interface RuntimeObjectRenderRecord {
   readonly cellId: string;
   readonly archetypeKey: string;
   readonly localMatrix: THREE.Matrix4;
+  readonly omitRootVisiblePath?: boolean;
 }
 
 export interface RuntimeObjectRenderSourceMesh {

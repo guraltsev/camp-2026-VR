@@ -467,6 +467,39 @@ describe("geodesic cannon world objects", () => {
     expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(Math.PI);
   });
 
+  it("connects a looped-world geodesic back to its source emitter", () => {
+    const world = compileTorusLoopWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "torus-room",
+      localPose: yawRigidTransform3(0, { x: 4, y: 0, z: 0 }),
+    });
+    registry.add(source);
+
+    rebuildGeodesicToLength({
+      world,
+      registry,
+      cannon: source,
+      geodesicId: "g-a",
+      totalLengthMeters: 15,
+    });
+
+    expect(getGeodesicSegments(registry, "g-a").map((segment) => segment.cellId)).toEqual(["torus-room", "torus-room"]);
+    expect(getGeodesicTail(registry, "g-a")).toMatchObject({
+      terminal: { kind: "emitter-hit", emitterId: "cannon-a" },
+      connectionState: "connected",
+    });
+    expect(getGeodesicConnection(registry, "g-a")).toEqual({
+      outgoingEmitterId: "cannon-a",
+      incomingEmitterId: "cannon-a",
+      state: "connected",
+    });
+    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual(["g-a"]);
+    expect(getCannonGeodesicYaw(registry, "cannon-a", "g-a")).toBeCloseTo(0);
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+  });
+
   it("does not connect to emitters during preview rebuilds", () => {
     const world = compileLargeWorld();
     const registry = createRuntimeObjectRegistry();
@@ -929,6 +962,29 @@ function compileLargePortalWorld() {
           { x: 0, y: 5 },
         ],
         portals: [{ id: "ba", sideIndex: 3, targetCellId: "a", targetPortalId: "ab" }],
+      },
+    ],
+  });
+}
+
+function compileTorusLoopWorld() {
+  return compileCellComplex({
+    cells: [
+      {
+        id: "torus-room",
+        heightMeters: 3,
+        baseVertices: [
+          { x: -7.5, y: -7.5 },
+          { x: 7.5, y: -7.5 },
+          { x: 7.5, y: 7.5 },
+          { x: -7.5, y: 7.5 },
+        ],
+        portals: [
+          { id: "bottom-top", sideIndex: 0, targetCellId: "torus-room", targetPortalId: "top-bottom" },
+          { id: "right-left", sideIndex: 1, targetCellId: "torus-room", targetPortalId: "left-right" },
+          { id: "top-bottom", sideIndex: 2, targetCellId: "torus-room", targetPortalId: "bottom-top" },
+          { id: "left-right", sideIndex: 3, targetCellId: "torus-room", targetPortalId: "right-left" },
+        ],
       },
     ],
   });

@@ -92,6 +92,47 @@ describe("updateRuntimeObjectRenderArchetypeInstances", () => {
     expect(diagnostics.capacityOverflowArchetypes).toEqual(["flag-text"]);
   });
 
+  it("can omit a runtime object's root-cell instance while keeping portal copies", () => {
+    const archetype = createArchetype("player-rover", 2);
+    const diagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
+    const portalMatrix = new THREE.Matrix4().makeTranslation(4, 0, 0);
+    const recordMatrix = new THREE.Matrix4().makeTranslation(1, 0, 0);
+    const records: RuntimeObjectRenderRecord[] = [
+      {
+        objectId: "player-rover",
+        cellId: "room-a",
+        archetypeKey: "player-rover",
+        localMatrix: recordMatrix,
+        omitRootVisiblePath: true,
+      },
+    ];
+
+    updateRuntimeObjectRenderArchetypeInstances(
+      [archetype],
+      groupRuntimeObjectRenderRecordsByArchetype(records),
+      new Map([
+        [
+          "room-a",
+          [
+            createRootVisiblePortalPath("room-a"),
+            {
+              ...createRootVisiblePortalPath("room-a"),
+              depth: 1,
+              pathId: 3,
+              rootFromDestinationMatrix: portalMatrix,
+            },
+          ],
+        ],
+      ]),
+      diagnostics,
+    );
+
+    expect(archetype.mesh.count).toBe(1);
+    expect(readMatrix(archetype.mesh, 0)).toEqual(new THREE.Matrix4().multiplyMatrices(portalMatrix, recordMatrix).elements);
+    expect(archetype.portalPathIdAttribute.getX(0)).toBe(3);
+    expect(diagnostics.capacityOverflowCount).toBe(0);
+  });
+
   it("flattens statically-kept visible path groups for runtime object rendering", () => {
     const rootPath = createRootVisiblePortalPath("room-a");
     const portalPath = {

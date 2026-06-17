@@ -9,6 +9,7 @@ import {
   preloadWorldAssets,
   type PreparedKtx2Loader,
 } from "../../src/render/three/preloadWorldAssets";
+import { playerRoverAssetPath } from "../../src/render/three/playerRoverModel";
 
 const loadTextureAsync = vi.fn(async (_url: string) => new THREE.Texture());
 const loadExrAsync = vi.fn(async (_url: string) => new THREE.Texture());
@@ -67,6 +68,7 @@ describe("preloadWorldAssets", () => {
     expect(assetPaths).toContain("flashlight/Post.glb");
     expect(assetPaths).toContain("flashlight/Lightsaber.glb");
     expect(assetPaths).toContain("baloon/Balloon.glb");
+    expect(assetPaths).toContain(playerRoverAssetPath);
   });
 
   it("classifies .ktx2 files as textures", () => {

@@ -4,6 +4,7 @@ import { publicAssetUrl } from "../../glue/assetUrls";
 import { PORTAL_WALL_TEXTURE_FILE } from "./portalWallTexture";
 import { placedFlagAssetPaths } from "../../world-objects/placedFlags";
 import { geodesicRayAssetPaths } from "./geodesicCannonRenderer";
+import { playerRoverAssetPath } from "./playerRoverModel";
 import { runtimeDiagnostics } from "./runtimeDiagnostics";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
@@ -68,6 +69,7 @@ export function collectWorldAssetPaths(world: CompiledCellComplex): readonly str
   for (const assetPath of [
     ...Object.values(placedFlagAssetPaths),
     ...Object.values(geodesicRayAssetPaths),
+    playerRoverAssetPath,
   ]) {
     assetPaths.add(assetPath);
   }

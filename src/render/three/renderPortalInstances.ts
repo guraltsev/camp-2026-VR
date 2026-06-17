@@ -191,9 +191,12 @@ export function updateRuntimeObjectRenderArchetypeInstances(
 
     for (const record of records) {
       const paths = visiblePathsByDestinationCell.get(record.cellId) ?? [];
-      requestedCount += paths.length;
+      const renderablePaths = record.omitRootVisiblePath
+        ? paths.filter((path) => path.depth !== 0)
+        : paths;
+      requestedCount += renderablePaths.length;
 
-      for (const path of paths) {
+      for (const path of renderablePaths) {
         if (count >= archetype.capacity) {
           continue;
         }
