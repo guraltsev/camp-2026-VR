@@ -416,6 +416,10 @@ describe("geodesic cannon world objects", () => {
       terminal: { kind: "emitter-hit", emitterId: "cannon-b" },
       connectionState: "connected",
     });
+    expect(getGeodesicTail(registry, "g-a")?.tooltip).toEqual({
+      label: "Geodesic G1",
+      rangeMeters: 6,
+    });
     expect(isGeodesicLocked(registry, "g-a")).toBe(true);
     expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-a"]);
     expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(Math.PI);
@@ -580,6 +584,10 @@ describe("geodesic cannon world objects", () => {
 
     expect(first.lengthMeters).toBeCloseTo(2.3);
     expect(first.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-b" });
+    expect(registry.get(first.id)?.tooltip).toEqual({
+      label: "Geodesic G1",
+      rangeMeters: 6,
+    });
     expect(getGeodesicConnection(registry, "g-a")).toEqual({
       outgoingEmitterId: "cannon-a",
       incomingEmitterId: "cannon-b",

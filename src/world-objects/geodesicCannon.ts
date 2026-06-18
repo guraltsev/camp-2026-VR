@@ -678,6 +678,7 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
       ...tail,
       lengthMeters: tail.lengthMeters + first.lengthMeters,
       terminal: first.terminal,
+      tooltip: createGeodesicSegmentTooltip(tail.geodesicNumber, first.connectionState ?? "open"),
       connectionState: first.connectionState,
     };
     input.registry.update(merged);
@@ -1060,7 +1061,7 @@ function createSegmentFromTrace(options: {
   readonly trace: TraceGeodesicSegmentResult;
 }): GeodesicSegmentObject {
   const yaw = Math.atan2(options.trace.direction.y, options.trace.direction.x);
-  const geodesicLabel = options.geodesicNumber === undefined ? undefined : `G${options.geodesicNumber}`;
+  const connectionState = options.trace.terminal.kind === "emitter-hit" ? "connected" : "open";
 
   return {
     id: options.id,
@@ -1068,12 +1069,7 @@ function createSegmentFromTrace(options: {
     cellId: options.trace.cellId,
     localPose: yawRigidTransform3(yaw, options.trace.start),
     portalRenderable: true,
-    tooltip: {
-      label: geodesicLabel ? `Geodesic ${geodesicLabel}` : "Geodesic",
-      rangeMeters: 6,
-      desktopPrompt: `${geodesicLabel ? `Geodesic ${geodesicLabel}` : "Geodesic"}\nLMouse - extend`,
-      xrPrompt: `${geodesicLabel ? `Geodesic ${geodesicLabel}` : "Geodesic"}\nSelect - extend`,
-    },
+    tooltip: createGeodesicSegmentTooltip(options.geodesicNumber, connectionState),
     geodesicId: options.geodesicId,
     geodesicNumber: options.geodesicNumber,
     segmentIndex: options.segmentIndex,
@@ -1081,7 +1077,27 @@ function createSegmentFromTrace(options: {
     direction: options.trace.direction,
     lengthMeters: options.trace.lengthMeters,
     terminal: options.trace.terminal,
-    connectionState: options.trace.terminal.kind === "emitter-hit" ? "connected" : "open",
+    connectionState,
+  };
+}
+
+function createGeodesicSegmentTooltip(
+  geodesicNumber: number | undefined,
+  connectionState: "open" | "connected",
+): GeodesicSegmentObject["tooltip"] {
+  const label = geodesicNumber === undefined ? "Geodesic" : `Geodesic G${geodesicNumber}`;
+  if (connectionState === "connected") {
+    return {
+      label,
+      rangeMeters: 6,
+    };
+  }
+
+  return {
+    label,
+    rangeMeters: 6,
+    desktopPrompt: `${label}\nLMouse - extend`,
+    xrPrompt: `${label}\nSelect - extend`,
   };
 }
 
@@ -1215,6 +1231,7 @@ function markGeodesicConnected(
     for (const segment of getGeodesicSegments(registry, geodesicId)) {
       registry.update({
         ...segment,
+        tooltip: createGeodesicSegmentTooltip(segment.geodesicNumber, "connected"),
         connectionState: "connected",
       });
     }
@@ -1256,6 +1273,7 @@ function markGeodesicConnected(
   for (const segment of getGeodesicSegments(registry, geodesicId)) {
     registry.update({
       ...segment,
+      tooltip: createGeodesicSegmentTooltip(segment.geodesicNumber, "connected"),
       connectionState: "connected",
     });
   }
