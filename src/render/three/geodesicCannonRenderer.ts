@@ -65,7 +65,7 @@ export function collectGeodesicRuntimeRenderRecords(
       ? object.geodesicIds
       : object.activeGeodesicId
         ? [object.activeGeodesicId]
-        : [object.id];
+        : [];
     const headRecords = geodesicIds.flatMap((geodesicId) => headKeys.map((archetypeKey) => ({
       objectId: `${object.id}:${geodesicId}:head`,
       cellId: object.cellId,
