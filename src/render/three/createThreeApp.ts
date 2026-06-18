@@ -3147,7 +3147,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function startGeodesicCannonRotation(cannonId: string, requestedGeodesicId?: string): void {
-    const cannon = prepareGeodesicCannonForLift(cannonId);
+    const object = runtimeObjectRegistry.get(cannonId);
+    const cannon = object?.kind === "geodesic-cannon" ? object : undefined;
     if (cannon?.kind !== "geodesic-cannon") {
       menuState = closeRuntimeMenu(menuState);
       syncDesktopPalette();
@@ -3174,7 +3175,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function startGeodesicCannonAim(cannonId: string, requestedGeodesicId?: string): void {
-    const cannon = prepareGeodesicCannonForLift(cannonId);
+    const object = runtimeObjectRegistry.get(cannonId);
+    const cannon = object?.kind === "geodesic-cannon" ? object : undefined;
     if (cannon?.kind !== "geodesic-cannon") {
       menuState = closeRuntimeMenu(menuState);
       syncDesktopPalette();
@@ -3552,7 +3554,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           : cannon.geodesicEmitterYawRadiansById,
       };
       runtimeObjectRegistry.update(nextCannon);
-      rebuildActiveGeodesicFromCannon(nextCannon, { connectEmitters: false, breakOnForbiddenZone: true });
+      rebuildActiveGeodesicFromCannon(nextCannon, { connectEmitters: false });
       syncRuntimeObjectPortalInstances();
       syncSelectableHitboxDebug();
     }
@@ -3609,7 +3611,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             : cannon.geodesicEmitterYawRadiansById,
         };
         runtimeObjectRegistry.update(nextCannon);
-        rebuildActiveGeodesicFromCannon(nextCannon, { connectEmitters: false, breakOnForbiddenZone: true });
+        rebuildActiveGeodesicFromCannon(nextCannon, { connectEmitters: false });
         syncRuntimeObjectPortalInstances();
         syncSelectableHitboxDebug();
       }
@@ -3700,7 +3702,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function finishActiveGeodesicCannonEdit(cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>): void {
-    rebuildActiveGeodesicFromCannon(cannon, { connectEmitters: true, snapToEmitter: true, breakOnForbiddenZone: true });
+    rebuildActiveGeodesicFromCannon(cannon, { connectEmitters: true, snapToEmitter: true });
     removeProtractorAnglesForMissingVertices(pruneMissingGeodesicIntersectionObjects(runtimeObjectRegistry));
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
