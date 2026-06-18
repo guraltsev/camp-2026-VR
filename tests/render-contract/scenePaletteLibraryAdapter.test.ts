@@ -19,9 +19,11 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).not.toContain("tool:aim");
     expect(itemIds).toContain("tool:place-flag");
     expect(itemIds).toContain("tool:geodesic-cannon");
+    expect(itemIds).toContain("tool:measure-length");
     expect(itemIds).toContain("tool-options:place-sign");
     expect(imageSources).toContain("/assets/WoodenSign1/WoodenSign1.png");
     expect(imageSources).toContain("/assets/flashlight/Lightsaber.png");
+    expect(imageSources).toContain("/assets/icons/Ruler.png");
     expect(imageSources).toContain("/assets/icons/protractor.png");
 
     adapter.dispose();

@@ -18,6 +18,7 @@ export type RuntimeToolId =
   | "aim"
   | "place-flag"
   | "geodesic-cannon"
+  | "measure-length"
   | "protractor"
   | "geodesic-cannon-rotate"
   | "geodesic-cannon-aim";

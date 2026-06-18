@@ -143,6 +143,7 @@ const wristToolIndicatorRotateIconSource = "/assets/icons/arrow-circle-inverted.
 const wristToolIndicatorAimIconSource = "/assets/icons/aim-inverted.png";
 const wristToolIndicatorRayIconSource = "/assets/flashlight/Lightsaber.png";
 const wristToolIndicatorProtractorIconSource = "/assets/icons/protractor.png";
+const wristToolIndicatorMeasureLengthIconSource = "/assets/icons/Ruler.png";
 
 export function resolveWristToolIndicatorVisual(
   toolId: RuntimeToolId,
@@ -171,6 +172,13 @@ export function resolveWristToolIndicatorVisual(
         imageSource: wristToolIndicatorProtractorIconSource,
         color: "#fb7185",
         label: "Protractor",
+      };
+    case "measure-length":
+      return {
+        icon: "image",
+        imageSource: wristToolIndicatorMeasureLengthIconSource,
+        color: "#22c55e",
+        label: "Length",
       };
     case "geodesic-cannon-rotate":
       return {

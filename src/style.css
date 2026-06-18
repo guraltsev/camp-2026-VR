@@ -761,7 +761,8 @@ img.desktop-tool-tile-icon {
 .desktop-tool-indicator-svg,
 .desktop-tool-indicator-sign-icon,
 .desktop-tool-indicator-ray-icon,
-.desktop-tool-indicator-protractor-icon {
+.desktop-tool-indicator-protractor-icon,
+.desktop-tool-indicator-measure-icon {
   display: none;
   width: 2rem;
   height: 2rem;
@@ -769,7 +770,8 @@ img.desktop-tool-tile-icon {
 
 .desktop-tool-indicator-sign-icon,
 .desktop-tool-indicator-ray-icon,
-.desktop-tool-indicator-protractor-icon {
+.desktop-tool-indicator-protractor-icon,
+.desktop-tool-indicator-measure-icon {
   object-fit: contain;
 }
 
@@ -780,6 +782,7 @@ img.desktop-tool-tile-icon {
 
 .desktop-tool-indicator-place-flag .desktop-tool-indicator-sign-icon,
 .desktop-tool-indicator-geodesic-cannon .desktop-tool-indicator-ray-icon,
+.desktop-tool-indicator-measure-length .desktop-tool-indicator-measure-icon,
 .desktop-tool-indicator-protractor .desktop-tool-indicator-protractor-icon {
   display: block;
   color: #f8fafc;
@@ -799,11 +802,13 @@ img.desktop-tool-tile-icon {
   min-width: 0;
 }
 
-.desktop-tool-indicator-protractor .desktop-tool-indicator-text {
+.desktop-tool-indicator-protractor .desktop-tool-indicator-text,
+.desktop-tool-indicator-measure-length .desktop-tool-indicator-text {
   justify-content: flex-start;
 }
 
-.desktop-tool-indicator-protractor .desktop-tool-indicator-label {
+.desktop-tool-indicator-protractor .desktop-tool-indicator-label,
+.desktop-tool-indicator-measure-length .desktop-tool-indicator-label {
   line-height: 0.95;
 }
 

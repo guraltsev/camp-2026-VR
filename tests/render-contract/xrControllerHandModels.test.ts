@@ -38,6 +38,11 @@ describe("xrControllerHandModels", () => {
       imageSource: "/assets/icons/protractor.png",
       label: "Protractor",
     });
+    expect(resolveWristToolIndicatorVisual("measure-length", "WoodenSign1")).toMatchObject({
+      icon: "image",
+      imageSource: "/assets/icons/Ruler.png",
+      label: "Length",
+    });
     expect(resolveWristToolIndicatorVisual("geodesic-cannon-rotate", "WoodenSign1")).toMatchObject({
       icon: "image",
       imageSource: "/assets/icons/arrow-circle-inverted.png",

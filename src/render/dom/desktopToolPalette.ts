@@ -12,6 +12,7 @@ const aimIconSource = "/assets/icons/aim-inverted.png";
 const lockIconSource = "/assets/icons/lock.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const protractorToolIconSource = "/assets/icons/protractor.png";
+const measureLengthToolIconSource = "/assets/icons/Ruler.png";
 
 export interface DesktopPaletteView {
   readonly pageId: PaletteDefinition["pageId"];
@@ -374,7 +375,22 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     protractorLabel.textContent = "protractor";
     protractorButton.append(createProtractorTileIcon(), protractorLabel);
 
-    tools.append(flagTile, cannonButton, protractorButton);
+    const measureButton = document.createElement("button");
+    measureButton.type = "button";
+    measureButton.className = "desktop-tool-tile";
+    measureButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "measure-length");
+    measureButton.ariaLabel = "Measure length";
+    measureButton.ariaPressed = String(mainContent.selectedTool === "measure-length");
+    measureButton.addEventListener("click", () => {
+      options.onToolSelected("measure-length");
+    });
+
+    const measureLabel = document.createElement("span");
+    measureLabel.className = "desktop-tool-tile-label";
+    measureLabel.textContent = "length";
+    measureButton.append(createMeasureLengthTileIcon(), measureLabel);
+
+    tools.append(flagTile, cannonButton, measureButton, protractorButton);
     return tools;
   }
 
@@ -733,6 +749,15 @@ function createProtractorTileIcon(): HTMLElement {
   const icon = document.createElement("img");
   icon.className = "desktop-tool-tile-icon";
   icon.src = protractorToolIconSource;
+  icon.alt = "";
+  icon.decoding = "async";
+  return icon;
+}
+
+function createMeasureLengthTileIcon(): HTMLElement {
+  const icon = document.createElement("img");
+  icon.className = "desktop-tool-tile-icon";
+  icon.src = measureLengthToolIconSource;
   icon.alt = "";
   icon.decoding = "async";
   return icon;

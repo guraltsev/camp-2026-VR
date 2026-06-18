@@ -7,6 +7,7 @@ const signIconSources: Record<PlacedFlagType, string> = {
 };
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const protractorToolIconSource = "/assets/icons/protractor.png";
+const measureLengthToolIconSource = "/assets/icons/Ruler.png";
 
 export interface DesktopToolIndicator {
   readonly root: HTMLDivElement;
@@ -52,7 +53,13 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   protractorIcon.decoding = "async";
   protractorIcon.src = protractorToolIconSource;
   protractorIcon.setAttribute("aria-hidden", "true");
-  icon.append(aimIcon, signIcon, rayIcon, protractorIcon);
+  const measureIcon = document.createElement("img");
+  measureIcon.className = "desktop-tool-indicator-measure-icon";
+  measureIcon.alt = "";
+  measureIcon.decoding = "async";
+  measureIcon.src = measureLengthToolIconSource;
+  measureIcon.setAttribute("aria-hidden", "true");
+  icon.append(aimIcon, signIcon, rayIcon, protractorIcon, measureIcon);
 
   const label = document.createElement("span");
   label.className = "desktop-tool-indicator-label";
@@ -72,6 +79,7 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
       root.hidden = toolId === "none" || toolId === "aim";
       root.classList.toggle("desktop-tool-indicator-aim", toolId === "aim");
       root.classList.toggle("desktop-tool-indicator-place-flag", toolId === "place-flag");
+      root.classList.toggle("desktop-tool-indicator-measure-length", toolId === "measure-length");
       root.classList.toggle(
         "desktop-tool-indicator-geodesic-cannon",
         toolId === "geodesic-cannon" ||
@@ -86,6 +94,8 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
         ? "Rotate"
         : toolId === "geodesic-cannon-aim"
           ? "Aim"
+          : toolId === "measure-length"
+            ? "Length"
           : toolId === "protractor"
             ? "Protractor"
           : toolId === "geodesic-cannon"
@@ -93,12 +103,18 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
             : toolId === "place-flag"
               ? "Sign"
               : "";
-      prompt.textContent = toolId === "protractor" ? indicatorOptions.protractorPrompt ?? "select: vertex" : "";
-      prompt.hidden = toolId !== "protractor";
+      prompt.textContent = toolId === "protractor"
+        ? indicatorOptions.protractorPrompt ?? "select: vertex"
+        : toolId === "measure-length"
+          ? "select: geodesic"
+          : "";
+      prompt.hidden = toolId !== "protractor" && toolId !== "measure-length";
       root.ariaLabel = toolId === "place-flag"
         ? "Selected tool: sign"
         : toolId === "geodesic-cannon"
           ? "Selected tool: geodesic ray"
+          : toolId === "measure-length"
+            ? "Selected tool: measure length, select geodesic"
           : toolId === "protractor"
             ? `Selected tool: protractor, ${prompt.textContent}`
           : toolId === "geodesic-cannon-rotate"

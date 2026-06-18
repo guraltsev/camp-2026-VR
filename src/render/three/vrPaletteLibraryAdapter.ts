@@ -70,6 +70,7 @@ const aimIconSource = "/assets/icons/aim-inverted.png";
 const lockIconSource = "/assets/icons/lock.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const protractorToolIconSource = "/assets/icons/protractor.png";
+const measureLengthToolIconSource = "/assets/icons/Ruler.png";
 const signTypeLabels: Record<PlacedFlagType, string> = {
   WoodenSign1: "Wooden Sign 1",
   WoodenSign2: "Wooden Sign 2",
@@ -394,6 +395,7 @@ function buildMainContent(
   row.add(
     createToolTile("place-flag", "Sign", content.selectedTool, options, content.placeFlagType),
     createToolTile("geodesic-cannon", "Ray", content.selectedTool, options),
+    createToolTile("measure-length", "Length", content.selectedTool, options),
     createToolTile("protractor", "Protractor", content.selectedTool, options),
   );
 
@@ -747,7 +749,7 @@ function createToolTile(
 ): Container {
   const selected = toolId === selectedTool;
   const button = createInteractiveSurface({
-    width: "49%",
+    width: "23%",
     height: 150,
     label: "",
     labelFontSize: 18,
@@ -781,7 +783,26 @@ function createToolIcon(
     return createProtractorIcon();
   }
 
+  if (toolId === "measure-length") {
+    return createMeasureLengthIcon();
+  }
+
   return new Container({ width: 64, height: 64, opacity: 0 });
+}
+
+function createMeasureLengthIcon(): Component<any> {
+  const image = new Image({
+    src: measureLengthToolIconSource,
+    width: 88,
+    height: 88,
+    objectFit: "fill",
+    keepAspectRatio: true,
+    depthTest: false,
+    depthWrite: false,
+    renderOrder: 1002,
+  });
+  image.userData.scenePaletteIconSrc = measureLengthToolIconSource;
+  return image;
 }
 
 function createRayIcon(): Component<any> {

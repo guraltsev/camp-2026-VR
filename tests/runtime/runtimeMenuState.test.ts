@@ -57,6 +57,20 @@ describe("runtimeMenuState", () => {
     expect(definition.content.selectedTool).toBe("protractor");
   });
 
+  it("selects the measure length tool from the main palette", () => {
+    const state = setRuntimeMenuSelectedTool(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), "measure-length");
+    const definition = createPaletteDefinition(state);
+
+    expect(state.selectedTool).toBe("measure-length");
+    expect(definition.content.kind).toBe("main");
+    if (definition.content.kind !== "main") {
+      throw new Error("Expected main palette.");
+    }
+    expect(definition.content.selectedTool).toBe("measure-length");
+  });
+
   it("serializes the aim collision outline debug toggle", () => {
     const state = setRuntimeMenuAimCollisionOutlinesEnabled(createRuntimeMenuState({
       selectedWorldId: "cube",

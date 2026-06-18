@@ -77,6 +77,10 @@ import {
   geodesicRayBeamHeightMeters,
 } from "../../world-objects/geodesicCannon";
 import {
+  createMeasuredGeodesicLengthObject,
+  refreshMeasuredGeodesicLengthObject,
+} from "../../world-objects/measureLengthTool";
+import {
   createProtractorAngleObject,
   refreshProtractorAngleObject,
   resolveProtractorCenterSelection,
@@ -110,6 +114,10 @@ import {
 } from "./aimTarget";
 import { resolveGeodesicCannonAimYawFromAbsolutePoints } from "./geodesicCannonAimTarget";
 import { createPlacedFlagRuntime, type PlacedFlagRuntime } from "./placedFlagRenderer";
+import {
+  createMeasuredGeodesicLengthRuntime,
+  type MeasuredGeodesicLengthRuntime,
+} from "./measureLengthRenderer";
 import { createProtractorAngleRuntime, type ProtractorAngleRuntime } from "./protractorAngleRenderer";
 import {
   collectGeodesicRuntimeRenderRecords,
@@ -535,10 +543,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   );
   const dynamicObjectRuntimes: Array<GeodesciMarmotRuntime | SimpleGeoCreatureRuntime> = [];
   const placedFlagRuntimes = new Map<string, PlacedFlagRuntime>();
+  const measuredGeodesicLengthRuntimes = new Map<string, MeasuredGeodesicLengthRuntime>();
   const protractorAngleRuntimes = new Map<string, ProtractorAngleRuntime>();
   let placedFlagIdCounter = 0;
   let geodesicCannonIdCounter = 0;
   let geodesicIdCounter = 0;
+  let measuredGeodesicLengthIdCounter = 0;
   let protractorAngleIdCounter = 0;
   let activeGeodesicCannonToolState: {
     readonly selectedCannonId?: string;
@@ -791,6 +801,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else if (worldPrimaryActionRequested && menuState.selectedTool === "geodesic-cannon") {
       tryUseGeodesicCannonToolFromAim(activeAimRay);
       primaryActionConsumed = true;
+    } else if (worldPrimaryActionRequested && menuState.selectedTool === "measure-length") {
+      tryUseMeasureLengthToolFromAim(activeAimRay);
+      primaryActionConsumed = true;
     } else if (worldPrimaryActionRequested && menuState.selectedTool === "protractor") {
       tryUseProtractorToolFromAim(activeAimRay);
       primaryActionConsumed = true;
@@ -817,6 +830,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     for (const runtime of placedFlagRuntimes.values()) {
       runtime.syncParent(cellMeshes);
     }
+    refreshMeasuredGeodesicLengths();
     const frameAfterObjectsMs = performance.now();
     const frameBeforeCameraMs = frameAfterObjectsMs;
 
@@ -2350,6 +2364,35 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
+  function syncMeasuredGeodesicLengthRuntime(object: RuntimeWorldObject): void {
+    if (object.kind !== "measured-geodesic-length") {
+      return;
+    }
+
+    let runtime = measuredGeodesicLengthRuntimes.get(object.id);
+    if (!runtime) {
+      runtime = createMeasuredGeodesicLengthRuntime(object);
+      measuredGeodesicLengthRuntimes.set(object.id, runtime);
+    } else {
+      invalidateRuntimeObjectRenderState(object.id);
+    }
+
+    runtime.syncFromObject(object);
+    runtimeObjectRootsById.set(object.id, runtime.root);
+    syncRuntimeObjectPortalInstances();
+  }
+
+  function removeMeasuredGeodesicLengthRuntime(objectId: string): void {
+    const runtime = measuredGeodesicLengthRuntimes.get(objectId);
+    if (runtime) {
+      runtime.dispose();
+      measuredGeodesicLengthRuntimes.delete(objectId);
+    }
+
+    runtimeObjectRootsById.delete(objectId);
+    invalidateRuntimeObjectRenderState(objectId);
+  }
+
   function syncProtractorAngleRuntime(object: RuntimeWorldObject): void {
     if (object.kind !== "protractor-angle") {
       return;
@@ -2748,6 +2791,45 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncSelectableHitboxDebug();
   }
 
+  function tryUseMeasureLengthToolFromAim(ray?: RootAimRay): void {
+    if (!ray) {
+      return;
+    }
+
+    const target = resolveCurrentAimTarget(ray);
+    logVerboseAimClick(target);
+    if (!targetIsWithinInteractionRange(target) || target?.object?.kind !== "geodesic-segment") {
+      return;
+    }
+
+    const geodesicId = target.object.geodesicId;
+    const existing = runtimeObjectRegistry.getAll().find((object) =>
+      object.kind === "measured-geodesic-length" && object.geodesicId === geodesicId
+    );
+    const measurement = createMeasuredGeodesicLengthObject({
+      id: existing?.id ?? `measured-geodesic-length:${Date.now()}:${measuredGeodesicLengthIdCounter++}`,
+      registry: runtimeObjectRegistry,
+      geodesicId,
+      playerCellId: playerPose.cellId,
+      playerPoint: playerPose.position,
+      label: getGeodesicDisplayName(geodesicId),
+      fallbackSegment: target.object,
+    });
+    if (!measurement) {
+      return;
+    }
+
+    if (existing) {
+      runtimeObjectRegistry.update(measurement);
+    } else {
+      runtimeObjectRegistry.add(measurement);
+    }
+    syncMeasuredGeodesicLengthRuntime(measurement);
+    menuState = setRuntimeMenuSelectedTool(menuState, "none");
+    syncDesktopPalette();
+    syncSelectableHitboxDebug();
+  }
+
   function tryExtendFocusedGeodesicFromAim(ray?: RootAimRay): boolean {
     if (!ray) {
       return false;
@@ -2777,6 +2859,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       selectedCannonId: activeGeodesicCannonToolState.selectedCannonId,
       activeGeodesicId: geodesicId,
     };
+    refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
     return true;
@@ -2824,6 +2907,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     removePlacedFlags();
     removeGeodesicRuntimeObjects();
+    removeMeasuredGeodesicLengths();
     removeProtractorAngles();
   }
 
@@ -2892,6 +2976,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return true;
   }
 
+  function tryRemoveFocusedMeasuredGeodesicLength(ray?: RootAimRay): boolean {
+    const focused = findFocusedRuntimeObject(ray);
+    if (focused?.object.kind !== "measured-geodesic-length") {
+      return false;
+    }
+
+    runtimeObjectRegistry.remove(focused.object.id);
+    removeMeasuredGeodesicLengthRuntime(focused.object.id);
+    syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
+    return true;
+  }
+
   function tryUseFocusedObjectPrimaryInteraction(ray?: RootAimRay): boolean {
     if (!ray) {
       return false;
@@ -2908,6 +3005,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         return tryOpenFocusedObjectMenu(ray);
       case "geodesic-segment":
         return tryExtendFocusedGeodesicFromAim(ray);
+      case "measured-geodesic-length":
+        return tryRemoveFocusedMeasuredGeodesicLength(ray);
       case "protractor-angle":
         return tryRemoveFocusedProtractorAngle(ray);
       default:
@@ -3097,6 +3196,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     removeProtractorAnglesForGeodesic(geodesicId);
+    removeMeasuredGeodesicLengthsForGeodesic(geodesicId);
     removeGeodesic(runtimeObjectRegistry, geodesicId);
     const refreshed = runtimeObjectRegistry.get(cannonId);
     const updatedCannon = refreshed?.kind === "geodesic-cannon" ? refreshed : cannon;
@@ -3329,6 +3429,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       snapToEmitter: options.snapToEmitter,
     });
     refreshProtractorAnglesForGeodesic(geodesicId);
+    refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);
     activeGeodesicCannonToolState = {
       selectedCannonId: cannon.id,
       activeGeodesicId: geodesicId,
@@ -3488,6 +3589,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         menuState.selectedTool !== "place-flag" &&
         menuState.selectedTool !== "geodesic-cannon" &&
         menuState.selectedTool !== "geodesic-cannon-aim" &&
+        menuState.selectedTool !== "measure-length" &&
         menuState.selectedTool !== "protractor"
       ) ||
       menuState.isOpen ||
@@ -3841,6 +3943,76 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     activeGeodesicCannonToolState = {};
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
+  }
+
+  function removeMeasuredGeodesicLengths(): void {
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "measured-geodesic-length") {
+        runtimeObjectRegistry.remove(object.id);
+        removeMeasuredGeodesicLengthRuntime(object.id);
+      }
+    }
+    syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
+  }
+
+  function removeMeasuredGeodesicLengthsForGeodesic(geodesicId: string): void {
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "measured-geodesic-length" && object.geodesicId === geodesicId) {
+        runtimeObjectRegistry.remove(object.id);
+        removeMeasuredGeodesicLengthRuntime(object.id);
+      }
+    }
+  }
+
+  function refreshMeasuredGeodesicLengths(): void {
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind !== "measured-geodesic-length") {
+        continue;
+      }
+
+      refreshMeasuredGeodesicLength(object);
+    }
+  }
+
+  function refreshMeasuredGeodesicLengthsForGeodesic(geodesicId: string): void {
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "measured-geodesic-length" && object.geodesicId === geodesicId) {
+        refreshMeasuredGeodesicLength(object);
+      }
+    }
+  }
+
+  function refreshMeasuredGeodesicLength(
+    object: Extract<RuntimeWorldObject, { readonly kind: "measured-geodesic-length" }>,
+  ): void {
+    const refreshed = refreshMeasuredGeodesicLengthObject({
+      registry: runtimeObjectRegistry,
+      measurement: object,
+      playerCellId: playerPose.cellId,
+      playerPoint: playerPose.position,
+    });
+    if (!refreshed) {
+      runtimeObjectRegistry.remove(object.id);
+      removeMeasuredGeodesicLengthRuntime(object.id);
+      return;
+    }
+
+    const changed =
+      refreshed.cellId !== object.cellId ||
+      refreshed.lengthMeters !== object.lengthMeters ||
+      refreshed.labelPoint.x !== object.labelPoint.x ||
+      refreshed.labelPoint.y !== object.labelPoint.y ||
+      refreshed.labelPoint.z !== object.labelPoint.z ||
+      refreshed.localPose.rotation.m00 !== object.localPose.rotation.m00 ||
+      refreshed.localPose.rotation.m10 !== object.localPose.rotation.m10 ||
+      refreshed.segmentId !== object.segmentId;
+    if (!changed) {
+      return;
+    }
+
+    runtimeObjectRegistry.update(refreshed);
+    syncMeasuredGeodesicLengthRuntime(refreshed);
   }
 
   function removeProtractorAngles(): void {

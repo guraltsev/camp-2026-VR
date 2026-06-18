@@ -3,6 +3,7 @@ import type { DynamicObjectState, SimpleCollisionCylinder } from "../movement/dy
 import type { AssetObjectSpec } from "../cell-complex/specs";
 import { yawRigidTransform3 } from "../math/rigidTransform3";
 import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "./geodesicCannon";
+import type { MeasuredGeodesicLengthObject } from "./measureLengthTool";
 import type { PlacedFlagObject } from "./placedFlags";
 import type { ProtractorAngleObject } from "./protractorTool";
 import { userObjectClass } from "./objectMetadata";
@@ -51,6 +52,7 @@ export type RuntimeWorldObject =
   | GeodesicCannonObject
   | GeodesicSegmentObject
   | GeodesicIntersectionObject
+  | MeasuredGeodesicLengthObject
   | ProtractorAngleObject;
 
 export interface RuntimeObjectRegistry {
