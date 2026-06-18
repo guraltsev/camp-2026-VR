@@ -1759,6 +1759,9 @@ function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly Ge
       if (!intersection) {
         continue;
       }
+      if (pointCoincidesWithGeodesicEmitter(registry, left.cellId, intersection.point)) {
+        continue;
+      }
 
       const pointKey = `${left.cellId}:${intersection.point.x.toFixed(5)}:${intersection.point.y.toFixed(5)}`;
       const sortedGeodesicIds = [left.geodesicId, right.geodesicId].sort();
@@ -1785,6 +1788,26 @@ function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly Ge
   }
 
   return intersections;
+}
+
+function pointCoincidesWithGeodesicEmitter(registry: RuntimeObjectRegistry, cellId: string, point: Vec3): boolean {
+  const toleranceSquared = emitterConnectionToleranceMeters * emitterConnectionToleranceMeters;
+  for (const object of registry.getObjectsInCell(cellId)) {
+    if (!isGeodesicCannonObject(object)) {
+      continue;
+    }
+
+    const emitterPoint = {
+      x: object.localPose.translation.x,
+      y: object.localPose.translation.y,
+      z: object.localPose.translation.z + geodesicRayBeamHeightMeters,
+    };
+    if (distanceSquared(point, emitterPoint) <= toleranceSquared) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function assignGeodesicIntersectionIdentities(

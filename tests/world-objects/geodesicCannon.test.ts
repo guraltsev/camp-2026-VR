@@ -633,6 +633,7 @@ describe("geodesic cannon world objects", () => {
     expect(getCannonGeodesicYaw(registry, "cannon-c", "g-b:after-vertex")).toBeCloseTo(Math.PI / 2);
     expect(getGeodesicTail(registry, "g-a:after-vertex")?.lengthMeters).toBeCloseTo(1.8);
     expect(getGeodesicTail(registry, "g-b:after-vertex")?.lengthMeters).toBeCloseTo(1.8);
+    expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(0);
   });
 
   it("connects immediately when an aimed geodesic reaches an emitter", () => {
@@ -1242,7 +1243,7 @@ describe("geodesic cannon world objects", () => {
     expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(1);
   });
 
-  it("creates a vertex balloon at an emitter when geodesics intersect there", () => {
+  it("does not create a vertex balloon at an emitter when geodesics intersect there", () => {
     const registry = createRuntimeObjectRegistry([
       createGeodesicCannonObject({
         id: "cannon-a",
@@ -1265,16 +1266,10 @@ describe("geodesic cannon world objects", () => {
       }),
     ]);
 
-    const [vertex] = updateGeodesicIntersectionObjects(registry);
+    const vertices = updateGeodesicIntersectionObjects(registry);
 
-    expect(vertex).toMatchObject({
-      kind: "geodesic-intersection",
-      cellId: "a",
-      geodesicIds: ["g-a", "g-b"],
-      segmentIds: ["g-a:segment:0", "g-b:segment:0"],
-    });
-    expect(vertex.localPose.translation).toEqual({ x: 1, y: 1, z: geodesicRayBeamHeightMeters + 0.25 });
-    expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(1);
+    expect(vertices).toEqual([]);
+    expect(registry.getAll().filter((object) => object.kind === "geodesic-intersection")).toHaveLength(0);
   });
 
   it("keeps vertex identity while a geodesic pair intersection moves continuously", () => {
