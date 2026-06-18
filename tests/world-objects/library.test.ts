@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { worldObjectLibrary } from "../../src/world-objects/library";
+import { standardUserRobotObject, userObjectClass } from "../../src/world-objects/library";
 import {
   butterflyVerticalOscillationHeightMagnitudeMeters,
   butterflyVerticalOscillationRateHz,
@@ -22,6 +23,7 @@ describe("worldObjectLibrary", () => {
       modelOffset: { x: 0, y: 0, z: 3.75 },
       turnRadians: Math.PI / 12,
       yawRadians: Math.PI / 12,
+      class: "house",
     });
 
     expect(
@@ -104,6 +106,53 @@ describe("worldObjectLibrary", () => {
         x: 0.17220746725797653,
         y: -0.08449252694845199,
         z: 1.05,
+      },
+    });
+  });
+
+  it("keeps base collision classes and collision areas in library definitions", () => {
+    expect(worldObjectLibrary.tree("tree-a", { position: [0, 0, 0], scale: 2 })).toMatchObject({
+      class: "tree",
+      collision: {
+        radius: 0.84,
+        height: 6.2,
+        offset: { x: 0, y: 0, z: 3.1 },
+      },
+    });
+
+    expect(worldObjectLibrary.stop_sign("stop-a", { position: [0, 0, 0], scale: 2 })).toMatchObject({
+      class: "sign",
+      scale: 0.06,
+      collision: {
+        radius: 0.64,
+        height: 4.3,
+        offset: { x: 0, y: 0, z: 2.15 },
+      },
+    });
+  });
+
+  it("lets authored instances override documented collision metadata without changing library defaults", () => {
+    const object = worldObjectLibrary.grass("soft-grass", {
+      position: [0, 0, 0],
+      class: "soft-groundcover",
+      do_not_collide_with: [userObjectClass, "creature"],
+    });
+
+    expect(object).toMatchObject({
+      class: "soft-groundcover",
+      do_not_collide_with: [userObjectClass, "creature"],
+    });
+  });
+
+  it("defines the automatic user robot as a standard library object", () => {
+    expect(standardUserRobotObject).toMatchObject({
+      id: "user-robot",
+      class: userObjectClass,
+      assetPath: "rover/rover.glb",
+      scale: 0.1925,
+      collision: {
+        radius: 0.32,
+        height: 1,
       },
     });
   });

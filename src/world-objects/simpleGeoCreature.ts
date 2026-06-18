@@ -22,15 +22,28 @@ import type { RuntimeObjectRegistry } from "./runtimeObjectRegistry";
 import { runtimeObjectToDynamicObjectState, type RuntimeCreatureObject } from "./runtimeObjectRegistry";
 
 export interface SimpleGeoCreatureAuthoringParams {
+  /** Position in authored [x, z, y] axes. The middle coordinate is height above the floor. */
   readonly position: readonly [x: number, y: number, z: number];
+  /** Multiplies the library creature's base visual size, collision area, and lift. */
   readonly scale?: number;
   readonly forwardTilt?: number;
   readonly sideTilt?: number;
+  /** Yaw in degrees. */
   readonly turn?: number;
+  /** Forward speed in meters per second. */
   readonly speed?: number;
+  /** Lateral oscillation rate in Hz. */
   readonly oscillationRate?: number;
+  /** Lateral oscillation magnitude in meters. */
   readonly oscillationMagnitude?: number;
+  /** Advanced override for the library's default collision cylinder. */
   readonly collision?: SimpleCollisionCylinderSpec;
+  /** Override the object's collision class, for example "creature". */
+  readonly class?: string;
+  /** Objects in these classes ignore this object's collision, for example ["user"]. */
+  readonly do_not_collide_with?: readonly string[];
+  /** Camel-case alias accepted for TypeScript callers. Serialized specs use do_not_collide_with. */
+  readonly doNotCollideWith?: readonly string[];
 }
 
 export interface SimpleGeoCreatureRuntime {
@@ -102,6 +115,8 @@ export function createSimpleGeoCreature(
     oscillationRateHz: params.oscillationRate ?? 0,
     oscillationMagnitudeMeters: params.oscillationMagnitude ?? 0,
     collision: params.collision ?? defaultCreatureCollision(kind, authorScale),
+    class: params.class ?? "creature",
+    do_not_collide_with: params.do_not_collide_with ?? params.doNotCollideWith,
   };
 }
 
@@ -235,6 +250,8 @@ function createRuntimeCreatureObject(objectSpec: SimpleGeoCreatureObjectSpec, ce
       vec3(objectSpec.position.x, objectSpec.position.y, objectSpec.position.z),
     ),
     collision: objectSpec.collision,
+    class: objectSpec.class,
+    do_not_collide_with: objectSpec.do_not_collide_with,
     portalRenderable: true,
     tooltip: {
       label: objectSpec.kind === "geo-mouse" ? "geodesic mouse" : "geodesic butterfly",

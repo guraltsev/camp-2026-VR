@@ -8,12 +8,12 @@ import {
   type RuntimeObjectRenderSourceMesh,
 } from "./runtimeObjectRenderRecords";
 import { rigidTransformToThreeMatrix } from "./worldAxes";
+import { standardUserRobotObject } from "../../world-objects/library";
 
-export const playerRoverAssetPath = "rover/rover.glb";
+export const playerRoverAssetPath = standardUserRobotObject.assetPath;
 
-const playerRoverObjectId = "player-rover";
+const playerRoverObjectId = standardUserRobotObject.id;
 const playerRoverArchetypePrefix = `player-avatar:${playerRoverObjectId}`;
-const playerRoverScale = 0.1925;
 
 export interface PlayerRoverRenderModel {
   readonly root: THREE.Object3D;
@@ -38,7 +38,7 @@ export function createPlayerRoverRenderModel(
   root.name = "player-rover-render-root";
 
   prepared.scene.name = "player-rover-model";
-  prepared.scene.scale.setScalar(playerRoverScale);
+  prepared.scene.scale.setScalar(standardUserRobotObject.scale);
   prepared.scene.rotation.y = Math.PI;
   root.add(prepared.scene);
 

@@ -5,6 +5,7 @@ import { yawRigidTransform3 } from "../math/rigidTransform3";
 import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "./geodesicCannon";
 import type { PlacedFlagObject } from "./placedFlags";
 import type { ProtractorAngleObject } from "./protractorTool";
+import { userObjectClass } from "./objectMetadata";
 
 export interface RuntimeObjectInteraction {
   readonly label: string;
@@ -24,6 +25,8 @@ export interface RuntimeWorldObjectBase {
   readonly cellId: string;
   readonly localPose: RigidTransform3;
   readonly collision?: SimpleCollisionCylinder;
+  readonly class?: string;
+  readonly do_not_collide_with?: readonly string[];
   readonly aimStickyTarget?: {
     readonly localPoint: RigidTransform3["translation"];
   };
@@ -144,7 +147,9 @@ export function createRuntimeObjectRegistry(
       return registry.getObjectsInCell(cellId).filter((object) => object.collision !== undefined);
     },
     getPlayerBlockingObjectsInCell(cellId) {
-      return registry.getCollidableObjectsInCell(cellId).filter((object) => object.kind !== "geodesic-cannon");
+      return registry.getCollidableObjectsInCell(cellId).filter(
+        (object) => object.kind !== "geodesic-cannon" && !object.do_not_collide_with?.includes(userObjectClass),
+      );
     },
     getInteractableObjectsInCell(cellId) {
       return registry.getObjectsInCell(cellId).filter((object) => object.interactable !== undefined);
@@ -188,6 +193,8 @@ export function createRuntimeStaticAssetObject(
       objectSpec.position,
     ),
     collision: objectSpec.collision,
+    class: objectSpec.class,
+    do_not_collide_with: objectSpec.do_not_collide_with,
     portalRenderable: false,
   };
 }

@@ -27,6 +27,8 @@ export interface CreateGeodesciMarmotOptions {
   readonly position: { readonly x: number; readonly y: number; readonly z: number };
   readonly velocity: { readonly x: number; readonly y: number };
   readonly scale?: number;
+  readonly class?: string;
+  readonly do_not_collide_with?: readonly string[];
 }
 
 export interface GeodesciMarmotRuntime {
@@ -53,6 +55,8 @@ export function createGeodesciMarmot(options: CreateGeodesciMarmotOptions): Geod
       height: 0.42,
       offset: defaultCollisionOffset,
     },
+    class: options.class ?? "creature",
+    do_not_collide_with: options.do_not_collide_with,
   };
 }
 
@@ -151,6 +155,8 @@ function createRuntimeCreatureObject(objectSpec: GeodesciMarmotObjectSpec, cellI
       vec3(objectSpec.position.x, objectSpec.position.y, objectSpec.position.z),
     ),
     collision: objectSpec.collision,
+    class: objectSpec.class,
+    do_not_collide_with: objectSpec.do_not_collide_with,
     portalRenderable: true,
     tooltip: {
       label: "geodesci marmot",

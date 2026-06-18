@@ -3,6 +3,7 @@ import { identityRigidTransform3 } from "../../src/math/rigidTransform3";
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
 import { createRuntimeObjectRegistry, type RuntimeCreatureObject } from "../../src/world-objects/runtimeObjectRegistry";
 import type { GeodesicCannonObject } from "../../src/world-objects/geodesicCannon";
+import { userObjectClass } from "../../src/world-objects/library";
 
 function creature(id: string, cellId: string, extra: Partial<RuntimeCreatureObject> = {}): RuntimeCreatureObject {
   return {
@@ -75,6 +76,19 @@ describe("runtimeObjectRegistry", () => {
     const registry = createRuntimeObjectRegistry([blocker, nonBlockingEmitter]);
 
     expect(registry.getCollidableObjectsInCell("cell-a").map((object) => object.id)).toEqual(["mouse-a", "emitter-a"]);
+    expect(registry.getPlayerBlockingObjectsInCell("cell-a").map((object) => object.id)).toEqual(["mouse-a"]);
+  });
+
+  it("excludes objects that opt out of colliding with the user", () => {
+    const blocker = creature("mouse-a", "cell-a", { collision: simpleCollisionCylinder(0.5, 1) });
+    const softDecoration = creature("mouse-b", "cell-a", {
+      collision: simpleCollisionCylinder(0.5, 1),
+      class: "decoration",
+      do_not_collide_with: [userObjectClass],
+    });
+    const registry = createRuntimeObjectRegistry([blocker, softDecoration]);
+
+    expect(registry.getCollidableObjectsInCell("cell-a").map((object) => object.id)).toEqual(["mouse-a", "mouse-b"]);
     expect(registry.getPlayerBlockingObjectsInCell("cell-a").map((object) => object.id)).toEqual(["mouse-a"]);
   });
 

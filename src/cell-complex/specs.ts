@@ -58,6 +58,8 @@ export interface PositionedCellObjectSpec {
   readonly sideTiltRadians?: number;
   readonly turnRadians?: number;
   readonly yawRadians?: number;
+  readonly class?: string;
+  readonly do_not_collide_with?: readonly string[];
 }
 
 export interface AssetObjectSpec extends PositionedCellObjectSpec {
