@@ -325,6 +325,35 @@ export function isGeodesicLocked(registry: RuntimeObjectRegistry, geodesicId: st
   return getGeodesicTail(registry, geodesicId)?.terminal.kind === "emitter-hit";
 }
 
+export function collectLockedIncidentGeodesicIdsForEmitter(
+  registry: RuntimeObjectRegistry,
+  emitterId: string,
+): readonly string[] {
+  const ids = new Set<string>();
+  const emitter = registry.get(emitterId);
+  if (emitter?.kind === "geodesic-cannon") {
+    for (const geodesicId of emitter.geodesicIds) {
+      ids.add(geodesicId);
+    }
+    if (emitter.activeGeodesicId) {
+      ids.add(emitter.activeGeodesicId);
+    }
+  }
+
+  for (const object of registry.getAll()) {
+    if (object.kind !== "geodesic-cannon") {
+      continue;
+    }
+    for (const [geodesicId, connection] of Object.entries(object.geodesicConnectionsById ?? {})) {
+      if (connection.outgoingEmitterId === emitterId || connection.incomingEmitterId === emitterId) {
+        ids.add(geodesicId);
+      }
+    }
+  }
+
+  return [...ids].filter((geodesicId) => isGeodesicLocked(registry, geodesicId));
+}
+
 export function resolveGeodesicNumber(registry: RuntimeObjectRegistry, geodesicId: string): number {
   return getGlobalGeodesicNumbers(registry, geodesicId).get(geodesicId) ?? 1;
 }

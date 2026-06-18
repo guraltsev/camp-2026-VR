@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
 import {
+  collectLockedIncidentGeodesicIdsForEmitter,
   createGeodesicCannonObject,
   collectGeodesicPortalWord,
   connectGeodesicToEmitter,
@@ -709,6 +710,68 @@ describe("geodesic cannon world objects", () => {
     expect(getCannonGeodesicYaw(registry, "cannon-a", "g-a")).toBeCloseTo(expectedYaw);
     expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(normalizeYaw(expectedYaw + Math.PI));
     expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+  });
+
+  it("finds and rebuilds multiple locked geodesics incident to a moved emitter", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const leftSource = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const lowerSource = createGeodesicCannonObject({
+      id: "cannon-c",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI / 2, { x: 1, y: -2, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0, z: 0 }),
+    });
+    registry.add(leftSource);
+    registry.add(lowerSource);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: leftSource, geodesicId: "g-a", maxLengthMeters: 4 });
+    shootGeodesic({ world, registry, cannon: lowerSource, geodesicId: "g-b", maxLengthMeters: 4 });
+
+    expect([...collectLockedIncidentGeodesicIdsForEmitter(registry, "cannon-b")].sort()).toEqual(["g-a", "g-b"]);
+
+    const movedIncoming = registry.get("cannon-b");
+    if (movedIncoming?.kind !== "geodesic-cannon") {
+      throw new Error("Expected incoming emitter.");
+    }
+    registry.update({
+      ...movedIncoming,
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 1, z: 0 }),
+    });
+
+    for (const geodesicId of collectLockedIncidentGeodesicIdsForEmitter(registry, "cannon-b")) {
+      rebuildConnectedGeodesicBetweenEmitters({
+        world,
+        registry,
+        geodesicId,
+        carriedEmitterId: "cannon-b",
+        carriedEmitterBeforeMove: movedIncoming,
+      });
+    }
+
+    expect(getGeodesicConnection(registry, "g-a")).toEqual({
+      outgoingEmitterId: "cannon-a",
+      incomingEmitterId: "cannon-b",
+      state: "connected",
+    });
+    expect(getGeodesicConnection(registry, "g-b")).toEqual({
+      outgoingEmitterId: "cannon-c",
+      incomingEmitterId: "cannon-b",
+      state: "connected",
+    });
+    expect(getGeodesicTail(registry, "g-a")?.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-b" });
+    expect(getGeodesicTail(registry, "g-b")?.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-b" });
+    expect([...getCannonGeodesicIds(registry, "cannon-b")].sort()).toEqual(["g-a", "g-b"]);
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+    expect(isGeodesicLocked(registry, "g-b")).toBe(true);
   });
 
   it("rebuilds locked emitter-to-emitter geodesics after an endpoint moves across a portal", () => {

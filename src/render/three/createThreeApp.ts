@@ -64,6 +64,7 @@ import {
   updatePlacedFlagMessage,
 } from "../../world-objects/placedFlags";
 import {
+  collectLockedIncidentGeodesicIdsForEmitter,
   collectGeodesicPortalWord,
   extendGeodesic,
   getGeodesicConnection,
@@ -567,7 +568,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     readonly selectedCannonId?: string;
     readonly activeGeodesicId?: string;
     readonly carryPortalWord?: readonly GeodesicPortalTraversal[];
+    readonly carryPortalWordsByGeodesicId?: Readonly<Record<string, readonly GeodesicPortalTraversal[]>>;
     readonly carryPortalTransitionSerial?: number;
+    readonly carryPortalTransitionSerialByGeodesicId?: Readonly<Record<string, number>>;
   } = {};
   let activeProtractorToolState: {
     readonly center?: ProtractorCenterSelection;
@@ -1001,6 +1004,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const segments = getGeodesicSegments(runtimeObjectRegistry, geodesicId);
     const word = collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId);
+    const carrySessionWord = activeGeodesicCannonToolState.carryPortalWordsByGeodesicId?.[geodesicId] ??
+      (activeGeodesicCannonToolState.activeGeodesicId === geodesicId
+        ? activeGeodesicCannonToolState.carryPortalWord
+        : undefined);
     const start = segments[0]?.start;
     const dump: GeodesicPathDebugDump = {
       geodesicId,
@@ -1010,11 +1017,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       start: start ? formatVec3(start) : undefined,
       word,
       wordText: formatGeodesicPortalWord(word),
-      carrySessionWord: activeGeodesicCannonToolState.activeGeodesicId === geodesicId
-        ? activeGeodesicCannonToolState.carryPortalWord
-        : undefined,
-      carrySessionWordText: activeGeodesicCannonToolState.activeGeodesicId === geodesicId
-        ? formatGeodesicPortalWord(activeGeodesicCannonToolState.carryPortalWord ?? [])
+      carrySessionWord,
+      carrySessionWordText: carrySessionWord
+        ? formatGeodesicPortalWord(carrySessionWord)
         : undefined,
       reverseWordText: formatGeodesicPortalWord([...word].reverse().map(reverseGeodesicPortalTraversal)),
       latestPlayerPortalTransition,
@@ -3413,11 +3418,23 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     if (selectedCannon !== cannon) {
       runtimeObjectRegistry.update(selectedCannon);
     }
+    const lockedIncidentGeodesicIds = collectLockedIncidentGeodesicIdsForEmitter(
+      runtimeObjectRegistry,
+      selectedCannon.id,
+    );
+    const carryPortalWordsByGeodesicId = Object.fromEntries(
+      lockedIncidentGeodesicIds.map((incidentGeodesicId) => [
+        incidentGeodesicId,
+        collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, incidentGeodesicId),
+      ]),
+    );
     activeGeodesicCannonToolState = {
       selectedCannonId: selectedCannon.id,
       activeGeodesicId: geodesicId,
+      carryPortalWordsByGeodesicId,
       carryPortalWord: geodesicId
-        ? collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId)
+        ? carryPortalWordsByGeodesicId[geodesicId] ??
+          collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId)
         : undefined,
     };
     geodesicCannonRotationTargetLengthMeters = geodesicId
@@ -3573,11 +3590,31 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     previousCannon?: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
   ): void {
     const geodesicId = cannon.activeGeodesicId ?? activeGeodesicCannonToolState.activeGeodesicId;
-    if (!geodesicId) {
+    const lockedIncidentGeodesicIds = collectLockedIncidentGeodesicIdsForEmitter(runtimeObjectRegistry, cannon.id);
+    if (lockedIncidentGeodesicIds.length === 0 && !geodesicId) {
       return;
     }
 
-    if (isGeodesicLocked(runtimeObjectRegistry, geodesicId)) {
+    if (lockedIncidentGeodesicIds.length > 0) {
+      for (const incidentGeodesicId of lockedIncidentGeodesicIds) {
+        updateCarriedGeodesicPortalWord(cannon, previousCannon, incidentGeodesicId);
+        const carriedPortalWord = activeGeodesicCannonToolState.carryPortalWordsByGeodesicId?.[incidentGeodesicId] ??
+          (activeGeodesicCannonToolState.activeGeodesicId === incidentGeodesicId
+            ? activeGeodesicCannonToolState.carryPortalWord
+            : undefined);
+        rebuildConnectedGeodesicBetweenEmitters({
+          world: appState.world,
+          registry: runtimeObjectRegistry,
+          geodesicId: incidentGeodesicId,
+          carriedEmitterId: cannon.id,
+          carriedEmitterBeforeMove: previousCannon,
+          carriedEmitterPortalTransition: latestPlayerPortalTransition,
+          carriedPortalWord,
+        });
+        refreshProtractorAnglesForGeodesic(incidentGeodesicId);
+        refreshMeasuredGeodesicLengthsForGeodesic(incidentGeodesicId);
+      }
+    } else if (geodesicId && isGeodesicLocked(runtimeObjectRegistry, geodesicId)) {
       updateCarriedGeodesicPortalWord(cannon, previousCannon, geodesicId);
       rebuildConnectedGeodesicBetweenEmitters({
         world: appState.world,
@@ -3586,13 +3623,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         carriedEmitterId: cannon.id,
         carriedEmitterBeforeMove: previousCannon,
         carriedEmitterPortalTransition: latestPlayerPortalTransition,
-        carriedPortalWord: activeGeodesicCannonToolState.carryPortalWord,
+        carriedPortalWord: activeGeodesicCannonToolState.carryPortalWordsByGeodesicId?.[geodesicId] ??
+          activeGeodesicCannonToolState.carryPortalWord,
       });
-    } else {
+      refreshProtractorAnglesForGeodesic(geodesicId);
+      refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);
+    } else if (geodesicId) {
       rebuildActiveGeodesicFromCannon(cannon, { connectEmitters: false, breakOnForbiddenZone: true });
+      refreshProtractorAnglesForGeodesic(geodesicId);
+      refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);
     }
-    refreshProtractorAnglesForGeodesic(geodesicId);
-    refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);
   }
 
   function updateCarriedGeodesicPortalWord(
@@ -3604,7 +3644,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     if (
       !previousCannon ||
       !transition ||
-      activeGeodesicCannonToolState.carryPortalTransitionSerial === latestPlayerPortalTransitionSerial ||
+      activeGeodesicCannonToolState.carryPortalTransitionSerialByGeodesicId?.[geodesicId] ===
+        latestPlayerPortalTransitionSerial ||
       previousCannon.cellId !== transition.sourceCellId ||
       cannon.cellId !== transition.targetCellId
     ) {
@@ -3612,7 +3653,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     const connection = getGeodesicConnection(runtimeObjectRegistry, geodesicId);
-    const currentWord = activeGeodesicCannonToolState.carryPortalWord ??
+    const currentWord = activeGeodesicCannonToolState.carryPortalWordsByGeodesicId?.[geodesicId] ??
+      (activeGeodesicCannonToolState.activeGeodesicId === geodesicId
+        ? activeGeodesicCannonToolState.carryPortalWord
+        : undefined) ??
       collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId);
     let nextWord: readonly GeodesicPortalTraversal[] | undefined;
     if (connection?.incomingEmitterId === cannon.id) {
@@ -3627,8 +3671,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     activeGeodesicCannonToolState = {
       ...activeGeodesicCannonToolState,
-      carryPortalWord: nextWord,
+      carryPortalWordsByGeodesicId: {
+        ...activeGeodesicCannonToolState.carryPortalWordsByGeodesicId,
+        [geodesicId]: nextWord,
+      },
+      carryPortalWord: activeGeodesicCannonToolState.activeGeodesicId === geodesicId
+        ? nextWord
+        : activeGeodesicCannonToolState.carryPortalWord,
       carryPortalTransitionSerial: latestPlayerPortalTransitionSerial,
+      carryPortalTransitionSerialByGeodesicId: {
+        ...activeGeodesicCannonToolState.carryPortalTransitionSerialByGeodesicId,
+        [geodesicId]: latestPlayerPortalTransitionSerial,
+      },
     };
     if (debugLevel === "verbose") {
       console.info("[noneuclid] carried geodesic portal word", {
