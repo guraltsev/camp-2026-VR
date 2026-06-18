@@ -444,8 +444,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       syncDesktopPalette();
     },
     onCloseRequested() {
-      menuState = closeRuntimeMenu(menuState);
-      syncDesktopPalette();
+      cancelRuntimeMenuAndSelectedTool();
     },
     onShowSettingsRequested() {
       menuState = showRuntimeMenuSettings(menuState);
@@ -1436,19 +1435,26 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else if (action === "right-action" && menuState.isOpen) {
       applyRuntimeMenuRightAction();
     } else if (action === "close" && menuState.isOpen) {
-      menuState = closeRuntimeMenu(menuState);
-      syncDesktopPalette();
+      cancelRuntimeMenuAndSelectedTool();
     }
   }
 
   function applyRuntimeMenuRightAction(): void {
     if (menuState.page === "main" || menuState.page === "edit-sign" || menuState.page === "geodesic-cannon-actions") {
-      menuState = closeRuntimeMenu(menuState);
+      cancelRuntimeMenuAndSelectedTool();
+      return;
     } else if (menuState.page === "debug-settings") {
       menuState = showRuntimeMenuSettings(menuState);
     } else {
       menuState = showRuntimeMenuMainPage(menuState);
     }
+    syncDesktopPalette();
+  }
+
+  function cancelRuntimeMenuAndSelectedTool(): void {
+    activeProtractorToolState = {};
+    clearProtractorToolFeedback();
+    menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "none"));
     syncDesktopPalette();
   }
 
