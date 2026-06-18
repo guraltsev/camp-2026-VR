@@ -39,6 +39,7 @@ export interface ScenePaletteControllerOptions {
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
   readonly onGeodesicCannonAddRequested: (cannonId: string) => void;
+  readonly onGeodesicCannonCarryRequested: (cannonId: string) => void;
   readonly onGeodesicCannonRotateRequested: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested: (cannonId: string, geodesicId: string) => void;
@@ -109,6 +110,7 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
     onPlaceFlagOptionsRequested: options.onPlaceFlagOptionsRequested,
     onPlaceFlagTypeSelected: options.onPlaceFlagTypeSelected,
     onGeodesicCannonAddRequested: options.onGeodesicCannonAddRequested,
+    onGeodesicCannonCarryRequested: options.onGeodesicCannonCarryRequested,
     onGeodesicCannonRotateRequested: options.onGeodesicCannonRotateRequested,
     onGeodesicCannonAimRequested: options.onGeodesicCannonAimRequested,
     onGeodesicCannonDeleteRequested: options.onGeodesicCannonDeleteRequested,

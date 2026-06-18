@@ -187,6 +187,13 @@ export function resolveWristToolIndicatorVisual(
         color: "#a78bfa",
         label: "Turn",
       };
+    case "geodesic-cannon-carry":
+      return {
+        icon: "image",
+        imageSource: "/assets/icons/carry-icon.png",
+        color: "#fb7ac8",
+        label: "Carry",
+      };
     case "geodesic-cannon-aim":
       return {
         icon: "image",

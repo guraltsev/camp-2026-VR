@@ -6,6 +6,7 @@ const signIconSources: Record<PlacedFlagType, string> = {
   WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
 };
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
+const carryToolIconSource = "/assets/icons/carry-icon.png";
 const protractorToolIconSource = "/assets/icons/protractor.png";
 const measureLengthToolIconSource = "/assets/icons/Ruler.png";
 
@@ -47,6 +48,11 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   rayIcon.alt = "";
   rayIcon.decoding = "async";
   rayIcon.src = rayToolIconSource;
+  const carryIcon = document.createElement("img");
+  carryIcon.className = "desktop-tool-indicator-carry-icon";
+  carryIcon.alt = "";
+  carryIcon.decoding = "async";
+  carryIcon.src = carryToolIconSource;
   const protractorIcon = document.createElement("img");
   protractorIcon.className = "desktop-tool-indicator-protractor-icon";
   protractorIcon.alt = "";
@@ -59,7 +65,7 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   measureIcon.decoding = "async";
   measureIcon.src = measureLengthToolIconSource;
   measureIcon.setAttribute("aria-hidden", "true");
-  icon.append(aimIcon, signIcon, rayIcon, protractorIcon, measureIcon);
+  icon.append(aimIcon, signIcon, rayIcon, carryIcon, protractorIcon, measureIcon);
 
   const label = document.createElement("span");
   label.className = "desktop-tool-indicator-label";
@@ -86,12 +92,15 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
           toolId === "geodesic-cannon-rotate" ||
           toolId === "geodesic-cannon-aim",
       );
+      root.classList.toggle("desktop-tool-indicator-geodesic-cannon-carry", toolId === "geodesic-cannon-carry");
       root.classList.toggle("desktop-tool-indicator-protractor", toolId === "protractor");
       root.classList.toggle("desktop-tool-indicator-WoodenSign1", flagType === "WoodenSign1");
       root.classList.toggle("desktop-tool-indicator-WoodenSign2", flagType === "WoodenSign2");
       signIcon.src = signIconSources[flagType];
       label.textContent = toolId === "geodesic-cannon-rotate"
         ? "Rotate"
+        : toolId === "geodesic-cannon-carry"
+          ? "Carry"
         : toolId === "geodesic-cannon-aim"
           ? "Aim"
           : toolId === "measure-length"
@@ -119,6 +128,8 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
             ? `Selected tool: protractor, ${prompt.textContent}`
           : toolId === "geodesic-cannon-rotate"
             ? "Selected tool: rotate geodesic ray emitter"
+            : toolId === "geodesic-cannon-carry"
+              ? "Selected tool: carry geodesic ray emitter"
             : toolId === "geodesic-cannon-aim"
               ? "Selected tool: aim geodesic ray emitter"
               : "No selected tool";

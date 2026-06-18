@@ -16,8 +16,10 @@ import {
   placeGeodesicCannonAtGeodesicVertex,
   placeGeodesicCannonOnGeodesic,
   pruneMissingGeodesicIntersectionObjects,
+  rebuildConnectedGeodesicBetweenEmitters,
   rebuildGeodesicToLength,
   removeGeodesic,
+  removeUnlockedGeodesicsFromCannon,
   resolveGeodesicCannonAimYawRadians,
   resolveGeodesicNumber,
   shootGeodesic,
@@ -278,6 +280,73 @@ describe("geodesic cannon world objects", () => {
     });
 
     expect(totalGeodesicLength(registry, "g-a")).toBeCloseTo(rememberedLength);
+  });
+
+  it("breaks carried geodesics completely when the rebuilt path crosses a forbidden zone", () => {
+    const world = compileLargePortalWorld();
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 1, y: 2.5, z: 0 }),
+    });
+    registry.add(cannon);
+    rebuildGeodesicToLength({
+      world,
+      registry,
+      cannon,
+      geodesicId: "g-a",
+      totalLengthMeters: 4.7,
+    });
+    const rememberedLength = totalGeodesicLength(registry, "g-a");
+
+    const blockedCannon = createGeodesicCannonObject({
+      ...cannon,
+      aimYawRadians: Math.atan2(-2.5, 4),
+    });
+    const rebuilt = rebuildGeodesicToLength({
+      world,
+      registry,
+      cannon: blockedCannon,
+      geodesicId: "g-a",
+      totalLengthMeters: rememberedLength,
+      breakOnForbiddenZone: true,
+    });
+
+    expect(rebuilt).toEqual([]);
+    expect(getGeodesicSegments(registry, "g-a")).toEqual([]);
+    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual(["g-a"]);
+  });
+
+  it("removes unlocked geodesics immediately when lifting an emitter", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: source, geodesicId: "g-open", maxLengthMeters: 1 });
+    const updatedSource = registry.get("cannon-a");
+    if (updatedSource?.kind !== "geodesic-cannon") {
+      throw new Error("Expected updated source emitter.");
+    }
+    shootGeodesic({ world, registry, cannon: updatedSource, geodesicId: "g-locked", maxLengthMeters: 4 });
+
+    const removed = removeUnlockedGeodesicsFromCannon(registry, "cannon-a");
+
+    expect(removed).toEqual(["g-open"]);
+    expect(getGeodesicSegments(registry, "g-open")).toEqual([]);
+    expect(getGeodesicSegments(registry, "g-locked").length).toBeGreaterThan(0);
+    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual(["g-locked"]);
+    expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-locked"]);
   });
 
   it("rebuilds total length as one segment per crossed cell piece", () => {
@@ -595,6 +664,95 @@ describe("geodesic cannon world objects", () => {
     });
     expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-a"]);
     expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(Math.PI);
+  });
+
+  it("rebuilds locked emitter-to-emitter geodesics after moving an endpoint", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 4 });
+
+    const movedIncoming = registry.get("cannon-b");
+    if (movedIncoming?.kind !== "geodesic-cannon") {
+      throw new Error("Expected incoming emitter.");
+    }
+    registry.update({
+      ...movedIncoming,
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 1, z: 0 }),
+    });
+
+    const rebuilt = rebuildConnectedGeodesicBetweenEmitters({ world, registry, geodesicId: "g-a" });
+    const expectedYaw = Math.atan2(1, 2.5);
+
+    expect(rebuilt.at(-1)).toMatchObject({
+      terminal: { kind: "emitter-hit", emitterId: "cannon-b" },
+      connectionState: "connected",
+    });
+    expect(getGeodesicConnection(registry, "g-a")).toEqual({
+      outgoingEmitterId: "cannon-a",
+      incomingEmitterId: "cannon-b",
+      state: "connected",
+    });
+    expect(getGeodesicTail(registry, "g-a")?.lengthMeters).toBeCloseTo(Math.hypot(2.5, 1) - geodesicRayBeamStartOffsetMeters);
+    expect(getCannonGeodesicYaw(registry, "cannon-a", "g-a")).toBeCloseTo(expectedYaw);
+    expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(normalizeYaw(expectedYaw + Math.PI));
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+  });
+
+  it("rebuilds locked emitter-to-emitter geodesics after an endpoint moves across a portal", () => {
+    const world = compileLargePortalWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 4, y: 2.5, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "b",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 2.5, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 3 });
+
+    const movedIncoming = registry.get("cannon-b");
+    if (movedIncoming?.kind !== "geodesic-cannon") {
+      throw new Error("Expected incoming emitter.");
+    }
+    registry.update({
+      ...movedIncoming,
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 3, z: 0 }),
+    });
+
+    const rebuilt = rebuildConnectedGeodesicBetweenEmitters({ world, registry, geodesicId: "g-a" });
+    const expectedYaw = Math.atan2(0.5, 2);
+
+    expect(rebuilt.map((segment) => segment.cellId)).toEqual(["a", "b"]);
+    expect(rebuilt[0]?.terminal.kind).toBe("portal-hit");
+    expect(rebuilt.at(-1)).toMatchObject({
+      terminal: { kind: "emitter-hit", emitterId: "cannon-b" },
+      connectionState: "connected",
+    });
+    expect(getGeodesicConnection(registry, "g-a")).toEqual({
+      outgoingEmitterId: "cannon-a",
+      incomingEmitterId: "cannon-b",
+      state: "connected",
+    });
+    expect(totalGeodesicLength(registry, "g-a")).toBeCloseTo(Math.hypot(2, 0.5) - geodesicRayBeamStartOffsetMeters);
+    expect(getCannonGeodesicYaw(registry, "cannon-a", "g-a")).toBeCloseTo(expectedYaw);
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
   });
 
   it("connects a looped-world geodesic back to its source emitter", () => {
@@ -1048,6 +1206,10 @@ function getCannonGeodesicYaw(
 ): number | undefined {
   const cannon = registry.get(cannonId);
   return cannon?.kind === "geodesic-cannon" ? cannon.geodesicEmitterYawRadiansById?.[geodesicId] : undefined;
+}
+
+function normalizeYaw(yawRadians: number): number {
+  return Math.atan2(Math.sin(yawRadians), Math.cos(yawRadians));
 }
 
 function compileLargeWorld() {

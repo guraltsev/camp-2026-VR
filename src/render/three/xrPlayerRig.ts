@@ -129,6 +129,7 @@ export function createXrPlayerRig(camera: THREE.PerspectiveCamera, options: Part
         resetRequested: false,
         primaryActionRequested: false,
         interactRequested: false,
+        carryActionRequested: false,
         source: "xr",
       };
     },

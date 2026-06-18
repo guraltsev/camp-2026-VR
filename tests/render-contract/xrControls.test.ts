@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createXrControls, createXrInputFrame, isInteractPressed, isResetPressed, readPrimaryStickAxes } from "../../src/render/three/xrControls";
+import { createXrControls, createXrInputFrame, isCarryActionPressed, isInteractPressed, isResetPressed, readPrimaryStickAxes } from "../../src/render/three/xrControls";
 
 describe("XR controls", () => {
   it("never throws and returns no movement when gamepad data is missing", () => {
@@ -101,5 +101,20 @@ describe("XR controls", () => {
     expect(controls.consumeFrame([pressed], 1).interactRequested).toBe(true);
     expect(controls.consumeFrame([pressed], 1).interactRequested).toBe(false);
     expect(controls.consumeFrame([released], 1).interactRequested).toBe(false);
+  });
+
+  it("maps the right side trigger to carry action edges", () => {
+    const controls = createXrControls();
+    const released = { handedness: "right", gamepad: { buttons: [{ pressed: false }, { pressed: false }] } };
+    const pressed = { handedness: "right", gamepad: { buttons: [{ pressed: false }, { pressed: true }] } };
+    const leftPressed = { handedness: "left", gamepad: { buttons: [{ pressed: false }, { pressed: true }] } };
+
+    expect(isCarryActionPressed(pressed)).toBe(true);
+    expect(isCarryActionPressed(leftPressed)).toBe(false);
+    expect(createXrInputFrame([pressed], 1).carryActionRequested).toBe(true);
+    expect(controls.consumeFrame([released], 1).carryActionRequested).toBe(false);
+    expect(controls.consumeFrame([pressed], 1).carryActionRequested).toBe(true);
+    expect(controls.consumeFrame([pressed], 1).carryActionRequested).toBe(false);
+    expect(controls.consumeFrame([released], 1).carryActionRequested).toBe(false);
   });
 });

@@ -48,6 +48,11 @@ describe("xrControllerHandModels", () => {
       imageSource: "/assets/icons/arrow-circle-inverted.png",
       label: "Turn",
     });
+    expect(resolveWristToolIndicatorVisual("geodesic-cannon-carry", "WoodenSign1")).toMatchObject({
+      icon: "image",
+      imageSource: "/assets/icons/carry-icon.png",
+      label: "Carry",
+    });
     expect(resolveWristToolIndicatorVisual("none", "WoodenSign1")).toBeUndefined();
   });
 });

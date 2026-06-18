@@ -73,6 +73,7 @@ export interface DesktopToolPaletteOptions {
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
   readonly onGeodesicCannonAddRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonCarryRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
@@ -280,9 +281,7 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
         kind: "geodesic-cannon-actions",
         addLabel: definition.content.addAction.label,
         geodesicLabels: definition.content.geodesics.map((geodesic) => geodesic.label),
-        disabledGeodesicActions: definition.content.geodesics.flatMap((geodesic) =>
-          geodesic.locked ? [`${geodesic.label} Rotate`, `${geodesic.label} Aim`] : []
-        ),
+        disabledGeodesicActions: [],
       },
     };
   }
@@ -433,7 +432,17 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     addButton.addEventListener("click", () => {
       options.onGeodesicCannonAddRequested?.(geodesicCannonContent.cannonId);
     });
-    actions.append(addButton);
+
+    const carryButton = document.createElement("button");
+    carryButton.type = "button";
+    carryButton.className = "desktop-tool-palette-button";
+    carryButton.disabled = geodesicCannonContent.carryAction.disabled;
+    carryButton.ariaDisabled = String(geodesicCannonContent.carryAction.disabled);
+    carryButton.append(createGeodesicCannonActionIcon("carry"), document.createTextNode(geodesicCannonContent.carryAction.label));
+    carryButton.addEventListener("click", () => {
+      options.onGeodesicCannonCarryRequested?.(geodesicCannonContent.cannonId);
+    });
+    actions.append(addButton, carryButton);
 
     const geodesicList = document.createElement("div");
     geodesicList.className = "desktop-tool-palette-geodesic-list";
@@ -451,24 +460,26 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
         lockStatus.append(createLockedGeodesicSegmentSymbol());
         row.append(label, lockStatus);
       } else {
-        const rotateButton = document.createElement("button");
-        rotateButton.type = "button";
-        rotateButton.className = "desktop-tool-palette-button";
-        rotateButton.append(createGeodesicCannonActionIcon("rotate"), document.createTextNode("Rotate"));
-        rotateButton.addEventListener("click", () => {
-          options.onGeodesicCannonRotateRequested?.(geodesicCannonContent.cannonId, geodesic.id);
-        });
-
-        const aimButton = document.createElement("button");
-        aimButton.type = "button";
-        aimButton.className = "desktop-tool-palette-button";
-        aimButton.append(createGeodesicCannonActionIcon("aim"), document.createTextNode("Aim"));
-        aimButton.addEventListener("click", () => {
-          options.onGeodesicCannonAimRequested?.(geodesicCannonContent.cannonId, geodesic.id);
-        });
-
-        row.append(label, rotateButton, aimButton);
+        row.append(label);
       }
+
+      const rotateButton = document.createElement("button");
+      rotateButton.type = "button";
+      rotateButton.className = "desktop-tool-palette-button";
+      rotateButton.append(createGeodesicCannonActionIcon("rotate"), document.createTextNode("Rotate"));
+      rotateButton.addEventListener("click", () => {
+        options.onGeodesicCannonRotateRequested?.(geodesicCannonContent.cannonId, geodesic.id);
+      });
+
+      const aimButton = document.createElement("button");
+      aimButton.type = "button";
+      aimButton.className = "desktop-tool-palette-button";
+      aimButton.append(createGeodesicCannonActionIcon("aim"), document.createTextNode("Aim"));
+      aimButton.addEventListener("click", () => {
+        options.onGeodesicCannonAimRequested?.(geodesicCannonContent.cannonId, geodesic.id);
+      });
+
+      row.append(rotateButton, aimButton);
 
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
@@ -763,10 +774,15 @@ function createMeasureLengthTileIcon(): HTMLElement {
   return icon;
 }
 
-function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim" | "lock"): HTMLElement {
+function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim" | "lock" | "carry"): HTMLElement {
   const icon = document.createElement("img");
   icon.className = "desktop-tool-palette-button-icon";
-  icon.src = actionId === "lock"
+  if (actionId === "carry") {
+    icon.classList.add("desktop-tool-palette-button-icon-inverted");
+  }
+  icon.src = actionId === "carry"
+    ? "/assets/icons/carry-icon.png"
+    : actionId === "lock"
     ? lockIconSource
     : actionId === "rotate" || actionId === "add-geodesic" ? rotateIconSource : aimIconSource;
   icon.alt = "";

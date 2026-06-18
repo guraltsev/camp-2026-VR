@@ -29,6 +29,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onPlaceFlagOptionsRequested?: () => void;
   readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
   readonly onGeodesicCannonAddRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonCarryRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
@@ -470,7 +471,7 @@ function buildGeodesicCannonActionsContent(
 
     if (geodesic.locked) {
       const status = createInteractiveSurface({
-        width: 252,
+        width: 52,
         height: 42,
         label: "",
         labelFontSize: 15,
@@ -480,36 +481,36 @@ function buildGeodesicCannonActionsContent(
       });
       status.name = geodesic.connectionSymbolLabel ?? "Locked geodesic segment between emitters";
       status.add(createLockedGeodesicSegmentStatus());
-      row.add(status, deleteButton);
-    } else {
-      const rotateButton = createInteractiveSurface({
-        width: 132,
-        height: 42,
-        label: "Rotate",
-        labelFontSize: 16,
-        disabled: false,
-        backgroundColor: actionColor,
-        onClick: () => options.onGeodesicCannonRotateRequested?.(content.cannonId, geodesic.id),
-      });
-      rotateButton.userData.xrPaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
-      rotateButton.userData.scenePaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
-      rotateButton.add(createGeodesicCannonActionIcon("rotate"));
-
-      const aimButton = createInteractiveSurface({
-        width: 112,
-        height: 42,
-        label: "Aim",
-        labelFontSize: 16,
-        disabled: false,
-        backgroundColor: actionColor,
-        onClick: () => options.onGeodesicCannonAimRequested?.(content.cannonId, geodesic.id),
-      });
-      aimButton.userData.xrPaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
-      aimButton.userData.scenePaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
-      aimButton.add(createGeodesicCannonActionIcon("aim"));
-
-      row.add(rotateButton, aimButton, deleteButton);
+      row.add(status);
     }
+
+    const rotateButton = createInteractiveSurface({
+      width: 132,
+      height: 42,
+      label: "Rotate",
+      labelFontSize: 16,
+      disabled: false,
+      backgroundColor: actionColor,
+      onClick: () => options.onGeodesicCannonRotateRequested?.(content.cannonId, geodesic.id),
+    });
+    rotateButton.userData.xrPaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
+    rotateButton.userData.scenePaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
+    rotateButton.add(createGeodesicCannonActionIcon("rotate"));
+
+    const aimButton = createInteractiveSurface({
+      width: 112,
+      height: 42,
+      label: "Aim",
+      labelFontSize: 16,
+      disabled: false,
+      backgroundColor: actionColor,
+      onClick: () => options.onGeodesicCannonAimRequested?.(content.cannonId, geodesic.id),
+    });
+    aimButton.userData.xrPaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
+    aimButton.userData.scenePaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
+    aimButton.add(createGeodesicCannonActionIcon("aim"));
+
+    row.add(rotateButton, aimButton, deleteButton);
     list.add(row);
   }
 
@@ -527,7 +528,22 @@ function buildGeodesicCannonActionsContent(
   addButton.userData.xrPaletteItemId = "geodesic-cannon-action:add-geodesic";
   addButton.userData.scenePaletteItemId = "geodesic-cannon-action:add-geodesic";
   addButton.add(createButtonText("+", 24));
-  list.add(addButton);
+
+  const carryButton = createInteractiveSurface({
+    width: "100%",
+    height: 50,
+    label: content.carryAction.label,
+    labelFontSize: 17,
+    justifyContent: "flex-start",
+    paddingLeft: 18,
+    disabled: content.carryAction.disabled,
+    backgroundColor: content.carryAction.disabled ? "#334155" : "#2563eb",
+    onClick: () => options.onGeodesicCannonCarryRequested?.(content.cannonId),
+  });
+  carryButton.userData.xrPaletteItemId = "geodesic-cannon-action:carry";
+  carryButton.userData.scenePaletteItemId = "geodesic-cannon-action:carry";
+  carryButton.add(createGeodesicCannonActionIcon("carry"));
+  list.add(addButton, carryButton);
 
   panel.add(list);
   return panel;
@@ -835,8 +851,10 @@ function createProtractorIcon(): Component<any> {
   return image;
 }
 
-function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim"): Component<any> {
-  const source = actionId === "rotate" || actionId === "add-geodesic" ? rotateIconSource : aimIconSource;
+function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim" | "carry"): Component<any> {
+  const source = actionId === "carry"
+    ? "/assets/icons/carry-icon.png"
+    : actionId === "rotate" || actionId === "add-geodesic" ? rotateIconSource : aimIconSource;
   const image = new Image({
     src: source,
     width: 28,

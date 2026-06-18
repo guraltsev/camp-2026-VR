@@ -62,6 +62,20 @@ describe("desktopControls", () => {
 
     controls.dispose();
   });
+
+  it("maps G to a carry action while in camera look mode", () => {
+    const { canvas, windowTarget } = installPointerLockDom();
+    const controls = createDesktopControls(canvas);
+
+    dispatchKey(windowTarget, "keydown", "KeyG");
+    const frame = controls.consumeFrame(1 / 60);
+    const nextFrame = controls.consumeFrame(1 / 60);
+
+    expect(frame.carryActionRequested).toBe(true);
+    expect(nextFrame.carryActionRequested).toBe(false);
+
+    controls.dispose();
+  });
 });
 
 function installPointerLockDom(): {
@@ -100,5 +114,13 @@ function dispatchMouse(target: EventTarget, type: string, button: number): void 
   event.button = button;
   event.movementX = 0;
   event.movementY = 0;
+  target.dispatchEvent(event);
+}
+
+function dispatchKey(target: EventTarget, type: string, code: string): void {
+  const event = new Event(type, { cancelable: true }) as Event & {
+    code: string;
+  };
+  event.code = code;
   target.dispatchEvent(event);
 }

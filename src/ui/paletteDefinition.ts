@@ -72,6 +72,10 @@ export interface GeodesicCannonActionsPaletteContent {
     readonly label: string;
     readonly disabled: boolean;
   };
+  readonly carryAction: {
+    readonly label: string;
+    readonly disabled: boolean;
+  };
   readonly geodesics: readonly {
     readonly id: string;
     readonly label: string;
@@ -194,6 +198,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
         kind: "geodesic-cannon-actions",
         cannonId: state.geodesicCannonOptions.cannonId,
         addAction: { label: "Add geodesic", disabled: false },
+        carryAction: { label: "Carry", disabled: false },
         geodesics: createGeodesicCannonEntries(
           state.geodesicCannonOptions.geodesicIds,
           state.geodesicCannonOptions.geodesicLabelsById,

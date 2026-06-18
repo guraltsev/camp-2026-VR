@@ -20,6 +20,7 @@ export type RuntimeToolId =
   | "geodesic-cannon"
   | "measure-length"
   | "protractor"
+  | "geodesic-cannon-carry"
   | "geodesic-cannon-rotate"
   | "geodesic-cannon-aim";
 export type RuntimeDesktopToolId = RuntimeToolId;
