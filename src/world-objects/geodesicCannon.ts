@@ -795,8 +795,7 @@ function rebuildUnlockedGeodesicToLength(input: RebuildGeodesicToLengthInput): r
     connectEmitters: input.connectEmitters ?? true,
   });
   if (input.breakOnForbiddenZone && getGeodesicTail(input.registry, input.geodesicId)?.terminal.kind === "forbidden-zone-hit") {
-    removeGeodesicSegments(input.registry, input.geodesicId);
-    updateGeodesicIntersectionObjects(input.registry);
+    removeGeodesic(input.registry, input.geodesicId);
     return [];
   }
   updateGeodesicIntersectionObjects(input.registry);

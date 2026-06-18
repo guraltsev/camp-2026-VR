@@ -10,6 +10,7 @@ import type { PlacedFlagType } from "../../world-objects/placedFlags";
 const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
 const aimIconSource = "/assets/icons/aim-inverted.png";
 const lockIconSource = "/assets/icons/lock.png";
+const carryIconSource = "/assets/icons/carry-icon-white.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const protractorToolIconSource = "/assets/icons/protractor.png";
 const measureLengthToolIconSource = "/assets/icons/Ruler.png";
@@ -781,11 +782,8 @@ function createMeasureLengthTileIcon(): HTMLElement {
 function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim" | "lock" | "carry"): HTMLElement {
   const icon = document.createElement("img");
   icon.className = "desktop-tool-palette-button-icon";
-  if (actionId === "carry") {
-    icon.classList.add("desktop-tool-palette-button-icon-inverted");
-  }
   icon.src = actionId === "carry"
-    ? "/assets/icons/carry-icon.png"
+    ? carryIconSource
     : actionId === "lock"
     ? lockIconSource
     : actionId === "rotate" || actionId === "add-geodesic" ? rotateIconSource : aimIconSource;

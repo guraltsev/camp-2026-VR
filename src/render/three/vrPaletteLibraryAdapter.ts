@@ -68,6 +68,7 @@ const signIconSources: Record<PlacedFlagType, string> = {
 };
 const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
 const aimIconSource = "/assets/icons/aim-inverted.png";
+const carryIconSource = "/assets/icons/carry-icon-white.png";
 const lockIconSource = "/assets/icons/lock.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const protractorToolIconSource = "/assets/icons/protractor.png";
@@ -857,7 +858,7 @@ function createProtractorIcon(): Component<any> {
 
 function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim" | "carry"): Component<any> {
   const source = actionId === "carry"
-    ? "/assets/icons/carry-icon.png"
+    ? carryIconSource
     : actionId === "rotate" || actionId === "add-geodesic" ? rotateIconSource : aimIconSource;
   const image = new Image({
     src: source,

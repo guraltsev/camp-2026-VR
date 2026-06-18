@@ -316,7 +316,7 @@ describe("geodesic cannon world objects", () => {
 
     expect(rebuilt).toEqual([]);
     expect(getGeodesicSegments(registry, "g-a")).toEqual([]);
-    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual(["g-a"]);
+    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual([]);
   });
 
   it("removes unlocked geodesics immediately when lifting an emitter", () => {
