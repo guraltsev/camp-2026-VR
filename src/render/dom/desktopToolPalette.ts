@@ -28,6 +28,7 @@ export interface DesktopPaletteView {
       readonly selectedWorldId: string;
       readonly worldLabel?: string;
       readonly debugEnabled: boolean;
+      readonly reloadConfirmationActive: boolean;
     }
     | {
       readonly kind: "debug-settings";
@@ -57,6 +58,7 @@ export interface DesktopToolPaletteOptions {
   readonly onRightAction: (actionId: PaletteHeaderAction["id"]) => void;
   readonly onWorldSelected: (worldId: string) => void;
   readonly onReloadRequested: () => void;
+  readonly onHomeRequested: () => void;
   readonly onDebugEnabledChanged: (enabled: boolean) => void;
   readonly onDebugSettingsRequested: () => void;
   readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
@@ -196,6 +198,7 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
         selectedWorldId: content.selectedWorldId,
         worldLabel: content.worldOptions.find((option) => option.id === content.selectedWorldId)?.label,
         debugEnabled: content.debugEnabled,
+        reloadConfirmationActive: content.reloadConfirmationActive,
       },
     };
   }
@@ -467,8 +470,28 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     const reloadButton = document.createElement("button");
     reloadButton.type = "button";
     reloadButton.className = "desktop-tool-palette-button";
-    reloadButton.textContent = "Reload";
+    reloadButton.classList.toggle(
+      "desktop-tool-palette-button-danger",
+      definition.content.reloadConfirmationActive,
+    );
+    reloadButton.textContent = definition.content.reloadConfirmationActive ? "Confirm reload" : "Reload";
+    reloadButton.title = "Click once to arm reload, then again within 3 seconds.";
     reloadButton.addEventListener("click", () => options.onReloadRequested());
+
+    const homeButton = document.createElement("button");
+    homeButton.type = "button";
+    homeButton.className = "desktop-tool-palette-button";
+    homeButton.textContent = "Home";
+    homeButton.addEventListener("click", () => options.onHomeRequested());
+
+    const actionRow = document.createElement("div");
+    actionRow.className = "desktop-tool-palette-action-row";
+    actionRow.append(homeButton, reloadButton);
+
+    const reloadHint = document.createElement("span");
+    reloadHint.className = "desktop-tool-palette-hint";
+    reloadHint.textContent = "Click Reload twice within 3s.";
+    reloadHint.hidden = !definition.content.reloadConfirmationActive;
 
     const debugSection = document.createElement("section");
     debugSection.className = "desktop-tool-palette-section";
@@ -504,7 +527,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
       debugSection.append(debugDetailsButton);
     }
 
-    settings.append(worldField, reloadButton, debugSection);
+    settings.append(worldField, actionRow, reloadHint, debugSection);
     return settings;
   }
 

@@ -10,12 +10,14 @@ describe("runtimeCommands", () => {
     readonly adapters: CreateAppCommandDispatcherOptions;
     readonly calls: {
       reloads: number;
+      home: number;
       navigatedTo: string[];
       debugOverlay: boolean[];
     };
   } {
     const calls = {
       reloads: 0,
+      home: 0,
       navigatedTo: [] as string[],
       debugOverlay: [] as boolean[],
     };
@@ -26,6 +28,9 @@ describe("runtimeCommands", () => {
         currentUrl: "https://example.test/?world=cube&debugLevel=basic",
         reloadWorld() {
           calls.reloads += 1;
+        },
+        goHome() {
+          calls.home += 1;
         },
         navigateToUrl(url) {
           calls.navigatedTo.push(url);
@@ -48,6 +53,14 @@ describe("runtimeCommands", () => {
     dispatchRuntimeCommand({ kind: "reload-world" }, adapters);
 
     expect(calls.reloads).toBe(1);
+  });
+
+  it("dispatches go-home through the home adapter", () => {
+    const { adapters, calls } = createAdapters();
+
+    dispatchRuntimeCommand({ kind: "go-home" }, adapters);
+
+    expect(calls.home).toBe(1);
   });
 
   it("dispatches change-world through navigation", () => {

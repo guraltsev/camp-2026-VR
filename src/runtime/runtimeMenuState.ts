@@ -51,6 +51,7 @@ export interface RuntimeMenuState {
   readonly collisionGeometryWireframesEnabled: boolean;
   readonly aimCollisionOutlinesEnabled: boolean;
   readonly selectedTool: RuntimeToolId;
+  readonly reloadConfirmUntilMs?: number;
   readonly placeFlagOptions: {
     readonly flagType: PlacedFlagType;
   };
@@ -294,6 +295,16 @@ export function setRuntimeMenuSelectedTool(state: RuntimeMenuState, selectedTool
   return {
     ...state,
     selectedTool,
+  };
+}
+
+export function setRuntimeMenuReloadConfirmUntilMs(
+  state: RuntimeMenuState,
+  reloadConfirmUntilMs: number | undefined,
+): RuntimeMenuState {
+  return {
+    ...state,
+    reloadConfirmUntilMs,
   };
 }
 

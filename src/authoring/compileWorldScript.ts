@@ -13,6 +13,8 @@ export function compileWorldScript(sourceText: string, options: CompileWorldScri
     PolygonFace: builder.PolygonFace,
     Portal: builder.Portal,
     OnFace: builder.OnFace,
+    startingHouse: builder.startingHouse,
+    startingPosition: builder.startingPosition,
     ...worldFloorTextureLibrary,
     ...worldObjectLibrary,
   } as const;

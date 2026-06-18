@@ -6,6 +6,7 @@ import { validateAuthoringSpec } from "../authoring/validateAuthoringSpec";
 export interface CompiledCellComplex {
   readonly cells: readonly CompiledPrismCell[];
   readonly cellsById: ReadonlyMap<string, CompiledPrismCell>;
+  readonly startingPosition?: CellComplexSpec["startingPosition"];
 }
 
 export function compileCellComplex(spec: CellComplexSpec): CompiledCellComplex {
@@ -25,5 +26,6 @@ export function compileCellComplex(spec: CellComplexSpec): CompiledCellComplex {
   return {
     cells,
     cellsById: new Map(cells.map((cell) => [cell.id, cell])),
+    startingPosition: spec.startingPosition,
   };
 }

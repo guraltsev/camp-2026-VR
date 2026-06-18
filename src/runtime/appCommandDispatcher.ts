@@ -7,6 +7,7 @@ export interface AppCommandDispatcher {
 export interface CreateAppCommandDispatcherOptions {
   readonly currentUrl: string;
   readonly reloadWorld: () => void;
+  readonly goHome: () => void;
   readonly navigateToUrl: (url: string) => void;
   readonly setDebugOverlayEnabled: (enabled: boolean) => void;
 }
@@ -26,6 +27,9 @@ export function dispatchRuntimeCommand(
   switch (command.kind) {
     case "reload-world":
       options.reloadWorld();
+      return;
+    case "go-home":
+      options.goHome();
       return;
     case "change-world":
       options.navigateToUrl(buildWorldChangeUrl(options.currentUrl, command.worldId));

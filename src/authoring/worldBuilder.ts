@@ -4,12 +4,16 @@ import type {
   CellObjectSpec,
   FloorMaterialSpec,
   PrismCellSpec,
+  StartingPositionSpec,
 } from "../cell-complex/specs";
 import { createConvexPrismBaseVertices, type ConvexPrismBaseVertices } from "../cell-complex/prismBase";
 import { isWorldLibraryObjectSpec, type WorldLibraryObjectSpec } from "../world-objects/library";
 import { normalizeFloorMaterial, type WorldFloorMaterialSpec } from "../world-assets/floorTextures";
+import { worldObjectLibrary } from "../world-objects/library";
+import { degreesToRadians, type StaticObjectAuthoringParams } from "../world-objects/staticAssets";
 
 const defaultHeightMeters = 15;
+const startingHouseLookOffsetDegrees = 12;
 
 interface MutableCell {
   readonly id: string;
@@ -27,13 +31,25 @@ export interface WorldBuilder {
   PolygonFace(name: string, floor: string | WorldFloorMaterialSpec, vertices: ConvexPrismBaseVertices): void;
   Portal(face1: string, side1: number, face2: string, side2: number): void;
   OnFace(faceName: string, objects: readonly WorldLibraryObjectSpec[]): void;
+  startingHouse(faceName: string, params: StaticObjectAuthoringParams): void;
+  startingPosition(faceName: string, params: StartingPositionAuthoringParams): void;
   build(): CellComplexSpec;
+}
+
+export interface StartingPositionAuthoringParams {
+  /**
+   * Position in authored [x, height, y] axes, matching object library positions.
+   */
+  readonly position: readonly [x: number, height: number, y: number];
+  readonly turn?: number;
+  readonly pitch?: number;
 }
 
 export function createWorldBuilder(): WorldBuilder {
   const cells = new Map<string, MutableCell>();
   const portalAssignments = new Map<string, Set<string>>();
   const objectIds = new Set<string>();
+  let startingPosition: StartingPositionSpec | undefined;
 
   return {
     PolygonFace(name, floor, vertices) {
@@ -126,6 +142,29 @@ export function createWorldBuilder(): WorldBuilder {
       }
     },
 
+    startingHouse(faceName, params) {
+      const cell = requireCell(cells, faceName, "startingHouse");
+
+      if (objectIds.has("startingHouse")) {
+        throw new Error('Duplicate object id "startingHouse".');
+      }
+
+      const house = worldObjectLibrary.small_house("startingHouse", params);
+      objectIds.add(house.id);
+      cell.visuals.objects.push(stripLibraryBrand(house));
+      startingPosition = createStartingPositionInFrontOfHouse(faceName, params);
+    },
+
+    startingPosition(faceName, params) {
+      requireCell(cells, faceName, "startingPosition");
+      startingPosition = {
+        cellId: faceName,
+        position: authorPositionToWorld(params.position),
+        yawRadians: degreesToRadians(params.turn ?? 0),
+        pitchRadians: degreesToRadians(params.pitch ?? 0),
+      };
+    },
+
     build() {
       return {
         cells: [...cells.values()].map((cell): PrismCellSpec => ({
@@ -139,6 +178,7 @@ export function createWorldBuilder(): WorldBuilder {
             objects: [...cell.visuals.objects],
           },
         })),
+        startingPosition,
       };
     },
   };
@@ -190,4 +230,50 @@ function assertUnassignedSide(
 
 function stripLibraryBrand(object: WorldLibraryObjectSpec): CellObjectSpec {
   return { ...object };
+}
+
+function requireCell(
+  cells: ReadonlyMap<string, MutableCell>,
+  faceName: string,
+  callerName: string,
+): MutableCell {
+  const cell = cells.get(faceName);
+
+  if (!cell) {
+    throw new Error(`Unknown face "${faceName}" in ${callerName}().`);
+  }
+
+  return cell;
+}
+
+function createStartingPositionInFrontOfHouse(
+  faceName: string,
+  params: StaticObjectAuthoringParams,
+): StartingPositionSpec {
+  const housePosition = authorPositionToWorld(params.position);
+  const yawRadians = degreesToRadians(params.turn ?? 0);
+  const playerYawRadians = yawRadians + Math.PI - degreesToRadians(startingHouseLookOffsetDegrees);
+  const scale = params.scale ?? 1;
+  const distanceMeters = 2.15 * scale + 0.55;
+
+  return {
+    cellId: faceName,
+    position: {
+      x: housePosition.x - Math.sin(yawRadians) * distanceMeters,
+      y: housePosition.y + Math.cos(yawRadians) * distanceMeters,
+      z: housePosition.z,
+    },
+    yawRadians: playerYawRadians,
+    pitchRadians: 0,
+  };
+}
+
+function authorPositionToWorld(
+  position: readonly [x: number, height: number, y: number],
+): StartingPositionSpec["position"] {
+  return {
+    x: position[0],
+    y: position[2],
+    z: position[1],
+  };
 }

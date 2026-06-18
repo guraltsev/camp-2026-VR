@@ -32,7 +32,7 @@ Portal("back", 2, "top", 2);
 Portal("left", 0, "bottom", 3);
 Portal("left", 2, "top", 3);
 
-front_house = small_house("front-house", {
+startingHouse("front", {
   position: [-3.0, 0, 0.6],
   scale: 1,
   turn: 12,
@@ -77,7 +77,7 @@ bottom_bicycle = bicycle("bottom-bicycle", {
   turn: 29,
 });
 
-OnFace("front", [front_house, front_mouse]);
+OnFace("front", [front_mouse]);
 OnFace("right", [right_tree]);
 OnFace("back", [back_butterfly]);
 OnFace("left", [left_bench]);

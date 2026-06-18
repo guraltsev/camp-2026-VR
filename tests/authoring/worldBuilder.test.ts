@@ -143,4 +143,54 @@ describe("worldBuilder", () => {
       },
     ]);
   });
+
+  it("adds a starting house and derives the starting player position", () => {
+    const builder = createWorldBuilder();
+
+    builder.PolygonFace("front", "#f00", squareBase);
+    builder.startingHouse("front", {
+      position: [-0.5, 0, 0.25],
+      scale: 1,
+      turn: 30,
+    });
+
+    const spec = builder.build();
+
+    expect(spec.cells[0]?.visuals?.objects).toMatchObject([
+      {
+        id: "startingHouse",
+        kind: "asset",
+        assetPath: "small_house/small_house.glb",
+      },
+    ]);
+    expect(spec.startingPosition).toMatchObject({
+      cellId: "front",
+      pitchRadians: 0,
+    });
+    expect(spec.startingPosition?.yawRadians).toBeCloseTo(((30 + 180 - 12) * Math.PI) / 180);
+    expect(spec.startingPosition?.position.x).toBeCloseTo(-1.85);
+    expect(spec.startingPosition?.position.y).toBeCloseTo(2.5882685902179845);
+    expect(spec.startingPosition?.position.z).toBe(0);
+  });
+
+  it("accepts an explicit starting position without adding a house", () => {
+    const builder = createWorldBuilder();
+
+    builder.PolygonFace("front", "#f00", squareBase);
+    builder.startingPosition("front", {
+      position: [0.25, 0.1, -0.5],
+      turn: 90,
+      pitch: -5,
+    });
+
+    const spec = builder.build();
+
+    expect(spec.cells[0]?.visuals?.objects).toEqual([]);
+    expect(spec.startingPosition).toEqual({
+      cellId: "front",
+      position: { x: 0.25, y: -0.5, z: 0.1 },
+      yawRadians: Math.PI / 2,
+      pitchRadians: (-5 * Math.PI) / 180,
+    });
+  });
 });

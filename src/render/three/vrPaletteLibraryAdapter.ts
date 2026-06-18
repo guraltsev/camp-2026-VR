@@ -1,5 +1,5 @@
 import { Component, Container, Image, Text } from "@pmndrs/uikit";
-import { ArrowLeft, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
+import { ArrowLeft, House, RotateCw, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -15,6 +15,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onRightAction: (actionId: PaletteDefinition["rightAction"]["id"]) => void;
   readonly onWorldSelected: (worldId: string) => void;
   readonly onReloadRequested: () => void;
+  readonly onHomeRequested: () => void;
   readonly onDebugEnabledChanged: (enabled: boolean) => void;
   readonly onDebugSettingsRequested: () => void;
   readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
@@ -271,10 +272,7 @@ function buildContent(
 
   const actionsSection = new Container({
     width: "100%",
-    height: 60,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: "column",
     gap: 12,
     padding: 12,
     borderRadius: 20,
@@ -282,8 +280,35 @@ function buildContent(
     borderColor,
     borderWidth: 1,
   });
-  actionsSection.add(createSectionLabel("Reload world"));
-  actionsSection.add(createActionButton("Reload", "reload-world", options.onReloadRequested));
+  actionsSection.add(createSectionLabel("Actions"));
+  const actionRow = new Container({
+    width: "100%",
+    height: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  });
+  actionRow.add(
+    createActionButton("Home", "go-home", options.onHomeRequested, {
+      icon: "home",
+      width: 138,
+    }),
+    createActionButton(
+      definition.content.reloadConfirmationActive ? "Confirm" : "Reload",
+      "reload-world",
+      options.onReloadRequested,
+      {
+        icon: "reload",
+        width: 154,
+        backgroundColor: definition.content.reloadConfirmationActive ? "#991b1b" : actionColor,
+      },
+    ),
+  );
+  actionsSection.add(actionRow);
+  if (definition.content.reloadConfirmationActive) {
+    actionsSection.add(createTooltipText("Click Reload again within 3s."));
+  }
 
   const debugSection = new Container({
     width: "100%",
@@ -1050,18 +1075,53 @@ function createToggleRow(
   return row;
 }
 
-function createActionButton(label: string, itemId: string, onClick: () => void): Container {
+function createActionButton(
+  label: string,
+  itemId: string,
+  onClick: () => void,
+  options: {
+    readonly icon?: "home" | "reload";
+    readonly width?: number;
+    readonly backgroundColor?: string;
+  } = {},
+): Container {
   const button = createInteractiveSurface({
-    width: 112,
+    width: options.width ?? 112,
     height: 36,
-    backgroundColor: actionColor,
+    backgroundColor: options.backgroundColor ?? actionColor,
     label,
     labelFontSize: 15,
     onClick,
   });
   button.userData.xrPaletteItemId = itemId;
   button.userData.scenePaletteItemId = itemId;
+  if (options.icon === "home") {
+    button.add(new House({
+      width: 20,
+      height: 20,
+      color: textColor,
+      fill: textColor,
+    }));
+  } else if (options.icon === "reload") {
+    button.add(new RotateCw({
+      width: 20,
+      height: 20,
+      color: textColor,
+      fill: textColor,
+    }));
+  }
   return button;
+}
+
+function createTooltipText(text: string): Text {
+  return new Text({
+    text,
+    fontSize: 13,
+    color: mutedTextColor,
+    fill: mutedTextColor,
+    flexShrink: 1,
+    wordBreak: "break-word",
+  });
 }
 
 function createInteractiveSurface(options: {

@@ -32,6 +32,7 @@ export interface SettingsPaletteContent {
   readonly selectedWorldId: string;
   readonly worldOptions: readonly PaletteSelectOption[];
   readonly debugEnabled: boolean;
+  readonly reloadConfirmationActive: boolean;
 }
 
 export interface DebugSettingsPaletteContent {
@@ -141,6 +142,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
           label: entry.label,
         })),
         debugEnabled: state.debugEnabled,
+        reloadConfirmationActive: (state.reloadConfirmUntilMs ?? 0) > Date.now(),
       },
     };
   }

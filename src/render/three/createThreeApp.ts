@@ -35,6 +35,7 @@ import {
   setRuntimeMenuAimCollisionOutlinesEnabled,
   setRuntimeMenuEditingFlagId,
   setRuntimeMenuEditingSignMessage,
+  setRuntimeMenuReloadConfirmUntilMs,
   showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuEditSign,
@@ -46,7 +47,7 @@ import {
 } from "../../runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../ui/paletteDefinition";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
-import { createDefaultPlayerPose, playerPoseToDynamicObject, type PlayerPose } from "../../movement/playerPose";
+import { playerPoseToDynamicObject, type PlayerPose } from "../../movement/playerPose";
 import {
   createGeodesciMarmotRuntime,
   isGeodesciMarmotObjectSpec,
@@ -348,6 +349,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let geodesicCannonRotationTargetLengthMeters: number | undefined;
   let aimTargetCycleState: { readonly signature: string; readonly index: number } | undefined;
   let xrObjectTooltip: { readonly text: string; readonly root: THREE.Object3D } | undefined;
+  let reloadConfirmationTimeout: number | undefined;
   const debugOverlay = createDebugOverlay(container);
   const commandDispatcher = createAppCommandDispatcher({
     get currentUrl() {
@@ -355,6 +357,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     reloadWorld() {
       window.location.reload();
+    },
+    goHome() {
+      resetPlayerToHome();
     },
     navigateToUrl(url) {
       window.location.assign(url);
@@ -438,7 +443,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       dispatchRuntimeCommand({ kind: "change-world", worldId });
     },
     onReloadRequested() {
-      dispatchRuntimeCommand({ kind: "reload-world" });
+      requestConfirmedReload();
+    },
+    onHomeRequested() {
+      dispatchRuntimeCommand({ kind: "go-home" });
     },
     onDebugEnabledChanged(enabled) {
       applyMenuDebugState(setRuntimeMenuDebugEnabled(menuState, enabled));
@@ -720,14 +728,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     let moveResult: ReturnType<typeof movePlayer> | undefined;
 
     if (frame.resetRequested) {
-      playerPose = createDefaultPlayerPose(appState.playerPose.cellId);
-      xrRig.reset();
-      for (const runtime of dynamicObjectRuntimes) {
-        runtime.reset(cellMeshes);
-      }
-      removePlacedFlags();
-      removeGeodesicRuntimeObjects();
-      removeProtractorAngles();
+      resetPlayerToHome();
+      resetRuntimeWorld();
     } else {
       const yawDeltaRadians = xrActive
         ? xrRig.resolveCameraYawRadians(headLocalYawRadians) - playerPose.yawRadians + frame.yawDeltaRadians
@@ -1030,6 +1032,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       applyDebugSettings(settings);
     },
     dispose() {
+      if (reloadConfirmationTimeout !== undefined) {
+        window.clearTimeout(reloadConfirmationTimeout);
+        reloadConfirmationTimeout = undefined;
+      }
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", onResize);
       renderer.domElement.removeEventListener("contextmenu", onDesktopContextMenu);
@@ -2773,6 +2779,51 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
     return true;
+  }
+
+  function requestConfirmedReload(): void {
+    const now = Date.now();
+    if ((menuState.reloadConfirmUntilMs ?? 0) > now) {
+      menuState = setRuntimeMenuReloadConfirmUntilMs(menuState, undefined);
+      syncDesktopPalette();
+      dispatchRuntimeCommand({ kind: "reload-world" });
+      return;
+    }
+
+    const confirmUntilMs = now + 3000;
+    menuState = setRuntimeMenuReloadConfirmUntilMs(menuState, confirmUntilMs);
+    syncDesktopPalette();
+
+    if (reloadConfirmationTimeout !== undefined) {
+      window.clearTimeout(reloadConfirmationTimeout);
+    }
+
+    reloadConfirmationTimeout = window.setTimeout(() => {
+      if ((menuState.reloadConfirmUntilMs ?? 0) <= Date.now()) {
+        menuState = setRuntimeMenuReloadConfirmUntilMs(menuState, undefined);
+        syncDesktopPalette();
+      }
+      reloadConfirmationTimeout = undefined;
+    }, 3000);
+  }
+
+  function resetPlayerToHome(): void {
+    playerPose = {
+      cellId: appState.playerPose.cellId,
+      position: appState.playerPose.position,
+      yawRadians: appState.playerPose.yawRadians,
+      pitchRadians: appState.playerPose.pitchRadians,
+    };
+    xrRig.reset();
+  }
+
+  function resetRuntimeWorld(): void {
+    for (const runtime of dynamicObjectRuntimes) {
+      runtime.reset(cellMeshes);
+    }
+    removePlacedFlags();
+    removeGeodesicRuntimeObjects();
+    removeProtractorAngles();
   }
 
   function tryUseProtractorToolFromAim(ray?: RootAimRay): void {

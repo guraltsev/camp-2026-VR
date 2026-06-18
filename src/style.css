@@ -334,6 +334,22 @@ body {
   padding: 8px 12px;
 }
 
+.desktop-tool-palette-action-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.desktop-tool-palette-button-danger {
+  border-color: #fecaca;
+  background: #991b1b;
+}
+
+.desktop-tool-palette-hint {
+  color: #fca5a5;
+  font: 600 0.82rem/1.25 system-ui, sans-serif;
+}
+
 .desktop-tool-palette-geodesic-list {
   display: flex;
   flex: 1;

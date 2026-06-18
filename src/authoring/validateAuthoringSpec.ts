@@ -76,6 +76,32 @@ export function validateAuthoringSpec(spec: CellComplexSpec): readonly string[] 
     }
   }
 
+  if (spec.startingPosition) {
+    if (!cellsById.has(spec.startingPosition.cellId)) {
+      errors.push(`Starting position targets missing cell "${spec.startingPosition.cellId}".`);
+    }
+
+    for (const [axis, value] of Object.entries(spec.startingPosition.position)) {
+      if (!Number.isFinite(value)) {
+        errors.push(`Starting position ${axis} coordinate must be finite.`);
+      }
+    }
+
+    if (
+      spec.startingPosition.yawRadians !== undefined &&
+      !Number.isFinite(spec.startingPosition.yawRadians)
+    ) {
+      errors.push("Starting position yawRadians must be finite.");
+    }
+
+    if (
+      spec.startingPosition.pitchRadians !== undefined &&
+      !Number.isFinite(spec.startingPosition.pitchRadians)
+    ) {
+      errors.push("Starting position pitchRadians must be finite.");
+    }
+  }
+
   return errors;
 }
 

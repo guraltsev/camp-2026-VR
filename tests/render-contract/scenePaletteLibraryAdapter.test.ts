@@ -195,6 +195,7 @@ function createNoopOptions(): Parameters<typeof createScenePaletteLibraryAdapter
     onRightAction: () => undefined,
     onWorldSelected: () => undefined,
     onReloadRequested: () => undefined,
+    onHomeRequested: () => undefined,
     onDebugEnabledChanged: () => undefined,
     onDebugSettingsRequested: () => undefined,
     onConsoleLogLevelSelected: () => undefined,

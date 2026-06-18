@@ -19,7 +19,14 @@ export function createInitialAppState(world: CompiledCellComplex): AppState {
   return {
     world,
     playerBody: createDefaultPlayerBody(),
-    playerPose: createDefaultPlayerPose(startCell.id),
+    playerPose: world.startingPosition
+      ? {
+          cellId: world.startingPosition.cellId,
+          position: world.startingPosition.position,
+          yawRadians: world.startingPosition.yawRadians ?? 0,
+          pitchRadians: world.startingPosition.pitchRadians ?? 0,
+        }
+      : createDefaultPlayerPose(startCell.id),
     selectedTool: "none",
   };
 }

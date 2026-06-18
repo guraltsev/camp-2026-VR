@@ -5,7 +5,7 @@ import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder } from "../../src/movement/collision";
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
 import { DEFAULT_PLAYER_HEIGHT_METERS, DEFAULT_PLAYER_RADIUS_METERS } from "../../src/movement/playerBody";
-import { createDefaultPlayerPose, playerPoseToDynamicObject } from "../../src/movement/playerPose";
+import { createDefaultPlayerPose, playerPoseToDynamicObject, type PlayerPose } from "../../src/movement/playerPose";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 
 const exampleWorlds = [
@@ -47,7 +47,7 @@ describe("example worlds", () => {
 
   it.each(exampleWorlds)("keeps houses away from the starting player in %s", (_name, world) => {
     const startCell = world.cells[0];
-    const playerBounds = getPlayerBounds(startCell.id);
+    const playerBounds = getPlayerBounds(getStartPose(world, startCell.id));
     const collidingHouses: string[] = [];
 
     for (const object of startCell.visuals?.objects ?? []) {
@@ -81,7 +81,7 @@ describe("example worlds", () => {
     const faceA = tetrahedron.cells.find((cell) => cell.id === "face-a");
     const house = faceA?.visuals?.objects?.find((object) => object.id === "face-a-centerpiece");
     const mouse = faceA?.visuals?.objects?.find((object) => object.id === "face-a-geo-mouse");
-    const playerBounds = getPlayerBounds("face-a");
+    const playerBounds = getPlayerBounds(createDefaultPlayerPose("face-a"));
 
     expect(house?.kind).toBe("asset");
     expect(house?.collision).toMatchObject({
@@ -140,10 +140,21 @@ function repeatedObjectAssetPaths(world: CellComplexSpec): string[] {
     .sort();
 }
 
-function getPlayerBounds(cellId: string) {
+function getStartPose(world: CellComplexSpec, fallbackCellId: string): PlayerPose {
+  return world.startingPosition
+    ? {
+        cellId: world.startingPosition.cellId,
+        position: world.startingPosition.position,
+        yawRadians: world.startingPosition.yawRadians ?? 0,
+        pitchRadians: world.startingPosition.pitchRadians ?? 0,
+      }
+    : createDefaultPlayerPose(fallbackCellId);
+}
+
+function getPlayerBounds(playerPose: PlayerPose) {
   const playerBounds = getDynamicObjectCollisionBounds(
     playerPoseToDynamicObject(
-      createDefaultPlayerPose(cellId),
+      playerPose,
       simpleCollisionCylinder(DEFAULT_PLAYER_RADIUS_METERS, DEFAULT_PLAYER_HEIGHT_METERS, {
         x: 0,
         y: 0,

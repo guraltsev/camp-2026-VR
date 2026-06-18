@@ -2,6 +2,14 @@ import type { RigidTransform3 } from "../math/rigidTransform3";
 
 export interface CellComplexSpec {
   readonly cells: readonly PrismCellSpec[];
+  readonly startingPosition?: StartingPositionSpec;
+}
+
+export interface StartingPositionSpec {
+  readonly cellId: string;
+  readonly position: { readonly x: number; readonly y: number; readonly z: number };
+  readonly yawRadians?: number;
+  readonly pitchRadians?: number;
 }
 
 export interface PrismCellSpec {
