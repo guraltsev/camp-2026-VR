@@ -65,6 +65,7 @@ import {
 import {
   extendGeodesic,
   isGeodesicLocked,
+  placeGeodesicCannonAtGeodesicVertex,
   placeGeodesicCannonOnGeodesic,
   placeGeodesicCannonAtFloorPoint,
   pruneMissingGeodesicIntersectionObjects,
@@ -2619,6 +2620,42 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const target = resolveCurrentAimTarget(ray);
     if (targetIsWithinInteractionRange(target) && target?.object?.kind === "geodesic-cannon") {
       addGeodesicToCannon(target.object.id, { afterAdd: "return-to-none" });
+      return;
+    }
+
+    if (target?.object?.kind === "geodesic-intersection") {
+      const forward = getAimForwardVector(ray);
+      if (!forward) {
+        return;
+      }
+      let horizontalForward: { readonly x: number; readonly y: number; readonly z: number };
+      try {
+        horizontalForward = normalizeVec3({ x: forward.x, y: forward.y, z: 0 });
+      } catch {
+        return;
+      }
+      const aimYawRadians = Math.atan2(horizontalForward.y, horizontalForward.x);
+      const result = placeGeodesicCannonAtGeodesicVertex({
+        world: appState.world,
+        registry: runtimeObjectRegistry,
+        cellId: target.object.cellId,
+        vertexPoint: target.object.aimStickyTarget?.localPoint ?? target.localPoint,
+        aimYawRadians,
+        id: `geodesic-cannon:${Date.now()}:${geodesicCannonIdCounter++}`,
+        createContinuationGeodesicId: () => `geodesic:${Date.now()}:${geodesicIdCounter++}`,
+      });
+      if (!result.placed || !result.object) {
+        return;
+      }
+
+      activeGeodesicCannonToolState = {
+        selectedCannonId: result.object.id,
+        activeGeodesicId: result.object.activeGeodesicId ?? result.object.geodesicIds[0],
+      };
+      menuState = setRuntimeMenuSelectedTool(menuState, "none");
+      syncDesktopPalette();
+      syncRuntimeObjectPortalInstances();
+      syncSelectableHitboxDebug();
       return;
     }
 

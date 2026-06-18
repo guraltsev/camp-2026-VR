@@ -12,6 +12,8 @@ import {
   getGeodesicTail,
   getRememberedGeodesicIntersectionObject,
   isGeodesicLocked,
+  minGeodesicSegmentLengthMeters,
+  placeGeodesicCannonAtGeodesicVertex,
   placeGeodesicCannonOnGeodesic,
   pruneMissingGeodesicIntersectionObjects,
   rebuildGeodesicToLength,
@@ -420,6 +422,32 @@ describe("geodesic cannon world objects", () => {
     expect(extendGeodesic({ world, registry, geodesicId: "g-a" })).toBeUndefined();
   });
 
+  it("refuses to place an emitter where splitting would create a tiny segment", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    registry.add(cannon);
+    const segment = shootGeodesic({ world, registry, cannon, geodesicId: "g-a" });
+
+    const result = placeGeodesicCannonOnGeodesic({
+      world,
+      registry,
+      geodesicId: "g-a",
+      segmentId: segment.id,
+      distanceAlongSegmentMeters: minGeodesicSegmentLengthMeters / 2,
+      aimYawRadians: 0,
+      id: "cannon-b",
+    });
+
+    expect(result.placed).toBe(false);
+    expect(registry.get("cannon-b")).toBeUndefined();
+    expect(getGeodesicTail(registry, "g-a")?.terminal.kind).toBe("open");
+  });
+
   it("places an incoming emitter on the selected geodesic when the source owns multiple geodesics", () => {
     const world = compileLargeWorld();
     const registry = createRuntimeObjectRegistry();
@@ -468,6 +496,68 @@ describe("geodesic cannon world objects", () => {
     expect(getCannonGeodesicYaw(registry, "cannon-a", "g-a")).toBeCloseTo(0);
     expect(getCannonGeodesicYaw(registry, "cannon-a", "g-b")).toBeCloseTo(Math.PI / 2);
     expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(Math.PI);
+  });
+
+  it("places an emitter at a vertex and connects every geodesic side passing through it", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const horizontalSource = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      activeGeodesicId: "g-a",
+      geodesicIds: ["g-a"],
+      geodesicEmitterYawRadiansById: { "g-a": 0 },
+      localPose: yawRigidTransform3(0, { x: -1.2, y: 1, z: 0 }),
+    });
+    const verticalSource = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      activeGeodesicId: "g-b",
+      geodesicIds: ["g-b"],
+      geodesicEmitterYawRadiansById: { "g-b": Math.PI / 2 },
+      localPose: yawRigidTransform3(Math.PI / 2, { x: 1, y: -1.2, z: 0 }),
+    });
+    registry.add(horizontalSource);
+    registry.add(verticalSource);
+    shootGeodesic({ world, registry, cannon: horizontalSource, geodesicId: "g-a", maxLengthMeters: 4 });
+    shootGeodesic({ world, registry, cannon: verticalSource, geodesicId: "g-b", maxLengthMeters: 4 });
+    const [vertex] = updateGeodesicIntersectionObjects(registry);
+
+    const result = placeGeodesicCannonAtGeodesicVertex({
+      world,
+      registry,
+      cellId: "a",
+      vertexPoint: vertex.aimStickyTarget?.localPoint ?? vertex.localPose.translation,
+      aimYawRadians: 0,
+      id: "cannon-c",
+      createContinuationGeodesicId: (sourceGeodesicId) => `${sourceGeodesicId}:after-vertex`,
+    });
+
+    expect(result.placed).toBe(true);
+    expect(getGeodesicTail(registry, "g-a")).toMatchObject({
+      lengthMeters: 2,
+      terminal: { kind: "emitter-hit", emitterId: "cannon-c" },
+      connectionState: "connected",
+    });
+    expect(getGeodesicTail(registry, "g-b")).toMatchObject({
+      lengthMeters: 2,
+      terminal: { kind: "emitter-hit", emitterId: "cannon-c" },
+      connectionState: "connected",
+    });
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+    expect(isGeodesicLocked(registry, "g-b")).toBe(true);
+    expect(getCannonGeodesicIds(registry, "cannon-c")).toEqual([
+      "g-a",
+      "g-a:after-vertex",
+      "g-b",
+      "g-b:after-vertex",
+    ]);
+    expect(getCannonGeodesicYaw(registry, "cannon-c", "g-a")).toBeCloseTo(Math.PI);
+    expect(getCannonGeodesicYaw(registry, "cannon-c", "g-a:after-vertex")).toBeCloseTo(0);
+    expect(getCannonGeodesicYaw(registry, "cannon-c", "g-b")).toBeCloseTo(-Math.PI / 2);
+    expect(getCannonGeodesicYaw(registry, "cannon-c", "g-b:after-vertex")).toBeCloseTo(Math.PI / 2);
+    expect(getGeodesicTail(registry, "g-a:after-vertex")?.lengthMeters).toBeCloseTo(1.8);
+    expect(getGeodesicTail(registry, "g-b:after-vertex")?.lengthMeters).toBeCloseTo(1.8);
   });
 
   it("connects immediately when an aimed geodesic reaches an emitter", () => {

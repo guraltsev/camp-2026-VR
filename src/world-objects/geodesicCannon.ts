@@ -133,6 +133,16 @@ export interface PlaceGeodesicCannonOnGeodesicRequest {
   readonly id: string;
 }
 
+export interface PlaceGeodesicCannonAtGeodesicVertexRequest {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly cellId: string;
+  readonly vertexPoint: Vec3;
+  readonly aimYawRadians: number;
+  readonly id: string;
+  readonly createContinuationGeodesicId: (sourceGeodesicId: string, sideIndex: number) => string;
+}
+
 export interface ConnectGeodesicToEmitterRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -157,6 +167,7 @@ export const geodesicRayBeamStartOffsetMeters = 0.2;
 const defaultTraceLengthMeters = 2;
 const portalStartEpsilonMeters = 1e-4;
 const intersectionTolerance = 1e-7;
+export const minGeodesicSegmentLengthMeters = 0.05;
 const vertexContinuityToleranceMeters = 10;
 const emitterConnectionToleranceMeters = 0.3;
 const geodesicIntersectionBalloonHeightOffsetMeters = 0.25;
@@ -829,9 +840,16 @@ export function connectGeodesicToEmitter(
     return rebuilt;
   }
 
+  const adjustedTailLengthMeters = request.totalLengthMeters -
+    rebuilt.slice(0, -1).reduce((total, segment) => total + segment.lengthMeters, 0);
+  if (adjustedTailLengthMeters < minGeodesicSegmentLengthMeters - intersectionTolerance) {
+    removeGeodesicSegments(request.registry, request.geodesicId);
+    return [];
+  }
+
   request.registry.update({
     ...tail,
-    lengthMeters: Math.max(0, request.totalLengthMeters - rebuilt.slice(0, -1).reduce((total, segment) => total + segment.lengthMeters, 0)),
+    lengthMeters: adjustedTailLengthMeters,
     terminal: { kind: "emitter-hit", emitterId: request.incomingEmitterId },
     connectionState: "connected",
   });
@@ -849,6 +867,9 @@ export function placeGeodesicCannonOnGeodesic(
   }
 
   const clampedDistance = Math.min(segment.lengthMeters, Math.max(0, request.distanceAlongSegmentMeters));
+  if (!canConnectGeodesicSegmentAtDistance(clampedDistance)) {
+    return { placed: false, reason: "cell-collision" };
+  }
   const floorPoint = {
     x: segment.start.x + segment.direction.x * clampedDistance,
     y: segment.start.y + segment.direction.y * clampedDistance,
@@ -877,6 +898,109 @@ export function placeGeodesicCannonOnGeodesic(
     totalLengthMeters,
   });
 
+  const placed = request.registry.get(result.object.id);
+  return placed?.kind === "geodesic-cannon" ? { placed: true, object: placed } : result;
+}
+
+export function placeGeodesicCannonAtGeodesicVertex(
+  request: PlaceGeodesicCannonAtGeodesicVertexRequest,
+): PlaceGeodesicCannonResult {
+  const connectedSegments = findSegmentsPassingThroughVertex(
+    request.registry,
+    request.cellId,
+    request.vertexPoint,
+  );
+  if (connectedSegments.length === 0) {
+    return { placed: false, reason: "missing-cell" };
+  }
+
+  const floorPoint = { x: request.vertexPoint.x, y: request.vertexPoint.y, z: 0 };
+  const result = placeGeodesicCannonAtFloorPoint({
+    world: request.world,
+    registry: request.registry,
+    cellId: request.cellId,
+    floorPoint,
+    aimYawRadians: request.aimYawRadians,
+    id: request.id,
+  });
+  if (!result.placed || !result.object) {
+    return result;
+  }
+
+  const originalSegmentsByGeodesicId = new Map<string, readonly GeodesicSegmentObject[]>();
+  for (const match of connectedSegments) {
+    if (!originalSegmentsByGeodesicId.has(match.segment.geodesicId)) {
+      originalSegmentsByGeodesicId.set(
+        match.segment.geodesicId,
+        getGeodesicSegments(request.registry, match.segment.geodesicId),
+      );
+    }
+  }
+
+  let continuationSideIndex = 0;
+  for (const match of connectedSegments) {
+    const originalSegments = originalSegmentsByGeodesicId.get(match.segment.geodesicId) ?? [];
+    const totalLengthMeters = totalLengthThroughSegment(originalSegments, match.segment, match.distanceAlongSegmentMeters);
+    const continuationLengthMeters = totalGeodesicLengthFromSegments(originalSegments) - totalLengthMeters;
+    const continuationTerminal = originalSegments.at(-1)?.terminal;
+    const shouldCreateContinuation = continuationLengthMeters >=
+      geodesicRayBeamStartOffsetMeters + minGeodesicSegmentLengthMeters - intersectionTolerance;
+
+    connectGeodesicToEmitter({
+      world: request.world,
+      registry: request.registry,
+      geodesicId: match.segment.geodesicId,
+      incomingEmitterId: result.object.id,
+      totalLengthMeters,
+    });
+
+    if (!shouldCreateContinuation) {
+      continue;
+    }
+
+    const continuationGeodesicId = request.createContinuationGeodesicId(
+      match.segment.geodesicId,
+      continuationSideIndex++,
+    );
+    const yaw = Math.atan2(match.segment.direction.y, match.segment.direction.x);
+    const placed = request.registry.get(result.object.id);
+    if (placed?.kind !== "geodesic-cannon") {
+      break;
+    }
+
+    const continuationSource = createGeodesicCannonObject({
+      ...placed,
+      aimYawRadians: yaw,
+      geodesicIds: placed.geodesicIds.includes(continuationGeodesicId)
+        ? placed.geodesicIds
+        : [...placed.geodesicIds, continuationGeodesicId],
+      geodesicEmitterYawRadiansById: {
+        ...placed.geodesicEmitterYawRadiansById,
+        [continuationGeodesicId]: yaw,
+      },
+    });
+    request.registry.update(continuationSource);
+    const created = shootGeodesic({
+      world: request.world,
+      registry: request.registry,
+      cannon: continuationSource,
+      geodesicId: continuationGeodesicId,
+      maxLengthMeters: continuationLengthMeters - geodesicRayBeamStartOffsetMeters,
+    });
+    if (continuationTerminal?.kind === "emitter-hit") {
+      connectGeodesicToEmitter({
+        world: request.world,
+        registry: request.registry,
+        geodesicId: continuationGeodesicId,
+        incomingEmitterId: continuationTerminal.emitterId,
+        totalLengthMeters: continuationLengthMeters - geodesicRayBeamStartOffsetMeters,
+      });
+    } else if (created.lengthMeters < minGeodesicSegmentLengthMeters - intersectionTolerance) {
+      removeGeodesic(request.registry, continuationGeodesicId);
+    }
+  }
+
+  updateGeodesicIntersectionObjects(request.registry);
   const placed = request.registry.get(result.object.id);
   return placed?.kind === "geodesic-cannon" ? { placed: true, object: placed } : result;
 }
@@ -974,6 +1098,60 @@ function canMergeGeodesicSegments(left: GeodesicSegmentObject, right: GeodesicSe
   const leftEnd = getGeodesicSegmentEnd(left);
   return distanceSquared(leftEnd, right.start) <= intersectionTolerance * intersectionTolerance &&
     distanceSquared(left.direction, right.direction) <= intersectionTolerance * intersectionTolerance;
+}
+
+function canSplitGeodesicSegmentAtDistance(
+  segment: GeodesicSegmentObject,
+  distanceAlongSegmentMeters: number,
+): boolean {
+  return canConnectGeodesicSegmentAtDistance(distanceAlongSegmentMeters) &&
+    segment.lengthMeters - distanceAlongSegmentMeters >= minGeodesicSegmentLengthMeters - intersectionTolerance;
+}
+
+function canConnectGeodesicSegmentAtDistance(distanceAlongSegmentMeters: number): boolean {
+  return distanceAlongSegmentMeters >= minGeodesicSegmentLengthMeters - intersectionTolerance;
+}
+
+function findSegmentsPassingThroughVertex(
+  registry: RuntimeObjectRegistry,
+  cellId: string,
+  vertexPoint: Vec3,
+): readonly { readonly segment: GeodesicSegmentObject; readonly distanceAlongSegmentMeters: number }[] {
+  return registry.getObjectsInCell(cellId)
+    .filter(isGeodesicSegmentObject)
+    .map((segment) => ({
+      segment,
+      distanceAlongSegmentMeters: distanceAlongSegment(segment, vertexPoint),
+    }))
+    .filter(({ segment, distanceAlongSegmentMeters }) =>
+      canSplitGeodesicSegmentAtDistance(segment, distanceAlongSegmentMeters) &&
+      distanceSquared(
+        addVec3(segment.start, scaleVec3(segment.direction, distanceAlongSegmentMeters)),
+        { x: vertexPoint.x, y: vertexPoint.y, z: segment.start.z },
+      ) <= emitterConnectionToleranceMeters * emitterConnectionToleranceMeters
+    )
+    .sort((left, right) => left.segment.geodesicId.localeCompare(right.segment.geodesicId));
+}
+
+function distanceAlongSegment(segment: GeodesicSegmentObject, point: Vec3): number {
+  const dx = point.x - segment.start.x;
+  const dy = point.y - segment.start.y;
+  const dz = point.z - segment.start.z;
+  return dx * segment.direction.x + dy * segment.direction.y + dz * segment.direction.z;
+}
+
+function totalLengthThroughSegment(
+  segments: readonly GeodesicSegmentObject[],
+  targetSegment: GeodesicSegmentObject,
+  distanceAlongSegmentMeters: number,
+): number {
+  return segments
+    .filter((segment) => segment.segmentIndex < targetSegment.segmentIndex)
+    .reduce((total, segment) => total + segment.lengthMeters, 0) + distanceAlongSegmentMeters;
+}
+
+function totalGeodesicLengthFromSegments(segments: readonly GeodesicSegmentObject[]): number {
+  return segments.reduce((total, segment) => total + segment.lengthMeters, 0);
 }
 
 function removeGeodesicSegments(registry: RuntimeObjectRegistry, geodesicId: string): void {
