@@ -95,7 +95,7 @@ export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOp
     color: textColor,
     fill: textColor,
     opacity: 1,
-    overflow: "hidden",
+    overflow: "visible",
     pointerEvents: "auto",
     scrollbarColor: "#64748b",
     borderColor,
@@ -148,9 +148,24 @@ function buildHeader(
     alignItems: "center",
   });
 
-  header.add(createHeaderButton(headerActions.leftAction, () => {
-    dispatchHeaderAction(headerActions.leftAction.id, options);
-  }));
+  const leftActions = new Container({
+    height: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    positionType: "relative",
+  });
+  leftActions.add(
+    createHeaderButton(headerActions.leftAction, () => {
+      dispatchHeaderAction(headerActions.leftAction.id, options);
+    }),
+    createHeaderUtilityButton("home", false, options.onHomeRequested),
+    createHeaderUtilityButton("reload", definition.reloadConfirmationActive, options.onReloadRequested),
+  );
+  if (definition.reloadConfirmationActive) {
+    leftActions.add(createReloadConfirmTooltip());
+  }
+  header.add(leftActions);
   header.add(new Text({
     text: "",
     fontSize: 28,
@@ -163,6 +178,67 @@ function buildHeader(
   }));
 
   return header;
+}
+
+function createHeaderUtilityButton(
+  actionId: "home" | "reload",
+  active: boolean,
+  onClick: () => void,
+): Container {
+  const button = createInteractiveSurface({
+    width: 52,
+    height: 44,
+    label: "",
+    onClick,
+    backgroundColor: active ? "#991b1b" : actionColor,
+  });
+  button.name = actionId === "home"
+    ? "Home"
+    : active ? "Click again to confirm" : "Reload world";
+  button.userData.xrPaletteItemId = actionId === "home" ? "go-home" : "reload-world";
+  button.userData.scenePaletteItemId = actionId === "home" ? "go-home" : "reload-world";
+  button.add(actionId === "home"
+    ? new House({
+        width: 24,
+        height: 24,
+        color: textColor,
+        fill: textColor,
+      })
+    : new RotateCw({
+        width: 24,
+        height: 24,
+        color: textColor,
+        fill: textColor,
+      }));
+  return button;
+}
+
+function createReloadConfirmTooltip(): Container {
+  const tooltip = new Container({
+    width: 162,
+    height: 30,
+    positionType: "absolute",
+    positionTop: -34,
+    positionLeft: 128,
+    zIndexOffset: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    backgroundColor: "#991b1b",
+    borderColor: "#fecaca",
+    borderWidth: 1,
+    renderOrder: 1005,
+    depthTest: false,
+    depthWrite: false,
+  });
+  tooltip.add(new Text({
+    text: "Click again to confirm",
+    fontSize: 13,
+    fontWeight: "bold",
+    color: textColor,
+    fill: textColor,
+  }));
+  return tooltip;
 }
 
 function createHeaderButton(
@@ -270,46 +346,6 @@ function buildContent(
     options.onWorldSelected,
   ));
 
-  const actionsSection = new Container({
-    width: "100%",
-    flexDirection: "column",
-    gap: 12,
-    padding: 12,
-    borderRadius: 20,
-    backgroundColor: sectionColor,
-    borderColor,
-    borderWidth: 1,
-  });
-  actionsSection.add(createSectionLabel("Actions"));
-  const actionRow = new Container({
-    width: "100%",
-    height: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  });
-  actionRow.add(
-    createActionButton("Home", "go-home", options.onHomeRequested, {
-      icon: "home",
-      width: 138,
-    }),
-    createActionButton(
-      definition.content.reloadConfirmationActive ? "Confirm" : "Reload",
-      "reload-world",
-      options.onReloadRequested,
-      {
-        icon: "reload",
-        width: 154,
-        backgroundColor: definition.content.reloadConfirmationActive ? "#991b1b" : actionColor,
-      },
-    ),
-  );
-  actionsSection.add(actionRow);
-  if (definition.content.reloadConfirmationActive) {
-    actionsSection.add(createTooltipText("Click Reload again within 3s."));
-  }
-
   const debugSection = new Container({
     width: "100%",
     flexDirection: "column",
@@ -329,7 +365,7 @@ function buildContent(
     debugSection.add(createActionButton("...", "debug-settings", options.onDebugSettingsRequested));
   }
 
-  settings.add(worldSection, actionsSection, debugSection);
+  settings.add(worldSection, debugSection);
   return settings;
 }
 
@@ -1111,17 +1147,6 @@ function createActionButton(
     }));
   }
   return button;
-}
-
-function createTooltipText(text: string): Text {
-  return new Text({
-    text,
-    fontSize: 13,
-    color: mutedTextColor,
-    fill: mutedTextColor,
-    flexShrink: 1,
-    wordBreak: "break-word",
-  });
 }
 
 function createInteractiveSurface(options: {

@@ -273,6 +273,7 @@ const selectableHitboxDebugOpacity = 0.24;
 const aimCollisionOutlineDebugOpacity = 0.82;
 const selectableHitboxDebugRenderOrder = 930;
 const aimCollisionOutlineDebugRenderOrder = 935;
+const reloadConfirmationWindowMs = 2000;
 const xrObjectTooltipRenderOrder = 960;
 const xrObjectTooltipYOffsetMeters = 0.18;
 const geodesicEmitterLabelRangeMeters = 3;
@@ -2790,7 +2791,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    const confirmUntilMs = now + 3000;
+    const confirmUntilMs = now + reloadConfirmationWindowMs;
     menuState = setRuntimeMenuReloadConfirmUntilMs(menuState, confirmUntilMs);
     syncDesktopPalette();
 
@@ -2804,7 +2805,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         syncDesktopPalette();
       }
       reloadConfirmationTimeout = undefined;
-    }, 3000);
+    }, reloadConfirmationWindowMs);
   }
 
   function resetPlayerToHome(): void {

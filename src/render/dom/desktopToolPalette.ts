@@ -103,6 +103,9 @@ export function createDesktopToolPalette(
   const header = document.createElement("div");
   header.className = "desktop-tool-palette-header";
 
+  const leftActions = document.createElement("div");
+  leftActions.className = "desktop-tool-palette-header-actions";
+
   const leftButton = document.createElement("button");
   leftButton.type = "button";
   leftButton.className = "desktop-tool-palette-action";
@@ -113,6 +116,28 @@ export function createDesktopToolPalette(
       options.onLeftAction(actionId);
     }
   });
+
+  const homeButton = document.createElement("button");
+  homeButton.type = "button";
+  homeButton.className = "desktop-tool-palette-action";
+  homeButton.textContent = "⌂";
+  homeButton.ariaLabel = "Go home";
+  homeButton.addEventListener("click", () => options.onHomeRequested());
+
+  const reloadButton = document.createElement("button");
+  reloadButton.type = "button";
+  reloadButton.className = "desktop-tool-palette-action";
+  reloadButton.textContent = "↻";
+  reloadButton.ariaLabel = "Reload world";
+  reloadButton.title = "Click once to arm reload, then again within 2 seconds.";
+  reloadButton.addEventListener("click", () => options.onReloadRequested());
+
+  const reloadTooltip = document.createElement("span");
+  reloadTooltip.className = "desktop-tool-palette-reload-tooltip";
+  reloadTooltip.textContent = "Click again to confirm";
+  reloadTooltip.hidden = true;
+
+  leftActions.append(leftButton, homeButton, reloadButton, reloadTooltip);
 
   const title = document.createElement("div");
   title.className = "desktop-tool-palette-title";
@@ -129,7 +154,7 @@ export function createDesktopToolPalette(
     }
   });
 
-  header.append(leftButton, title, rightButton);
+  header.append(leftActions, title, rightButton);
 
   const content = document.createElement("div");
   content.className = "desktop-tool-palette-content";
@@ -163,6 +188,14 @@ export function createDesktopToolPalette(
       const view = describeDesktopPaletteView(definition);
       title.textContent = "";
       syncActionButton(leftButton, view.leftAction);
+      reloadButton.classList.toggle("desktop-tool-palette-action-danger", definition.reloadConfirmationActive);
+      reloadTooltip.hidden = !definition.reloadConfirmationActive;
+      reloadButton.ariaLabel = definition.reloadConfirmationActive
+        ? "Confirm reload world"
+        : "Reload world";
+      reloadButton.title = definition.reloadConfirmationActive
+        ? "Click again to confirm."
+        : "Click once to arm reload, then again within 2 seconds.";
       syncActionButton(rightButton, view.rightAction);
       content.replaceChildren(renderContent(definition, options));
     },
@@ -467,32 +500,6 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
 
     worldField.append(worldLabel, worldSelect);
 
-    const reloadButton = document.createElement("button");
-    reloadButton.type = "button";
-    reloadButton.className = "desktop-tool-palette-button";
-    reloadButton.classList.toggle(
-      "desktop-tool-palette-button-danger",
-      definition.content.reloadConfirmationActive,
-    );
-    reloadButton.textContent = definition.content.reloadConfirmationActive ? "Confirm reload" : "Reload";
-    reloadButton.title = "Click once to arm reload, then again within 3 seconds.";
-    reloadButton.addEventListener("click", () => options.onReloadRequested());
-
-    const homeButton = document.createElement("button");
-    homeButton.type = "button";
-    homeButton.className = "desktop-tool-palette-button";
-    homeButton.textContent = "Home";
-    homeButton.addEventListener("click", () => options.onHomeRequested());
-
-    const actionRow = document.createElement("div");
-    actionRow.className = "desktop-tool-palette-action-row";
-    actionRow.append(homeButton, reloadButton);
-
-    const reloadHint = document.createElement("span");
-    reloadHint.className = "desktop-tool-palette-hint";
-    reloadHint.textContent = "Click Reload twice within 3s.";
-    reloadHint.hidden = !definition.content.reloadConfirmationActive;
-
     const debugSection = document.createElement("section");
     debugSection.className = "desktop-tool-palette-section";
 
@@ -527,7 +534,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
       debugSection.append(debugDetailsButton);
     }
 
-    settings.append(worldField, actionRow, reloadHint, debugSection);
+    settings.append(worldField, debugSection);
     return settings;
   }
 

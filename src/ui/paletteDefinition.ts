@@ -85,6 +85,7 @@ export interface PaletteDefinition {
   readonly pageId: RuntimeMenuPageId;
   readonly leftAction: PaletteHeaderAction;
   readonly rightAction: PaletteHeaderAction;
+  readonly reloadConfirmationActive: boolean;
   readonly content:
     | MainPaletteContent
     | SettingsPaletteContent
@@ -95,11 +96,14 @@ export interface PaletteDefinition {
 }
 
 export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinition {
+  const reloadConfirmationActive = (state.reloadConfirmUntilMs ?? 0) > Date.now();
+
   if (state.page === "debug-settings") {
     return {
       pageId: "debug-settings",
       leftAction: createHeaderAction("none"),
       rightAction: createHeaderAction("back"),
+      reloadConfirmationActive,
       content: {
         kind: "debug-settings",
         consoleLogLevel: state.consoleLogLevel,
@@ -134,6 +138,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       pageId: "settings",
       leftAction: createHeaderAction("none"),
       rightAction: createHeaderAction("back"),
+      reloadConfirmationActive,
       content: {
         kind: "settings",
         selectedWorldId: state.selectedWorldId,
@@ -142,7 +147,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
           label: entry.label,
         })),
         debugEnabled: state.debugEnabled,
-        reloadConfirmationActive: (state.reloadConfirmUntilMs ?? 0) > Date.now(),
+        reloadConfirmationActive,
       },
     };
   }
@@ -152,6 +157,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       pageId: "place-flag-options",
       leftAction: createHeaderAction("none"),
       rightAction: createHeaderAction("back"),
+      reloadConfirmationActive,
       content: {
         kind: "place-flag-options",
         selectedFlagType: state.placeFlagOptions.flagType,
@@ -168,6 +174,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       pageId: "edit-sign",
       leftAction: createHeaderAction("none"),
       rightAction: createHeaderAction("close"),
+      reloadConfirmationActive,
       content: {
         kind: "edit-sign",
         flagId: state.editSignOptions.flagId,
@@ -182,6 +189,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       pageId: "geodesic-cannon-actions",
       leftAction: createHeaderAction("none"),
       rightAction: createHeaderAction("close"),
+      reloadConfirmationActive,
       content: {
         kind: "geodesic-cannon-actions",
         cannonId: state.geodesicCannonOptions.cannonId,
@@ -199,6 +207,7 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
     pageId: "main",
     leftAction: createHeaderAction("settings"),
     rightAction: createHeaderAction("close"),
+    reloadConfirmationActive,
     content: {
       kind: "main",
       selectedTool: state.selectedTool,

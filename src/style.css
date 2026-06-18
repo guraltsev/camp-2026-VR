@@ -250,9 +250,35 @@ body {
 
 .desktop-tool-palette-header {
   display: grid;
-  grid-template-columns: 40px 1fr 40px;
+  grid-template-columns: auto 1fr 40px;
   align-items: center;
   gap: 12px;
+}
+
+.desktop-tool-palette-header-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.desktop-tool-palette-reload-tooltip {
+  position: absolute;
+  left: 96px;
+  bottom: calc(100% + 7px);
+  width: max-content;
+  padding: 6px 9px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #991b1b;
+  color: #f4fbfd;
+  font: 700 0.8rem/1.1 system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 34%);
+}
+
+.desktop-tool-palette-reload-tooltip[hidden] {
+  display: none;
 }
 
 .desktop-tool-palette-title {
@@ -278,6 +304,11 @@ body {
   width: 40px;
   height: 40px;
   padding: 0;
+}
+
+.desktop-tool-palette-action-danger {
+  border-color: #fecaca;
+  background: #991b1b;
 }
 
 .desktop-tool-palette-content {
@@ -332,22 +363,6 @@ body {
 .desktop-tool-palette-button {
   min-height: 40px;
   padding: 8px 12px;
-}
-
-.desktop-tool-palette-action-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.desktop-tool-palette-button-danger {
-  border-color: #fecaca;
-  background: #991b1b;
-}
-
-.desktop-tool-palette-hint {
-  color: #fca5a5;
-  font: 600 0.82rem/1.25 system-ui, sans-serif;
 }
 
 .desktop-tool-palette-geodesic-list {
