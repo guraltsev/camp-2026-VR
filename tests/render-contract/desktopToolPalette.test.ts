@@ -66,6 +66,24 @@ describe("desktopToolPalette", () => {
     expect(view.content.disabledGeodesicActions).toEqual([]);
   });
 
+  it("describes locked geodesics without rotate or aim actions", () => {
+    const definition = createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(createRuntimeMenuState({
+      selectedWorldId: "cube",
+      debugOverlayEnabled: true,
+    }), {
+      cannonId: "cannon-a",
+      geodesicIds: ["g-a"],
+      lockedGeodesicIds: ["g-a"],
+    }));
+    const view = describeDesktopPaletteView(definition);
+
+    expect(view.content.kind).toBe("geodesic-cannon-actions");
+    if (view.content.kind !== "geodesic-cannon-actions") {
+      throw new Error("Expected geodesic cannon actions content.");
+    }
+    expect(view.content.disabledGeodesicActions).toEqual(["rotate:g-a", "aim:g-a"]);
+  });
+
 
   it("describes the settings page with compact debug entry", () => {
     const definition = createPaletteDefinition(showRuntimeMenuSettings(createRuntimeMenuState({

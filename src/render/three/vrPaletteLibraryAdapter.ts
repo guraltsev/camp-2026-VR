@@ -484,33 +484,37 @@ function buildGeodesicCannonActionsContent(
       row.add(status);
     }
 
-    const rotateButton = createInteractiveSurface({
-      width: 132,
-      height: 42,
-      label: "Rotate",
-      labelFontSize: 16,
-      disabled: false,
-      backgroundColor: actionColor,
-      onClick: () => options.onGeodesicCannonRotateRequested?.(content.cannonId, geodesic.id),
-    });
-    rotateButton.userData.xrPaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
-    rotateButton.userData.scenePaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
-    rotateButton.add(createGeodesicCannonActionIcon("rotate"));
+    if (!geodesic.locked) {
+      const rotateButton = createInteractiveSurface({
+        width: 132,
+        height: 42,
+        label: "Rotate",
+        labelFontSize: 16,
+        disabled: false,
+        backgroundColor: actionColor,
+        onClick: () => options.onGeodesicCannonRotateRequested?.(content.cannonId, geodesic.id),
+      });
+      rotateButton.userData.xrPaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
+      rotateButton.userData.scenePaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
+      rotateButton.add(createGeodesicCannonActionIcon("rotate"));
 
-    const aimButton = createInteractiveSurface({
-      width: 112,
-      height: 42,
-      label: "Aim",
-      labelFontSize: 16,
-      disabled: false,
-      backgroundColor: actionColor,
-      onClick: () => options.onGeodesicCannonAimRequested?.(content.cannonId, geodesic.id),
-    });
-    aimButton.userData.xrPaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
-    aimButton.userData.scenePaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
-    aimButton.add(createGeodesicCannonActionIcon("aim"));
+      const aimButton = createInteractiveSurface({
+        width: 112,
+        height: 42,
+        label: "Aim",
+        labelFontSize: 16,
+        disabled: false,
+        backgroundColor: actionColor,
+        onClick: () => options.onGeodesicCannonAimRequested?.(content.cannonId, geodesic.id),
+      });
+      aimButton.userData.xrPaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
+      aimButton.userData.scenePaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
+      aimButton.add(createGeodesicCannonActionIcon("aim"));
 
-    row.add(rotateButton, aimButton, deleteButton);
+      row.add(rotateButton, aimButton);
+    }
+
+    row.add(deleteButton);
     list.add(row);
   }
 

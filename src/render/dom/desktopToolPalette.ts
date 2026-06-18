@@ -281,7 +281,9 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
         kind: "geodesic-cannon-actions",
         addLabel: definition.content.addAction.label,
         geodesicLabels: definition.content.geodesics.map((geodesic) => geodesic.label),
-        disabledGeodesicActions: [],
+        disabledGeodesicActions: definition.content.geodesics
+          .filter((geodesic) => geodesic.locked)
+          .flatMap((geodesic) => [`rotate:${geodesic.id}`, `aim:${geodesic.id}`]),
       },
     };
   }
@@ -463,23 +465,25 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
         row.append(label);
       }
 
-      const rotateButton = document.createElement("button");
-      rotateButton.type = "button";
-      rotateButton.className = "desktop-tool-palette-button";
-      rotateButton.append(createGeodesicCannonActionIcon("rotate"), document.createTextNode("Rotate"));
-      rotateButton.addEventListener("click", () => {
-        options.onGeodesicCannonRotateRequested?.(geodesicCannonContent.cannonId, geodesic.id);
-      });
+      if (!geodesic.locked) {
+        const rotateButton = document.createElement("button");
+        rotateButton.type = "button";
+        rotateButton.className = "desktop-tool-palette-button";
+        rotateButton.append(createGeodesicCannonActionIcon("rotate"), document.createTextNode("Rotate"));
+        rotateButton.addEventListener("click", () => {
+          options.onGeodesicCannonRotateRequested?.(geodesicCannonContent.cannonId, geodesic.id);
+        });
 
-      const aimButton = document.createElement("button");
-      aimButton.type = "button";
-      aimButton.className = "desktop-tool-palette-button";
-      aimButton.append(createGeodesicCannonActionIcon("aim"), document.createTextNode("Aim"));
-      aimButton.addEventListener("click", () => {
-        options.onGeodesicCannonAimRequested?.(geodesicCannonContent.cannonId, geodesic.id);
-      });
+        const aimButton = document.createElement("button");
+        aimButton.type = "button";
+        aimButton.className = "desktop-tool-palette-button";
+        aimButton.append(createGeodesicCannonActionIcon("aim"), document.createTextNode("Aim"));
+        aimButton.addEventListener("click", () => {
+          options.onGeodesicCannonAimRequested?.(geodesicCannonContent.cannonId, geodesic.id);
+        });
 
-      row.append(rotateButton, aimButton);
+        row.append(rotateButton, aimButton);
+      }
 
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";

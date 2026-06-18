@@ -64,7 +64,10 @@ import {
   updatePlacedFlagMessage,
 } from "../../world-objects/placedFlags";
 import {
+  collectGeodesicPortalWord,
   extendGeodesic,
+  getGeodesicConnection,
+  getGeodesicSegments,
   isGeodesicLocked,
   placeGeodesicCannonAtGeodesicVertex,
   placeGeodesicCannonOnGeodesic,
@@ -78,6 +81,8 @@ import {
   resolveGeodesicNumber,
   shootGeodesic,
   geodesicRayBeamHeightMeters,
+  type GeodesicCarryPortalTransition,
+  type GeodesicPortalTraversal,
 } from "../../world-objects/geodesicCannon";
 import {
   createMeasuredGeodesicLengthObject,
@@ -562,6 +567,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let activeGeodesicCannonToolState: {
     readonly selectedCannonId?: string;
     readonly activeGeodesicId?: string;
+    readonly carryPortalWord?: readonly GeodesicPortalTraversal[];
+    readonly carryPortalTransitionSerial?: number;
   } = {};
   let activeProtractorToolState: {
     readonly center?: ProtractorCenterSelection;
@@ -602,6 +609,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let latestVisibleResult: ComputeVisiblePortalPathsResult | undefined;
   let portalEyeRenderStates: readonly PortalEyeRenderState[] = [];
   let activePortalEyeIndex = 0;
+  let latestPlayerPortalTransition: GeodesicCarryPortalTransition | undefined;
+  let latestPlayerPortalTransitionSerial = 0;
   let portalInstanceRenderState: PortalInstanceRenderDebugState = {
     enabled: true,
     ShowCellPathRendersInstances: showCellPathRendersInstances,
@@ -630,6 +639,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   installGeneralDebugHelpers({
     debugHelp: () => logDebugStartupGuide(debugLevel, debugOptions),
     dumpGeodesicCreatures: dumpGeodesicCreatures,
+    dumpGeodesicPath: dumpGeodesicPath,
+    dumpLockedGeodesicWords: dumpLockedGeodesicWords,
   });
   syncDesktopPalette();
 
@@ -944,6 +955,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     installGeneralDebugHelpers({
       debugHelp: () => logDebugStartupGuide(debugLevel, debugOptions),
       dumpGeodesicCreatures: dumpGeodesicCreatures,
+      dumpGeodesicPath: dumpGeodesicPath,
+      dumpLockedGeodesicWords: dumpLockedGeodesicWords,
     });
     for (const runtime of dynamicObjectRuntimes) {
       runtime.syncParent(cellMeshes);
@@ -978,6 +991,144 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       issues: record.issues.join(", "),
     })));
     return dump;
+  }
+
+  function dumpGeodesicPath(requestedGeodesicId?: string): GeodesicPathDebugDump | undefined {
+    const geodesicId = requestedGeodesicId ?? resolveDebugGeodesicId();
+    if (!geodesicId) {
+      console.info("[noneuclid] geodesic path dump: no active or aimed geodesic.");
+      return undefined;
+    }
+
+    const segments = getGeodesicSegments(runtimeObjectRegistry, geodesicId);
+    const word = collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId);
+    const start = segments[0]?.start;
+    const dump: GeodesicPathDebugDump = {
+      geodesicId,
+      locked: isGeodesicLocked(runtimeObjectRegistry, geodesicId),
+      connection: getGeodesicConnection(runtimeObjectRegistry, geodesicId),
+      startCellId: segments[0]?.cellId,
+      start: start ? formatVec3(start) : undefined,
+      word,
+      wordText: formatGeodesicPortalWord(word),
+      carrySessionWord: activeGeodesicCannonToolState.activeGeodesicId === geodesicId
+        ? activeGeodesicCannonToolState.carryPortalWord
+        : undefined,
+      carrySessionWordText: activeGeodesicCannonToolState.activeGeodesicId === geodesicId
+        ? formatGeodesicPortalWord(activeGeodesicCannonToolState.carryPortalWord ?? [])
+        : undefined,
+      reverseWordText: formatGeodesicPortalWord([...word].reverse().map(reverseGeodesicPortalTraversal)),
+      latestPlayerPortalTransition,
+      segments: segments.map((segment) => ({
+        id: segment.id,
+        cellId: segment.cellId,
+        index: segment.segmentIndex,
+        lengthMeters: Number(segment.lengthMeters.toFixed(4)),
+        start: formatVec3(segment.start),
+        direction: formatVec3(segment.direction),
+        terminal: formatGeodesicTerminal(segment.terminal),
+        connectionState: segment.connectionState ?? "open",
+      })),
+    };
+
+    console.info("[noneuclid] geodesic path dump", dump);
+    console.table(dump.segments);
+    return dump;
+  }
+
+  function dumpLockedGeodesicWords(): readonly GeodesicWordDebugDump[] {
+    const geodesicIds = collectKnownGeodesicIds()
+      .filter((geodesicId) => isGeodesicLocked(runtimeObjectRegistry, geodesicId))
+      .sort();
+    const dumps = geodesicIds.map(createGeodesicWordDebugDump);
+    console.info("[noneuclid] locked geodesic words", dumps);
+    console.table(dumps.map((dump) => ({
+      geodesicId: dump.geodesicId,
+      startCellId: dump.startCellId,
+      start: dump.start,
+      word: dump.wordText,
+      connection: dump.connection
+        ? `${dump.connection.outgoingEmitterId}->${dump.connection.incomingEmitterId ?? "(open)"}:${dump.connection.state}`
+        : "(none)",
+    })));
+    return dumps;
+  }
+
+  function createGeodesicWordDebugDump(geodesicId: string): GeodesicWordDebugDump {
+    const segments = getGeodesicSegments(runtimeObjectRegistry, geodesicId);
+    const word = collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId);
+    const start = segments[0]?.start;
+    return {
+      geodesicId,
+      locked: isGeodesicLocked(runtimeObjectRegistry, geodesicId),
+      connection: getGeodesicConnection(runtimeObjectRegistry, geodesicId),
+      startCellId: segments[0]?.cellId,
+      start: start ? formatVec3(start) : undefined,
+      word,
+      wordText: formatGeodesicPortalWord(word),
+      transitions: word.map((step, index) => ({
+        index,
+        sourceCellId: step.sourceCellId,
+        sourcePortalId: step.sourcePortalId,
+        targetCellId: step.targetCellId,
+        targetPortalId: step.targetPortalId,
+      })),
+    };
+  }
+
+  function collectKnownGeodesicIds(): readonly string[] {
+    const ids = new Set<string>();
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "geodesic-segment") {
+        ids.add(object.geodesicId);
+      } else if (object.kind === "geodesic-cannon") {
+        for (const geodesicId of object.geodesicIds) {
+          ids.add(geodesicId);
+        }
+        if (object.activeGeodesicId) {
+          ids.add(object.activeGeodesicId);
+        }
+      }
+    }
+    return [...ids];
+  }
+
+  function resolveDebugGeodesicId(): string | undefined {
+    if (activeGeodesicCannonToolState.activeGeodesicId) {
+      return activeGeodesicCannonToolState.activeGeodesicId;
+    }
+
+    const cannonId = activeGeodesicCannonToolState.selectedCannonId;
+    const selectedCannon = cannonId ? runtimeObjectRegistry.get(cannonId) : undefined;
+    if (selectedCannon?.kind === "geodesic-cannon") {
+      return selectedCannon.activeGeodesicId ?? selectedCannon.geodesicIds[0];
+    }
+
+    const target = resolveCurrentAimTarget(resolveCameraRootRay());
+    const object = target?.object;
+    if (object?.kind === "geodesic-segment") {
+      return object.geodesicId;
+    }
+    if (object?.kind === "geodesic-cannon") {
+      return object.activeGeodesicId ?? object.geodesicIds[0];
+    }
+
+    return undefined;
+  }
+
+  function formatGeodesicTerminal(terminal: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>["terminal"]): string {
+    switch (terminal.kind) {
+      case "open":
+        return "open";
+      case "emitter-hit":
+        return `emitter-hit:${terminal.emitterId}`;
+      case "portal-hit":
+        return `portal-hit:${terminal.portalId}->${terminal.targetCellId}:${terminal.targetPortalId}`;
+      case "wall-hit":
+        return `wall-hit:${terminal.sideIndex}`;
+      case "forbidden-zone-hit":
+        return `forbidden-zone-hit:${terminal.junctionId}`;
+    }
   }
 
   function updateGeodesicCreatureDebug(deltaSeconds: number): void {
@@ -1335,6 +1486,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function recordCellTransition(previousCellId: string, moveResult: ReturnType<typeof movePlayer>): void {
     if (playerPose.cellId !== previousCellId) {
       if (moveResult.crossedPortal) {
+        const transition = resolveLatestPlayerPortalTransition(previousCellId, moveResult);
+        if (transition) {
+          latestPlayerPortalTransition = transition;
+          latestPlayerPortalTransitionSerial += 1;
+        }
         runtimeDiagnostics().recordCellEntered(
           previousCellId,
           playerPose.cellId,
@@ -1343,6 +1499,28 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
       portalDebugRuntime.syncRootCell();
     }
+  }
+
+  function resolveLatestPlayerPortalTransition(
+    previousCellId: string,
+    moveResult: ReturnType<typeof movePlayer>,
+  ): GeodesicCarryPortalTransition | undefined {
+    if (!moveResult.crossedPortal || !moveResult.crossedPortalId) {
+      return undefined;
+    }
+
+    const portal = appState.world.cellsById.get(previousCellId)?.portalsById.get(moveResult.crossedPortalId);
+    if (!portal || portal.targetCellId !== moveResult.pose.cellId) {
+      return undefined;
+    }
+
+    return {
+      sourceCellId: previousCellId,
+      sourcePortalId: portal.id,
+      targetCellId: portal.targetCellId,
+      targetPortalId: portal.targetPortalId,
+      transformToTarget: portal.transformToTarget,
+    };
   }
 
   function syncXrDebugState(
@@ -3156,6 +3334,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     const geodesicId = resolveCannonGeodesicId(cannon, requestedGeodesicId);
+    if (geodesicId && isGeodesicLocked(runtimeObjectRegistry, geodesicId)) {
+      syncDesktopPalette();
+      return;
+    }
+
     const selectedCannon = geodesicId && cannon.activeGeodesicId !== geodesicId
       ? { ...cannon, activeGeodesicId: geodesicId }
       : cannon;
@@ -3184,6 +3367,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     const geodesicId = resolveCannonGeodesicId(cannon, requestedGeodesicId);
+    if (geodesicId && isGeodesicLocked(runtimeObjectRegistry, geodesicId)) {
+      syncDesktopPalette();
+      return;
+    }
+
     const selectedCannon = geodesicId && cannon.activeGeodesicId !== geodesicId
       ? { ...cannon, activeGeodesicId: geodesicId }
       : cannon;
@@ -3222,6 +3410,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     activeGeodesicCannonToolState = {
       selectedCannonId: selectedCannon.id,
       activeGeodesicId: geodesicId,
+      carryPortalWord: geodesicId
+        ? collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId)
+        : undefined,
     };
     geodesicCannonRotationTargetLengthMeters = geodesicId
       ? getGeodesicTotalLengthMeters(geodesicId)
@@ -3365,7 +3556,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     runtimeObjectRegistry.update(nextCannon);
-    rebuildCarriedGeodesicFromCannon(nextCannon);
+    rebuildCarriedGeodesicFromCannon(nextCannon, cannon);
     syncCarriedGeodesicCannonGlow(nextCannon);
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
@@ -3373,6 +3564,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function rebuildCarriedGeodesicFromCannon(
     cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+    previousCannon?: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
   ): void {
     const geodesicId = cannon.activeGeodesicId ?? activeGeodesicCannonToolState.activeGeodesicId;
     if (!geodesicId) {
@@ -3380,16 +3572,66 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     if (isGeodesicLocked(runtimeObjectRegistry, geodesicId)) {
+      updateCarriedGeodesicPortalWord(cannon, previousCannon, geodesicId);
       rebuildConnectedGeodesicBetweenEmitters({
         world: appState.world,
         registry: runtimeObjectRegistry,
         geodesicId,
+        carriedEmitterId: cannon.id,
+        carriedEmitterBeforeMove: previousCannon,
+        carriedEmitterPortalTransition: latestPlayerPortalTransition,
+        carriedPortalWord: activeGeodesicCannonToolState.carryPortalWord,
       });
     } else {
       rebuildActiveGeodesicFromCannon(cannon, { connectEmitters: false, breakOnForbiddenZone: true });
     }
     refreshProtractorAnglesForGeodesic(geodesicId);
     refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);
+  }
+
+  function updateCarriedGeodesicPortalWord(
+    cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+    previousCannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }> | undefined,
+    geodesicId: string,
+  ): void {
+    const transition = latestPlayerPortalTransition;
+    if (
+      !previousCannon ||
+      !transition ||
+      activeGeodesicCannonToolState.carryPortalTransitionSerial === latestPlayerPortalTransitionSerial ||
+      previousCannon.cellId !== transition.sourceCellId ||
+      cannon.cellId !== transition.targetCellId
+    ) {
+      return;
+    }
+
+    const connection = getGeodesicConnection(runtimeObjectRegistry, geodesicId);
+    const currentWord = activeGeodesicCannonToolState.carryPortalWord ??
+      collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId);
+    let nextWord: readonly GeodesicPortalTraversal[] | undefined;
+    if (connection?.incomingEmitterId === cannon.id) {
+      nextWord = [...currentWord, transition];
+    } else if (connection?.outgoingEmitterId === cannon.id) {
+      nextWord = [reverseGeodesicPortalTraversal(transition), ...currentWord];
+    }
+
+    if (!nextWord) {
+      return;
+    }
+
+    activeGeodesicCannonToolState = {
+      ...activeGeodesicCannonToolState,
+      carryPortalWord: nextWord,
+      carryPortalTransitionSerial: latestPlayerPortalTransitionSerial,
+    };
+    if (debugLevel === "verbose") {
+      console.info("[noneuclid] carried geodesic portal word", {
+        geodesicId,
+        carriedEmitterId: cannon.id,
+        word: formatGeodesicPortalWord(nextWord),
+        transition,
+      });
+    }
   }
 
   function resolveDesktopCarriedGeodesicCannonAnchor(
@@ -4551,7 +4793,11 @@ function logDebugStartupGuide(debugLevel: DebugLevelId, debugOptions: readonly D
   const commands = [
     "debug_help()",
     "dump_geodesic_creatures()",
+    "dump_geodesic_path()",
+    "dump_locked_geodesic_words()",
     "window.noneuclidDebug.DumpGeodesicCreatures()",
+    "window.noneuclidDebug.DumpGeodesicPath()",
+    "window.noneuclidDebug.DumpLockedGeodesicWords()",
     "window.noneuclidPortalDebug.state",
     'window.noneuclidPortalDebug.CheckCellPath("0 2 3")',
     'window.noneuclidPortalDebug.ShowCellPath("0 2 3")',
@@ -4569,7 +4815,7 @@ function logDebugStartupGuide(debugLevel: DebugLevelId, debugOptions: readonly D
       "Debugging quick start:",
       `debugLevel=${debugLevel}`,
       `debugOptions=${activeOptions}`,
-      "Geodesic creature dump helpers are installed as debug_help() and dump_geodesic_creatures().",
+      "Geodesic debug helpers are installed as debug_help(), dump_geodesic_creatures(), dump_geodesic_path(), and dump_locked_geodesic_words().",
       "Portal debug helpers are installed when portal-path-debug or portal-visible-path-debug is active.",
       "ShowCellPath overlays also need portal-path-overlays.",
       "Live clip polygons need portal-visible-path-debug.",
@@ -4666,16 +4912,24 @@ interface GeneralDebugHelpers {
   debug_help(): void;
   dump_geodesic_creatures(): GeodesicCreatureDebugDump;
   DumpGeodesicCreatures(): GeodesicCreatureDebugDump;
+  dump_geodesic_path(geodesicId?: string): GeodesicPathDebugDump | undefined;
+  DumpGeodesicPath(geodesicId?: string): GeodesicPathDebugDump | undefined;
+  dump_locked_geodesic_words(): readonly GeodesicWordDebugDump[];
+  DumpLockedGeodesicWords(): readonly GeodesicWordDebugDump[];
 }
 
 interface GeneralDebugHelperCallbacks {
   readonly debugHelp: () => void;
   readonly dumpGeodesicCreatures: () => GeodesicCreatureDebugDump;
+  readonly dumpGeodesicPath: (geodesicId?: string) => GeodesicPathDebugDump | undefined;
+  readonly dumpLockedGeodesicWords: () => readonly GeodesicWordDebugDump[];
 }
 
 type WindowWithGeneralDebugHelpers = typeof window & {
   debug_help?: () => void;
   dump_geodesic_creatures?: () => GeodesicCreatureDebugDump;
+  dump_geodesic_path?: (geodesicId?: string) => GeodesicPathDebugDump | undefined;
+  dump_locked_geodesic_words?: () => readonly GeodesicWordDebugDump[];
   noneuclidDebug?: GeneralDebugHelpers;
 };
 
@@ -4709,6 +4963,47 @@ interface CameraPoseDebugDump {
   readonly projectionMatrix: readonly number[];
 }
 
+interface GeodesicPathDebugDump {
+  readonly geodesicId: string;
+  readonly locked: boolean;
+  readonly connection: ReturnType<typeof getGeodesicConnection>;
+  readonly startCellId?: string;
+  readonly start?: string;
+  readonly word: readonly GeodesicPortalTraversal[];
+  readonly wordText: string;
+  readonly carrySessionWord?: readonly GeodesicPortalTraversal[];
+  readonly carrySessionWordText?: string;
+  readonly reverseWordText: string;
+  readonly latestPlayerPortalTransition?: GeodesicCarryPortalTransition;
+  readonly segments: readonly {
+    readonly id: string;
+    readonly cellId: string;
+    readonly index: number;
+    readonly lengthMeters: number;
+    readonly start: string;
+    readonly direction: string;
+    readonly terminal: string;
+    readonly connectionState: string;
+  }[];
+}
+
+interface GeodesicWordDebugDump {
+  readonly geodesicId: string;
+  readonly locked: boolean;
+  readonly connection: ReturnType<typeof getGeodesicConnection>;
+  readonly startCellId?: string;
+  readonly start?: string;
+  readonly word: readonly GeodesicPortalTraversal[];
+  readonly wordText: string;
+  readonly transitions: readonly {
+    readonly index: number;
+    readonly sourceCellId: string;
+    readonly sourcePortalId: string;
+    readonly targetCellId: string;
+    readonly targetPortalId: string;
+  }[];
+}
+
 function installPortalDebugHelpers(helpers: PortalDebugHelpers): void {
   (window as typeof window & { noneuclidPortalDebug?: PortalDebugHelpers }).noneuclidPortalDebug = helpers;
 }
@@ -4723,10 +5018,16 @@ function installGeneralDebugHelpers(callbacks: GeneralDebugHelperCallbacks): voi
     debug_help: callbacks.debugHelp,
     dump_geodesic_creatures: callbacks.dumpGeodesicCreatures,
     DumpGeodesicCreatures: callbacks.dumpGeodesicCreatures,
+    dump_geodesic_path: callbacks.dumpGeodesicPath,
+    DumpGeodesicPath: callbacks.dumpGeodesicPath,
+    dump_locked_geodesic_words: callbacks.dumpLockedGeodesicWords,
+    DumpLockedGeodesicWords: callbacks.dumpLockedGeodesicWords,
   };
 
   target.debug_help = helpers.debug_help;
   target.dump_geodesic_creatures = helpers.dump_geodesic_creatures;
+  target.dump_geodesic_path = helpers.dump_geodesic_path;
+  target.dump_locked_geodesic_words = helpers.dump_locked_geodesic_words;
   target.noneuclidDebug = helpers;
 }
 
@@ -4735,6 +5036,8 @@ function uninstallGeneralDebugHelpers(): void {
 
   delete target.debug_help;
   delete target.dump_geodesic_creatures;
+  delete target.dump_geodesic_path;
+  delete target.dump_locked_geodesic_words;
   delete target.noneuclidDebug;
 }
 
@@ -4932,6 +5235,23 @@ function matricesNearlyEqual(left: THREE.Matrix4, right: THREE.Matrix4, toleranc
 
 function roundNumber(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function formatGeodesicPortalWord(word: readonly GeodesicPortalTraversal[]): string {
+  return word.length === 0
+    ? "(root)"
+    : word
+      .map((step) => `${step.sourceCellId}:${step.sourcePortalId}->${step.targetCellId}:${step.targetPortalId}`)
+      .join(" ");
+}
+
+function reverseGeodesicPortalTraversal(step: GeodesicPortalTraversal): GeodesicPortalTraversal {
+  return {
+    sourceCellId: step.targetCellId,
+    sourcePortalId: step.targetPortalId,
+    targetCellId: step.sourceCellId,
+    targetPortalId: step.sourcePortalId,
+  };
 }
 
 function formatVec3(point: { readonly x: number; readonly y: number; readonly z: number }): string {

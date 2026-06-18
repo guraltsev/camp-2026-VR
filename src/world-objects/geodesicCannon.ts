@@ -1,7 +1,15 @@
 import type { CompiledCellComplex } from "../cell-complex/compileCellComplex";
 import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder, testCellCollision } from "../movement/collision";
 import type { SimpleCollisionCylinder } from "../movement/dynamicObject";
-import { invertRigidTransform3, transformDirection3, transformPoint3, yawRigidTransform3, type RigidTransform3 } from "../math/rigidTransform3";
+import {
+  composeRigidTransform3,
+  identityRigidTransform3,
+  invertRigidTransform3,
+  transformDirection3,
+  transformPoint3,
+  yawRigidTransform3,
+  type RigidTransform3,
+} from "../math/rigidTransform3";
 import { addVec3, normalizeVec3, scaleVec3, type Vec3 } from "../math/vec3";
 import type { RuntimeObjectRegistry, RuntimeWorldObjectBase } from "./runtimeObjectRegistry";
 import { runtimeObjectToDynamicObjectState } from "./runtimeObjectRegistry";
@@ -19,6 +27,17 @@ export interface GeodesicEmitterConnection {
   readonly outgoingEmitterId: string;
   readonly incomingEmitterId?: string;
   readonly state: "open" | "connected";
+}
+
+export interface GeodesicPortalTraversal {
+  readonly sourceCellId: string;
+  readonly sourcePortalId: string;
+  readonly targetCellId: string;
+  readonly targetPortalId: string;
+}
+
+export interface GeodesicCarryPortalTransition extends GeodesicPortalTraversal {
+  readonly transformToTarget: RigidTransform3;
 }
 
 export interface GeodesicSegmentObject extends RuntimeWorldObjectBase {
@@ -157,6 +176,10 @@ export interface RebuildConnectedGeodesicBetweenEmittersRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
   readonly geodesicId: string;
+  readonly carriedEmitterId?: string;
+  readonly carriedEmitterBeforeMove?: GeodesicCannonObject;
+  readonly carriedEmitterPortalTransition?: GeodesicCarryPortalTransition;
+  readonly carriedPortalWord?: readonly GeodesicPortalTraversal[];
 }
 
 export interface PlaceGeodesicCannonResult {
@@ -913,7 +936,23 @@ export function rebuildConnectedGeodesicBetweenEmitters(
   }
 
   const sourcePoint = getGeodesicCannonEmitterPoint(source);
-  const incomingPointInSourceCell = unfoldIncomingEmitterPointToSourceCell({
+  const carriedPlan = request.carriedEmitterId
+    ? resolveCarriedConnectedGeodesicPlan({
+        world: request.world,
+        registry: request.registry,
+        geodesicId: request.geodesicId,
+        source,
+        incoming,
+        carriedEmitterId: request.carriedEmitterId,
+        carriedEmitterBeforeMove: request.carriedEmitterBeforeMove,
+        carriedEmitterPortalTransition: request.carriedEmitterPortalTransition,
+        carriedPortalWord: request.carriedPortalWord,
+      })
+    : undefined;
+  if (request.carriedEmitterId && !carriedPlan) {
+    return getGeodesicSegments(request.registry, request.geodesicId);
+  }
+  const incomingPointInSourceCell = carriedPlan?.incomingPointInSourceCell ?? unfoldIncomingEmitterPointToSourceCell({
     world: request.world,
     registry: request.registry,
     geodesicId: request.geodesicId,
@@ -929,6 +968,10 @@ export function rebuildConnectedGeodesicBetweenEmitters(
   const centerDistanceMeters = Math.hypot(dx, dy);
   const totalLengthMeters = centerDistanceMeters - geodesicRayBeamStartOffsetMeters;
   if (totalLengthMeters < minGeodesicSegmentLengthMeters - intersectionTolerance) {
+    if (request.carriedEmitterId) {
+      return getGeodesicSegments(request.registry, request.geodesicId);
+    }
+
     removeGeodesic(request.registry, request.geodesicId);
     return [];
   }
@@ -944,7 +987,6 @@ export function rebuildConnectedGeodesicBetweenEmitters(
       [request.geodesicId]: nextYaw,
     },
   };
-  request.registry.update(sourceWithYaw);
 
   const direction = directionFromYaw(nextYaw);
   const traces = traceGeodesicPathForConnectionMode({
@@ -963,13 +1005,206 @@ export function rebuildConnectedGeodesicBetweenEmitters(
     return [];
   }
 
-  return connectGeodesicToEmitter({
-    world: request.world,
+  const rebuilt = replaceConnectedGeodesicSegments({
     registry: request.registry,
-    geodesicId: request.geodesicId,
+    source: sourceWithYaw,
     incomingEmitterId: incoming.id,
+    geodesicId: request.geodesicId,
     totalLengthMeters,
+    traces,
   });
+  return rebuilt ?? getGeodesicSegments(request.registry, request.geodesicId);
+}
+
+export function collectGeodesicPortalWord(
+  world: CompiledCellComplex,
+  registry: RuntimeObjectRegistry,
+  geodesicId: string,
+): readonly GeodesicPortalTraversal[] {
+  const word: GeodesicPortalTraversal[] = [];
+  for (const segment of getGeodesicSegments(registry, geodesicId)) {
+    if (segment.terminal.kind !== "portal-hit") {
+      continue;
+    }
+
+    const portal = world.cellsById.get(segment.cellId)?.portalsById.get(segment.terminal.portalId);
+    if (!portal) {
+      continue;
+    }
+
+    word.push({
+      sourceCellId: segment.cellId,
+      sourcePortalId: portal.id,
+      targetCellId: portal.targetCellId,
+      targetPortalId: portal.targetPortalId,
+    });
+  }
+
+  return word;
+}
+
+function resolveCarriedConnectedGeodesicPlan(input: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly geodesicId: string;
+  readonly source: GeodesicCannonObject;
+  readonly incoming: GeodesicCannonObject;
+  readonly carriedEmitterId: string;
+  readonly carriedEmitterBeforeMove?: GeodesicCannonObject;
+  readonly carriedEmitterPortalTransition?: GeodesicCarryPortalTransition;
+  readonly carriedPortalWord?: readonly GeodesicPortalTraversal[];
+}): { readonly incomingPointInSourceCell: Vec3 } | undefined {
+  if (input.carriedEmitterId !== input.source.id && input.carriedEmitterId !== input.incoming.id) {
+    return undefined;
+  }
+
+  const sourcePoint = getGeodesicCannonEmitterPoint(input.source);
+  const incomingPoint = getGeodesicCannonEmitterPoint(input.incoming);
+  const existingIncomingFromSource = getExistingGeodesicPortalTransform(
+    input.world,
+    input.registry,
+    input.geodesicId,
+    input.carriedPortalWord,
+  );
+  if (!existingIncomingFromSource) {
+    return undefined;
+  }
+
+  const movedAcrossPortal = input.carriedPortalWord
+    ? undefined
+    : resolveExplicitCarriedEmitterPortalTransition(input);
+  const incomingFromSource = movedAcrossPortal && input.carriedEmitterId === input.incoming.id
+    ? composeRigidTransform3(movedAcrossPortal.transformToTarget, existingIncomingFromSource)
+    : existingIncomingFromSource;
+
+  if (input.carriedEmitterId === input.incoming.id) {
+    const incomingPointInSourceCell = transformPoint3(invertRigidTransform3(incomingFromSource), incomingPoint);
+    return isDrawableEndpointPair(sourcePoint, incomingPointInSourceCell)
+      ? { incomingPointInSourceCell }
+      : undefined;
+  }
+
+  const currentSourceFromPreviousSource = movedAcrossPortal && input.carriedEmitterId === input.source.id
+    ? movedAcrossPortal.transformToTarget
+    : identityRigidTransform3;
+  const previousIncomingPointInPreviousSourceCell = transformPoint3(
+    invertRigidTransform3(existingIncomingFromSource),
+    incomingPoint,
+  );
+  const incomingPointInSourceCell = transformPoint3(currentSourceFromPreviousSource, previousIncomingPointInPreviousSourceCell);
+  return isDrawableEndpointPair(sourcePoint, incomingPointInSourceCell)
+    ? { incomingPointInSourceCell }
+    : undefined;
+}
+
+function getCarriedEmitter(input: {
+  readonly source: GeodesicCannonObject;
+  readonly incoming: GeodesicCannonObject;
+  readonly carriedEmitterId: string;
+}): GeodesicCannonObject {
+  return input.carriedEmitterId === input.source.id ? input.source : input.incoming;
+}
+
+function resolveExplicitCarriedEmitterPortalTransition(input: {
+  readonly carriedEmitterBeforeMove?: GeodesicCannonObject;
+  readonly carriedEmitterPortalTransition?: GeodesicCarryPortalTransition;
+  readonly source: GeodesicCannonObject;
+  readonly incoming: GeodesicCannonObject;
+  readonly carriedEmitterId: string;
+}): GeodesicCarryPortalTransition | undefined {
+  const previous = input.carriedEmitterBeforeMove;
+  const current = getCarriedEmitter(input);
+  const transition = input.carriedEmitterPortalTransition;
+  if (!previous || !transition) {
+    return undefined;
+  }
+
+  if (
+    previous.cellId !== transition.sourceCellId ||
+    current.cellId !== transition.targetCellId
+  ) {
+    return undefined;
+  }
+
+  return transition;
+}
+
+function getExistingGeodesicPortalTransform(
+  world: CompiledCellComplex,
+  registry: RuntimeObjectRegistry,
+  geodesicId: string,
+  portalWord: readonly GeodesicPortalTraversal[] = collectGeodesicPortalWord(world, registry, geodesicId),
+): RigidTransform3 | undefined {
+  let transform = identityRigidTransform3;
+  for (const traversal of portalWord) {
+    const portal = world.cellsById.get(traversal.sourceCellId)?.portalsById.get(traversal.sourcePortalId);
+    if (!portal) {
+      continue;
+    }
+
+    transform = composeRigidTransform3(portal.transformToTarget, transform);
+  }
+
+  return transform;
+}
+
+function isDrawableEndpointPair(sourcePoint: Vec3, incomingPointInSourceCell: Vec3): boolean {
+  const centerDistanceMeters = Math.hypot(
+    incomingPointInSourceCell.x - sourcePoint.x,
+    incomingPointInSourceCell.y - sourcePoint.y,
+  );
+  return centerDistanceMeters - geodesicRayBeamStartOffsetMeters >= minGeodesicSegmentLengthMeters - intersectionTolerance;
+}
+
+function replaceConnectedGeodesicSegments(input: {
+  readonly registry: RuntimeObjectRegistry;
+  readonly source: GeodesicCannonObject;
+  readonly incomingEmitterId: string;
+  readonly geodesicId: string;
+  readonly totalLengthMeters: number;
+  readonly traces: readonly TraceGeodesicSegmentResult[];
+}): readonly GeodesicSegmentObject[] | undefined {
+  if (input.traces.length === 0) {
+    return undefined;
+  }
+
+  const previousLengthMeters = input.traces
+    .slice(0, -1)
+    .reduce((total, trace) => total + trace.lengthMeters, 0);
+  const adjustedTailLengthMeters = input.totalLengthMeters - previousLengthMeters;
+  if (adjustedTailLengthMeters < minGeodesicSegmentLengthMeters - intersectionTolerance) {
+    return undefined;
+  }
+
+  const tail = input.traces.at(-1);
+  if (!tail || tail.terminal.kind !== "open") {
+    return undefined;
+  }
+
+  input.registry.update(input.source);
+  removeGeodesicSegments(input.registry, input.geodesicId);
+  const geodesicNumber = resolveGeodesicNumber(input.registry, input.geodesicId);
+  for (const [index, trace] of input.traces.entries()) {
+    const isTail = index === input.traces.length - 1;
+    const segment = createSegmentFromTrace({
+      id: `${input.geodesicId}:segment:${index}`,
+      geodesicId: input.geodesicId,
+      geodesicNumber,
+      segmentIndex: index,
+      trace: isTail
+        ? {
+            ...trace,
+            lengthMeters: adjustedTailLengthMeters,
+            terminal: { kind: "emitter-hit", emitterId: input.incomingEmitterId },
+          }
+        : trace,
+    });
+    input.registry.add(segment);
+  }
+
+  markGeodesicConnected(input.registry, input.geodesicId, input.source.id, input.incomingEmitterId);
+  updateGeodesicIntersectionObjects(input.registry);
+  return getGeodesicSegments(input.registry, input.geodesicId);
 }
 
 function unfoldIncomingEmitterPointToSourceCell(input: {
@@ -1425,8 +1660,14 @@ function markGeodesicConnected(
   }
 
   if (incoming?.kind === "geodesic-cannon") {
+    const incomingPose = incomingYawRadians === undefined
+      ? incoming.localPose
+      : yawRigidTransform3(incomingYawRadians, incoming.localPose.translation);
     registry.update({
       ...incoming,
+      activeGeodesicId: geodesicId,
+      aimYawRadians: incomingYawRadians ?? incoming.aimYawRadians,
+      localPose: incomingPose,
       geodesicIds: incoming.geodesicIds.includes(geodesicId)
         ? incoming.geodesicIds
         : [...incoming.geodesicIds, geodesicId],

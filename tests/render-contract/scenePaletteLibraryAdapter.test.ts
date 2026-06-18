@@ -82,11 +82,11 @@ describe("scenePaletteLibraryAdapter", () => {
     const actionIds = collectPaletteActionItemIds(adapter.root);
     const imageSources = collectPaletteImageSources(adapter.root);
 
-    expect(itemIds).toContain("geodesic-cannon-action:rotate:g-a");
-    expect(itemIds).toContain("geodesic-cannon-action:aim:g-a");
+    expect(itemIds).not.toContain("geodesic-cannon-action:rotate:g-a");
+    expect(itemIds).not.toContain("geodesic-cannon-action:aim:g-a");
     expect(itemIds).toContain("geodesic-cannon-action:delete:g-a");
-    expect(actionIds).toContain("geodesic-cannon-action:rotate:g-a");
-    expect(actionIds).toContain("geodesic-cannon-action:aim:g-a");
+    expect(actionIds).not.toContain("geodesic-cannon-action:rotate:g-a");
+    expect(actionIds).not.toContain("geodesic-cannon-action:aim:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:delete:g-a");
     expect(imageSources).toContain("/assets/icons/lock.png");
 

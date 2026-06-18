@@ -3,6 +3,7 @@ import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
 import {
   createGeodesicCannonObject,
+  collectGeodesicPortalWord,
   connectGeodesicToEmitter,
   extendGeodesic,
   geodesicRayBeamHeightMeters,
@@ -726,6 +727,12 @@ describe("geodesic cannon world objects", () => {
     registry.add(source);
     registry.add(incoming);
     shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 3 });
+    expect(collectGeodesicPortalWord(world, registry, "g-a")).toEqual([{
+      sourceCellId: "a",
+      sourcePortalId: "ab",
+      targetCellId: "b",
+      targetPortalId: "ba",
+    }]);
 
     const movedIncoming = registry.get("cannon-b");
     if (movedIncoming?.kind !== "geodesic-cannon") {
@@ -753,6 +760,217 @@ describe("geodesic cannon world objects", () => {
     expect(totalGeodesicLength(registry, "g-a")).toBeCloseTo(Math.hypot(2, 0.5) - geodesicRayBeamStartOffsetMeters);
     expect(getCannonGeodesicYaw(registry, "cannon-a", "g-a")).toBeCloseTo(expectedYaw);
     expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+  });
+
+  it("keeps the portal clone while carrying a locked endpoint in a wrapping cell", () => {
+    const world = compileTorusLoopWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "torus-room",
+      localPose: yawRigidTransform3(0, { x: 4, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "torus-room",
+      localPose: yawRigidTransform3(Math.PI, { x: -4, y: 0, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 8 });
+
+    const movedIncoming = registry.get("cannon-b");
+    if (movedIncoming?.kind !== "geodesic-cannon") {
+      throw new Error("Expected incoming emitter.");
+    }
+    registry.update({
+      ...movedIncoming,
+      localPose: yawRigidTransform3(Math.PI, { x: -3.5, y: 0, z: 0 }),
+    });
+
+    const rebuilt = rebuildConnectedGeodesicBetweenEmitters({
+      world,
+      registry,
+      geodesicId: "g-a",
+      carriedEmitterId: "cannon-b",
+      carriedEmitterBeforeMove: movedIncoming,
+    });
+
+    expect(rebuilt.map((segment) => segment.cellId)).toEqual(["torus-room", "torus-room"]);
+    expect(rebuilt[0]?.terminal.kind).toBe("portal-hit");
+    expect(rebuilt.at(-1)).toMatchObject({
+      terminal: { kind: "emitter-hit", emitterId: "cannon-b" },
+      connectionState: "connected",
+    });
+    expect(getCannonGeodesicYaw(registry, "cannon-a", "g-a")).toBeCloseTo(0);
+  });
+
+  it("does not unlock or hide a carried geodesic when the direct clone is too short", () => {
+    const world = compileTorusLoopWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "torus-room",
+      localPose: yawRigidTransform3(0, { x: 4, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "torus-room",
+      localPose: yawRigidTransform3(Math.PI, { x: -4, y: 0, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 8 });
+
+    const movedIncoming = registry.get("cannon-b");
+    if (movedIncoming?.kind !== "geodesic-cannon") {
+      throw new Error("Expected incoming emitter.");
+    }
+    registry.update({
+      ...movedIncoming,
+      localPose: yawRigidTransform3(Math.PI, { x: 4.05, y: 0, z: 0 }),
+    });
+
+    const rebuilt = rebuildConnectedGeodesicBetweenEmitters({
+      world,
+      registry,
+      geodesicId: "g-a",
+      carriedEmitterId: "cannon-b",
+      carriedEmitterBeforeMove: movedIncoming,
+    });
+
+    expect(rebuilt.length).toBeGreaterThan(0);
+    expect(rebuilt[0]?.terminal.kind).toBe("portal-hit");
+    expect(rebuilt.at(-1)).toMatchObject({
+      terminal: { kind: "emitter-hit", emitterId: "cannon-b" },
+      connectionState: "connected",
+    });
+    expect(getGeodesicConnection(registry, "g-a")).toEqual({
+      outgoingEmitterId: "cannon-a",
+      incomingEmitterId: "cannon-b",
+      state: "connected",
+    });
+    const sourceYaw = Math.atan2(rebuilt[0]?.direction.y ?? 0, rebuilt[0]?.direction.x ?? 1);
+    expect(getCannonPoseYaw(registry, "cannon-a")).toBeCloseTo(sourceYaw);
+    expect(getCannonPoseYaw(registry, "cannon-b")).toBeCloseTo(normalizeYaw(sourceYaw + Math.PI));
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+  });
+
+  it("keeps a carried endpoint connected when it crosses back through the portal", () => {
+    const world = compileLargePortalWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 4, y: 2.5, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "b",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 2.5, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 3 });
+
+    const movedIncoming = registry.get("cannon-b");
+    if (movedIncoming?.kind !== "geodesic-cannon") {
+      throw new Error("Expected incoming emitter.");
+    }
+    registry.update({
+      ...movedIncoming,
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 4.8, y: 2.5, z: 0 }),
+    });
+
+    const rebuilt = rebuildConnectedGeodesicBetweenEmitters({
+      world,
+      registry,
+      geodesicId: "g-a",
+      carriedEmitterId: "cannon-b",
+      carriedEmitterBeforeMove: movedIncoming,
+      carriedEmitterPortalTransition: createCarryPortalTransition(world, "b", "ba"),
+    });
+
+    expect(rebuilt.length).toBeGreaterThan(0);
+    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual(["g-a"]);
+    expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-a"]);
+    expect(getGeodesicConnection(registry, "g-a")).toEqual({
+      outgoingEmitterId: "cannon-a",
+      incomingEmitterId: "cannon-b",
+      state: "connected",
+    });
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+  });
+
+  it("keeps a carried endpoint connected after the final drop rebuild", () => {
+    const world = compileThreeCellPortalWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "front",
+      localPose: yawRigidTransform3(0, { x: 4, y: 2.5, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "left",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 2.5, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 3 });
+    expect(collectGeodesicPortalWord(world, registry, "g-a")).toEqual([{
+      sourceCellId: "front",
+      sourcePortalId: "front-left",
+      targetCellId: "left",
+      targetPortalId: "left-front",
+    }]);
+
+    const previousIncoming = registry.get("cannon-b");
+    if (previousIncoming?.kind !== "geodesic-cannon") {
+      throw new Error("Expected incoming emitter.");
+    }
+    const carriedIncoming = {
+      ...previousIncoming,
+      cellId: "back",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 2.5, z: 0 }),
+    };
+    registry.update(carriedIncoming);
+
+    const carryWord = [
+      ...collectGeodesicPortalWord(world, registry, "g-a"),
+      createCarryPortalTraversal(world, "left", "left-back"),
+    ];
+    const liveRebuilt = rebuildConnectedGeodesicBetweenEmitters({
+      world,
+      registry,
+      geodesicId: "g-a",
+      carriedEmitterId: "cannon-b",
+      carriedEmitterBeforeMove: previousIncoming,
+      carriedEmitterPortalTransition: createCarryPortalTransition(world, "left", "left-back"),
+      carriedPortalWord: carryWord,
+    });
+    expect(liveRebuilt.length).toBeGreaterThan(0);
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+
+    const dropRebuilt = rebuildConnectedGeodesicBetweenEmitters({
+      world,
+      registry,
+      geodesicId: "g-a",
+      carriedEmitterId: "cannon-b",
+      carriedPortalWord: carryWord,
+    });
+
+    expect(dropRebuilt.length).toBeGreaterThan(0);
+    expect(getGeodesicConnection(registry, "g-a")).toEqual({
+      outgoingEmitterId: "cannon-a",
+      incomingEmitterId: "cannon-b",
+      state: "connected",
+    });
+    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual(["g-a"]);
+    expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-a"]);
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+    expect(collectGeodesicPortalWord(world, registry, "g-a")).toEqual(carryWord);
   });
 
   it("connects a looped-world geodesic back to its source emitter", () => {
@@ -1208,8 +1426,55 @@ function getCannonGeodesicYaw(
   return cannon?.kind === "geodesic-cannon" ? cannon.geodesicEmitterYawRadiansById?.[geodesicId] : undefined;
 }
 
+function getCannonPoseYaw(
+  registry: ReturnType<typeof createRuntimeObjectRegistry>,
+  cannonId: string,
+): number | undefined {
+  const cannon = registry.get(cannonId);
+  return cannon?.kind === "geodesic-cannon"
+    ? Math.atan2(cannon.localPose.rotation.m10, cannon.localPose.rotation.m00)
+    : undefined;
+}
+
 function normalizeYaw(yawRadians: number): number {
   return Math.atan2(Math.sin(yawRadians), Math.cos(yawRadians));
+}
+
+function createCarryPortalTransition(
+  world: ReturnType<typeof compileLargePortalWorld> | ReturnType<typeof compileThreeCellPortalWorld>,
+  sourceCellId: string,
+  sourcePortalId: string,
+) {
+  const portal = world.cellsById.get(sourceCellId)?.portalsById.get(sourcePortalId);
+  if (!portal) {
+    throw new Error(`Missing portal ${sourceCellId}:${sourcePortalId}.`);
+  }
+
+  return {
+    sourceCellId,
+    sourcePortalId,
+    targetCellId: portal.targetCellId,
+    targetPortalId: portal.targetPortalId,
+    transformToTarget: portal.transformToTarget,
+  };
+}
+
+function createCarryPortalTraversal(
+  world: ReturnType<typeof compileLargePortalWorld> | ReturnType<typeof compileThreeCellPortalWorld>,
+  sourceCellId: string,
+  sourcePortalId: string,
+) {
+  const portal = world.cellsById.get(sourceCellId)?.portalsById.get(sourcePortalId);
+  if (!portal) {
+    throw new Error(`Missing portal ${sourceCellId}:${sourcePortalId}.`);
+  }
+
+  return {
+    sourceCellId,
+    sourcePortalId,
+    targetCellId: portal.targetCellId,
+    targetPortalId: portal.targetPortalId,
+  };
 }
 
 function compileLargeWorld() {
@@ -1254,6 +1519,49 @@ function compileLargePortalWorld() {
           { x: 0, y: 5 },
         ],
         portals: [{ id: "ba", sideIndex: 3, targetCellId: "a", targetPortalId: "ab" }],
+      },
+    ],
+  });
+}
+
+function compileThreeCellPortalWorld() {
+  return compileCellComplex({
+    cells: [
+      {
+        id: "front",
+        heightMeters: 3,
+        baseVertices: [
+          { x: 0, y: 0 },
+          { x: 5, y: 0 },
+          { x: 5, y: 5 },
+          { x: 0, y: 5 },
+        ],
+        portals: [{ id: "front-left", sideIndex: 1, targetCellId: "left", targetPortalId: "left-front" }],
+      },
+      {
+        id: "left",
+        heightMeters: 3,
+        baseVertices: [
+          { x: 0, y: 0 },
+          { x: 5, y: 0 },
+          { x: 5, y: 5 },
+          { x: 0, y: 5 },
+        ],
+        portals: [
+          { id: "left-front", sideIndex: 3, targetCellId: "front", targetPortalId: "front-left" },
+          { id: "left-back", sideIndex: 1, targetCellId: "back", targetPortalId: "back-left" },
+        ],
+      },
+      {
+        id: "back",
+        heightMeters: 3,
+        baseVertices: [
+          { x: 0, y: 0 },
+          { x: 5, y: 0 },
+          { x: 5, y: 5 },
+          { x: 0, y: 5 },
+        ],
+        portals: [{ id: "back-left", sideIndex: 3, targetCellId: "left", targetPortalId: "left-back" }],
       },
     ],
   });
