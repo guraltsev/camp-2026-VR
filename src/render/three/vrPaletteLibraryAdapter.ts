@@ -30,6 +30,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
   readonly onGeodesicCannonAddRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonCarryRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonTieAndDetachRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
@@ -548,7 +549,20 @@ function buildGeodesicCannonActionsContent(
   carryButton.userData.xrPaletteItemId = "geodesic-cannon-action:carry";
   carryButton.userData.scenePaletteItemId = "geodesic-cannon-action:carry";
   carryButton.add(createGeodesicCannonActionIcon("carry"));
-  list.add(addButton, carryButton);
+  const tieAndDetachButton = createInteractiveSurface({
+    width: "100%",
+    height: 50,
+    label: content.tieAndDetachAction.label,
+    labelFontSize: 17,
+    justifyContent: "flex-start",
+    paddingLeft: 18,
+    disabled: content.tieAndDetachAction.disabled,
+    backgroundColor: content.tieAndDetachAction.disabled ? "#334155" : "#b45309",
+    onClick: () => options.onGeodesicCannonTieAndDetachRequested?.(content.cannonId),
+  });
+  tieAndDetachButton.userData.xrPaletteItemId = "geodesic-cannon-action:tie-and-detach";
+  tieAndDetachButton.userData.scenePaletteItemId = "geodesic-cannon-action:tie-and-detach";
+  list.add(addButton, carryButton, tieAndDetachButton);
 
   panel.add(list);
   return panel;

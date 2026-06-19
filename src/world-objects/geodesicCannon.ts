@@ -10,7 +10,7 @@ import {
   yawRigidTransform3,
   type RigidTransform3,
 } from "../math/rigidTransform3";
-import { addVec3, normalizeVec3, scaleVec3, type Vec3 } from "../math/vec3";
+import { addVec3, distanceVec3, normalizeVec3, scaleVec3, subVec3, type Vec3 } from "../math/vec3";
 import type { RuntimeObjectRegistry, RuntimeWorldObjectBase } from "./runtimeObjectRegistry";
 import { runtimeObjectToDynamicObjectState } from "./runtimeObjectRegistry";
 
@@ -26,7 +26,7 @@ export interface GeodesicCannonObject extends RuntimeWorldObjectBase {
 export interface GeodesicEmitterConnection {
   readonly outgoingEmitterId: string;
   readonly incomingEmitterId?: string;
-  readonly state: "open" | "connected";
+  readonly state: "open" | "connected" | "straightening";
 }
 
 export interface GeodesicPortalTraversal {
@@ -49,7 +49,8 @@ export interface GeodesicSegmentObject extends RuntimeWorldObjectBase {
   readonly direction: Vec3;
   readonly lengthMeters: number;
   readonly terminal: GeodesicSegmentTerminal;
-  readonly connectionState?: "open" | "connected";
+  readonly connectionState?: "open" | "connected" | "straightening";
+  readonly highlightState?: "tie-detach-selected";
 }
 
 export interface GeodesicIntersectionObject extends RuntimeWorldObjectBase {
@@ -182,6 +183,21 @@ export interface RebuildConnectedGeodesicBetweenEmittersRequest {
   readonly carriedPortalWord?: readonly GeodesicPortalTraversal[];
 }
 
+export interface TieAndDetachIncidentGeodesicsRequest {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly emitterId: string;
+  readonly geodesicId: string;
+  readonly incidentGeodesicIds?: readonly [string, string];
+}
+
+export interface AdvanceStraighteningGeodesicsRequest {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly deltaSeconds: number;
+  readonly speedMetersPerSecond?: number;
+}
+
 export interface PlaceGeodesicCannonResult {
   readonly placed: boolean;
   readonly object?: GeodesicCannonObject;
@@ -194,7 +210,7 @@ const defaultCannonCollision: SimpleCollisionCylinder = {
   offset: { x: 0, y: 0, z: 0.625 },
 };
 export const geodesicRayBeamHeightMeters = 1.08;
-export const geodesicRayBeamStartOffsetMeters = 0.2;
+export const geodesicRayBeamStartOffsetMeters = 0;
 const defaultTraceLengthMeters = 2;
 const portalStartEpsilonMeters = 1e-4;
 const intersectionTolerance = 1e-7;
@@ -202,6 +218,8 @@ export const minGeodesicSegmentLengthMeters = 0.05;
 const vertexContinuityToleranceMeters = 10;
 const emitterConnectionToleranceMeters = 0.3;
 const geodesicIntersectionBalloonHeightOffsetMeters = 0.25;
+export const geodesicStraighteningSpeedMetersPerSecond = 0.2;
+const geodesicStraighteningToleranceMeters = 0.01;
 const geodesicIntersectionMemoryByRegistry = new WeakMap<RuntimeObjectRegistry, Map<string, GeodesicIntersectionObject>>();
 
 export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions): GeodesicCannonObject {
@@ -318,40 +336,28 @@ export function getGeodesicConnection(
 }
 
 export function isGeodesicLocked(registry: RuntimeObjectRegistry, geodesicId: string): boolean {
-  if (getGeodesicConnection(registry, geodesicId)?.state === "connected") {
+  const state = getGeodesicConnection(registry, geodesicId)?.state;
+  if (state === "connected" || state === "straightening") {
     return true;
   }
 
   return getGeodesicTail(registry, geodesicId)?.terminal.kind === "emitter-hit";
 }
 
+export function isGeodesicStraightening(registry: RuntimeObjectRegistry, geodesicId: string): boolean {
+  if (getGeodesicConnection(registry, geodesicId)?.state === "straightening") {
+    return true;
+  }
+
+  return getGeodesicSegments(registry, geodesicId).some((segment) => segment.connectionState === "straightening");
+}
+
 export function collectLockedIncidentGeodesicIdsForEmitter(
   registry: RuntimeObjectRegistry,
   emitterId: string,
 ): readonly string[] {
-  const ids = new Set<string>();
-  const emitter = registry.get(emitterId);
-  if (emitter?.kind === "geodesic-cannon") {
-    for (const geodesicId of emitter.geodesicIds) {
-      ids.add(geodesicId);
-    }
-    if (emitter.activeGeodesicId) {
-      ids.add(emitter.activeGeodesicId);
-    }
-  }
-
-  for (const object of registry.getAll()) {
-    if (object.kind !== "geodesic-cannon") {
-      continue;
-    }
-    for (const [geodesicId, connection] of Object.entries(object.geodesicConnectionsById ?? {})) {
-      if (connection.outgoingEmitterId === emitterId || connection.incomingEmitterId === emitterId) {
-        ids.add(geodesicId);
-      }
-    }
-  }
-
-  return [...ids].filter((geodesicId) => isGeodesicLocked(registry, geodesicId));
+  return collectIncidentGeodesicIdsForEmitter(registry, emitterId)
+    .filter((geodesicId) => isGeodesicLocked(registry, geodesicId));
 }
 
 export function resolveGeodesicNumber(registry: RuntimeObjectRegistry, geodesicId: string): number {
@@ -384,6 +390,11 @@ export function removeUnlockedGeodesicsFromCannon(
   }
 
   return removed;
+}
+
+export function hasStraighteningIncidentGeodesic(registry: RuntimeObjectRegistry, emitterId: string): boolean {
+  return collectIncidentGeodesicIdsForEmitter(registry, emitterId)
+    .some((geodesicId) => isGeodesicStraightening(registry, geodesicId));
 }
 
 export function removeGeodesicCannonAndSegments(registry: RuntimeObjectRegistry, cannonId: string): void {
@@ -1044,6 +1055,174 @@ export function rebuildConnectedGeodesicBetweenEmitters(
   return rebuilt ?? getGeodesicSegments(request.registry, request.geodesicId);
 }
 
+export function tieAndDetachIncidentGeodesics(
+  request: TieAndDetachIncidentGeodesicsRequest,
+): readonly GeodesicSegmentObject[] {
+  const detached = request.registry.get(request.emitterId);
+  if (detached?.kind !== "geodesic-cannon") {
+    return [];
+  }
+
+  const selectableGeodesicIds = collectLockedIncidentGeodesicIdsForEmitter(request.registry, detached.id)
+    .filter((geodesicId) => !isGeodesicStraightening(request.registry, geodesicId));
+  const incidentGeodesicIds = request.incidentGeodesicIds ?? (
+    selectableGeodesicIds.length === 2 ? [selectableGeodesicIds[0], selectableGeodesicIds[1]] : undefined
+  );
+  if (
+    !incidentGeodesicIds ||
+    incidentGeodesicIds[0] === incidentGeodesicIds[1] ||
+    !incidentGeodesicIds.every((geodesicId) => selectableGeodesicIds.includes(geodesicId))
+  ) {
+    return [];
+  }
+
+  const endpoints = incidentGeodesicIds
+    .map((geodesicId) => resolveDetachedEndpoint(request.registry, geodesicId, detached.id));
+  const first = endpoints[0];
+  const second = endpoints[1];
+  if (!first || !second || first.emitter.cellId !== second.emitter.cellId || first.emitter.cellId !== detached.cellId) {
+    return [];
+  }
+
+  const vertex = getGeodesicCannonEmitterPoint(detached);
+  const firstPoint = getGeodesicCannonEmitterPoint(first.emitter);
+  const secondPoint = getGeodesicCannonEmitterPoint(second.emitter);
+  if (
+    distanceVec3(firstPoint, vertex) <= geodesicRayBeamStartOffsetMeters + minGeodesicSegmentLengthMeters ||
+    distanceVec3(secondPoint, vertex) <= geodesicRayBeamStartOffsetMeters + minGeodesicSegmentLengthMeters
+  ) {
+    return [];
+  }
+
+  for (const geodesicId of incidentGeodesicIds) {
+    removeGeodesic(request.registry, geodesicId);
+  }
+  const sourceDirection = normalizeHorizontalDirection(subVec3(vertex, firstPoint));
+  const start = addVec3(firstPoint, scaleVec3(sourceDirection, geodesicRayBeamStartOffsetMeters));
+  const firstHalf = createStraighteningSegment({
+    id: `${request.geodesicId}:segment:0`,
+    geodesicId: request.geodesicId,
+    geodesicNumber: resolveGeodesicNumber(request.registry, request.geodesicId),
+    segmentIndex: 0,
+    cellId: first.emitter.cellId,
+    start,
+    end: vertex,
+    terminal: { kind: "open" },
+  });
+  const secondHalf = createStraighteningSegment({
+    id: `${request.geodesicId}:segment:1`,
+    geodesicId: request.geodesicId,
+    geodesicNumber: firstHalf.geodesicNumber,
+    segmentIndex: 1,
+    cellId: first.emitter.cellId,
+    start: vertex,
+    end: addVec3(secondPoint, scaleVec3(normalizeHorizontalDirection(subVec3(vertex, secondPoint)), geodesicRayBeamStartOffsetMeters)),
+    terminal: { kind: "emitter-hit", emitterId: second.emitter.id },
+  });
+
+  request.registry.add(firstHalf);
+  request.registry.add(secondHalf);
+  markStraighteningGeodesic(request.registry, request.geodesicId, first.emitter.id, second.emitter.id);
+  updateGeodesicIntersectionObjects(request.registry);
+  return getGeodesicSegments(request.registry, request.geodesicId);
+}
+
+export function advanceStraighteningGeodesics(
+  request: AdvanceStraighteningGeodesicsRequest,
+): readonly string[] {
+  if (!(request.deltaSeconds > 0)) {
+    return [];
+  }
+
+  const advanced: string[] = [];
+  const geodesicIds = new Set(
+    request.registry.getAll()
+      .filter(isGeodesicSegmentObject)
+      .filter((segment) => segment.connectionState === "straightening")
+      .map((segment) => segment.geodesicId),
+  );
+
+  for (const geodesicId of geodesicIds) {
+    const connection = getGeodesicConnection(request.registry, geodesicId);
+    if (connection?.state !== "straightening" || !connection.incomingEmitterId) {
+      continue;
+    }
+
+    const segments = getGeodesicSegments(request.registry, geodesicId);
+    const first = segments[0];
+    const second = segments[1];
+    if (!first || !second || segments.length !== 2 || first.cellId !== second.cellId) {
+      removeGeodesic(request.registry, geodesicId);
+      advanced.push(geodesicId);
+      continue;
+    }
+
+    const start = first.start;
+    const vertex = getGeodesicSegmentEnd(first);
+    const end = getGeodesicSegmentEnd(second);
+    const nextVertex = moveStraighteningVertex({
+      start,
+      vertex,
+      end,
+      maxStepMeters: (request.speedMetersPerSecond ?? geodesicStraighteningSpeedMetersPerSecond) * request.deltaSeconds,
+    });
+    if (!nextVertex) {
+      if (straightSegmentHitsForbiddenZone(request.world, first.cellId, start, end)) {
+        removeGeodesic(request.registry, geodesicId);
+        advanced.push(geodesicId);
+        continue;
+      }
+      lockStraightenedGeodesic({
+        registry: request.registry,
+        geodesicId,
+        sourceEmitterId: connection.outgoingEmitterId,
+        incomingEmitterId: connection.incomingEmitterId,
+        cellId: first.cellId,
+        start,
+        end,
+        geodesicNumber: first.geodesicNumber,
+      });
+      advanced.push(geodesicId);
+      continue;
+    }
+
+    const nextFirst = createStraighteningSegment({
+      id: first.id,
+      geodesicId,
+      geodesicNumber: first.geodesicNumber,
+      segmentIndex: 0,
+      cellId: first.cellId,
+      start,
+      end: nextVertex,
+      terminal: { kind: "open" },
+    });
+    const nextSecond = createStraighteningSegment({
+      id: second.id,
+      geodesicId,
+      geodesicNumber: second.geodesicNumber,
+      segmentIndex: 1,
+      cellId: second.cellId,
+      start: nextVertex,
+      end,
+      terminal: second.terminal,
+    });
+    if (straighteningHalfHitsForbiddenZone(request.world, nextFirst) || straighteningHalfHitsForbiddenZone(request.world, nextSecond)) {
+      removeGeodesic(request.registry, geodesicId);
+      advanced.push(geodesicId);
+      continue;
+    }
+
+    request.registry.update(nextFirst);
+    request.registry.update(nextSecond);
+    advanced.push(geodesicId);
+  }
+
+  if (advanced.length > 0) {
+    updateGeodesicIntersectionObjects(request.registry);
+  }
+  return advanced;
+}
+
 export function collectGeodesicPortalWord(
   world: CompiledCellComplex,
   registry: RuntimeObjectRegistry,
@@ -1233,6 +1412,230 @@ function replaceConnectedGeodesicSegments(input: {
   markGeodesicConnected(input.registry, input.geodesicId, input.source.id, input.incomingEmitterId);
   updateGeodesicIntersectionObjects(input.registry);
   return getGeodesicSegments(input.registry, input.geodesicId);
+}
+
+function collectIncidentGeodesicIdsForEmitter(
+  registry: RuntimeObjectRegistry,
+  emitterId: string,
+): readonly string[] {
+  const ids = new Set<string>();
+  const emitter = registry.get(emitterId);
+  if (emitter?.kind === "geodesic-cannon") {
+    for (const geodesicId of emitter.geodesicIds) {
+      ids.add(geodesicId);
+    }
+    if (emitter.activeGeodesicId) {
+      ids.add(emitter.activeGeodesicId);
+    }
+  }
+
+  for (const object of registry.getAll()) {
+    if (object.kind !== "geodesic-cannon") {
+      continue;
+    }
+    for (const [geodesicId, connection] of Object.entries(object.geodesicConnectionsById ?? {})) {
+      if (connection.outgoingEmitterId === emitterId || connection.incomingEmitterId === emitterId) {
+        ids.add(geodesicId);
+      }
+    }
+  }
+
+  return [...ids];
+}
+
+function resolveDetachedEndpoint(
+  registry: RuntimeObjectRegistry,
+  geodesicId: string,
+  detachedEmitterId: string,
+): { readonly emitter: GeodesicCannonObject } | undefined {
+  const connection = getGeodesicConnection(registry, geodesicId);
+  const otherEmitterId = connection?.outgoingEmitterId === detachedEmitterId
+    ? connection.incomingEmitterId
+    : connection?.incomingEmitterId === detachedEmitterId
+      ? connection.outgoingEmitterId
+      : undefined;
+  const other = otherEmitterId ? registry.get(otherEmitterId) : undefined;
+  return other?.kind === "geodesic-cannon" ? { emitter: other } : undefined;
+}
+
+function createStraighteningSegment(options: {
+  readonly id: string;
+  readonly geodesicId: string;
+  readonly geodesicNumber?: number;
+  readonly segmentIndex: number;
+  readonly cellId: string;
+  readonly start: Vec3;
+  readonly end: Vec3;
+  readonly terminal: GeodesicSegmentTerminal;
+}): GeodesicSegmentObject {
+  const delta = subVec3(options.end, options.start);
+  const lengthMeters = distanceVec3(options.start, options.end);
+  const direction = normalizeHorizontalDirection(delta);
+  return {
+    id: options.id,
+    kind: "geodesic-segment",
+    cellId: options.cellId,
+    localPose: yawRigidTransform3(Math.atan2(direction.y, direction.x), options.start),
+    portalRenderable: true,
+    tooltip: createGeodesicSegmentTooltip(options.geodesicNumber, "straightening"),
+    geodesicId: options.geodesicId,
+    geodesicNumber: options.geodesicNumber,
+    segmentIndex: options.segmentIndex,
+    start: options.start,
+    direction,
+    lengthMeters,
+    terminal: options.terminal,
+    connectionState: "straightening",
+  };
+}
+
+function markStraighteningGeodesic(
+  registry: RuntimeObjectRegistry,
+  geodesicId: string,
+  sourceEmitterId: string,
+  incomingEmitterId: string,
+): void {
+  const source = registry.get(sourceEmitterId);
+  const incoming = registry.get(incomingEmitterId);
+  const segments = getGeodesicSegments(registry, geodesicId);
+  const sourceYawRadians = segments[0]
+    ? sanitizeYaw(Math.atan2(segments[0].direction.y, segments[0].direction.x))
+    : undefined;
+  const incomingTail = segments.at(-1);
+  const incomingYawRadians = incomingTail
+    ? sanitizeYaw(Math.atan2(incomingTail.direction.y, incomingTail.direction.x) + Math.PI)
+    : undefined;
+  if (source?.kind === "geodesic-cannon") {
+    const sourcePose = sourceYawRadians === undefined
+      ? source.localPose
+      : yawRigidTransform3(sourceYawRadians, source.localPose.translation);
+    registry.update({
+      ...source,
+      activeGeodesicId: geodesicId,
+      aimYawRadians: sourceYawRadians ?? source.aimYawRadians,
+      localPose: sourcePose,
+      geodesicIds: source.geodesicIds.includes(geodesicId) ? source.geodesicIds : [...source.geodesicIds, geodesicId],
+      geodesicEmitterYawRadiansById: sourceYawRadians === undefined
+        ? source.geodesicEmitterYawRadiansById
+        : {
+            ...source.geodesicEmitterYawRadiansById,
+            [geodesicId]: sourceYawRadians,
+          },
+      geodesicConnectionsById: {
+        ...source.geodesicConnectionsById,
+        [geodesicId]: {
+          outgoingEmitterId: sourceEmitterId,
+          incomingEmitterId,
+          state: "straightening",
+        },
+      },
+    });
+  }
+  if (incoming?.kind === "geodesic-cannon") {
+    const incomingPose = incomingYawRadians === undefined
+      ? incoming.localPose
+      : yawRigidTransform3(incomingYawRadians, incoming.localPose.translation);
+    registry.update({
+      ...incoming,
+      activeGeodesicId: geodesicId,
+      aimYawRadians: incomingYawRadians ?? incoming.aimYawRadians,
+      localPose: incomingPose,
+      geodesicIds: incoming.geodesicIds.includes(geodesicId) ? incoming.geodesicIds : [...incoming.geodesicIds, geodesicId],
+      geodesicEmitterYawRadiansById: incomingYawRadians === undefined
+        ? incoming.geodesicEmitterYawRadiansById
+        : {
+            ...incoming.geodesicEmitterYawRadiansById,
+            [geodesicId]: incomingYawRadians,
+          },
+    });
+  }
+}
+
+function moveStraighteningVertex(options: {
+  readonly start: Vec3;
+  readonly vertex: Vec3;
+  readonly end: Vec3;
+  readonly maxStepMeters: number;
+}): Vec3 | undefined {
+  const lineDirection = normalizeHorizontalDirection(subVec3(options.end, options.start));
+  const startToVertex = subVec3(options.vertex, options.start);
+  const projectionMeters = startToVertex.x * lineDirection.x + startToVertex.y * lineDirection.y;
+  const closest = addVec3(options.start, scaleVec3(lineDirection, projectionMeters));
+  const distanceToLine = distanceVec3(closest, options.vertex);
+  if (distanceToLine <= geodesicStraighteningToleranceMeters) {
+    return undefined;
+  }
+
+  const towardStart = normalizeHorizontalDirection(subVec3(options.start, options.vertex));
+  const towardEnd = normalizeHorizontalDirection(subVec3(options.end, options.vertex));
+  const motion = normalizeHorizontalDirection(addVec3(towardStart, towardEnd));
+  const stepMeters = Math.min(options.maxStepMeters, distanceToLine);
+  const next = addVec3(options.vertex, scaleVec3(motion, stepMeters));
+  const nextDistance = distanceVec3(closest, next);
+  return nextDistance <= geodesicStraighteningToleranceMeters || nextDistance > distanceToLine
+    ? undefined
+    : next;
+}
+
+function straighteningHalfHitsForbiddenZone(world: CompiledCellComplex, segment: GeodesicSegmentObject): boolean {
+  return straightSegmentHitsForbiddenZone(
+    world,
+    segment.cellId,
+    segment.start,
+    getGeodesicSegmentEnd(segment),
+  );
+}
+
+function straightSegmentHitsForbiddenZone(
+  world: CompiledCellComplex,
+  cellId: string,
+  start: Vec3,
+  end: Vec3,
+): boolean {
+  const lengthMeters = distanceVec3(start, end);
+  if (lengthMeters <= intersectionTolerance) {
+    return false;
+  }
+  const trace = traceGeodesicSegment({
+    world,
+    cellId,
+    start,
+    direction: normalizeHorizontalDirection(subVec3(end, start)),
+    maxLengthMeters: lengthMeters,
+  });
+  return trace.terminal.kind === "forbidden-zone-hit" &&
+    trace.lengthMeters < lengthMeters - intersectionTolerance;
+}
+
+function lockStraightenedGeodesic(input: {
+  readonly registry: RuntimeObjectRegistry;
+  readonly geodesicId: string;
+  readonly sourceEmitterId: string;
+  readonly incomingEmitterId: string;
+  readonly cellId: string;
+  readonly start: Vec3;
+  readonly end: Vec3;
+  readonly geodesicNumber?: number;
+}): void {
+  removeGeodesicSegments(input.registry, input.geodesicId);
+  const direction = normalizeHorizontalDirection(subVec3(input.end, input.start));
+  input.registry.add({
+    id: `${input.geodesicId}:segment:0`,
+    kind: "geodesic-segment",
+    cellId: input.cellId,
+    localPose: yawRigidTransform3(Math.atan2(direction.y, direction.x), input.start),
+    portalRenderable: true,
+    tooltip: createGeodesicSegmentTooltip(input.geodesicNumber, "connected"),
+    geodesicId: input.geodesicId,
+    geodesicNumber: input.geodesicNumber,
+    segmentIndex: 0,
+    start: input.start,
+    direction,
+    lengthMeters: distanceVec3(input.start, input.end),
+    terminal: { kind: "emitter-hit", emitterId: input.incomingEmitterId },
+    connectionState: "connected",
+  });
+  markGeodesicConnected(input.registry, input.geodesicId, input.sourceEmitterId, input.incomingEmitterId);
 }
 
 function unfoldIncomingEmitterPointToSourceCell(input: {
@@ -1515,10 +1918,10 @@ function createSegmentFromTrace(options: {
 
 function createGeodesicSegmentTooltip(
   geodesicNumber: number | undefined,
-  connectionState: "open" | "connected",
+  connectionState: "open" | "connected" | "straightening",
 ): GeodesicSegmentObject["tooltip"] {
   const label = geodesicNumber === undefined ? "Geodesic" : `Geodesic G${geodesicNumber}`;
-  if (connectionState === "connected") {
+  if (connectionState === "connected" || connectionState === "straightening") {
     return {
       label,
       rangeMeters: 6,
@@ -1636,7 +2039,11 @@ function markGeodesicConnected(
 ): void {
   const source = registry.get(sourceEmitterId);
   const incoming = registry.get(incomingEmitterId);
+  const head = getGeodesicSegments(registry, geodesicId)[0];
   const tail = getGeodesicTail(registry, geodesicId);
+  const sourceYawRadians = head
+    ? sanitizeYaw(Math.atan2(head.direction.y, head.direction.x))
+    : undefined;
   const incomingYawRadians = tail
     ? sanitizeYaw(Math.atan2(tail.direction.y, tail.direction.x) + Math.PI)
     : undefined;
@@ -1671,11 +2078,23 @@ function markGeodesicConnected(
   }
 
   if (source?.kind === "geodesic-cannon") {
+    const sourcePose = sourceYawRadians === undefined
+      ? source.localPose
+      : yawRigidTransform3(sourceYawRadians, source.localPose.translation);
     registry.update({
       ...source,
+      activeGeodesicId: geodesicId,
+      aimYawRadians: sourceYawRadians ?? source.aimYawRadians,
+      localPose: sourcePose,
       geodesicIds: source.geodesicIds.includes(geodesicId)
         ? source.geodesicIds
         : [...source.geodesicIds, geodesicId],
+      geodesicEmitterYawRadiansById: sourceYawRadians === undefined
+        ? source.geodesicEmitterYawRadiansById
+        : {
+            ...source.geodesicEmitterYawRadiansById,
+            [geodesicId]: sourceYawRadians,
+          },
       geodesicConnectionsById: {
         ...source.geodesicConnectionsById,
         [geodesicId]: {

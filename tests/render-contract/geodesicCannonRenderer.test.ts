@@ -10,6 +10,8 @@ import {
   geodesicRayHeadArchetypePrefix,
   geodesicRayPostArchetypePrefix,
   geodesicSegmentConnectedArchetypeKey,
+  geodesicSegmentStraighteningArchetypeKey,
+  geodesicSegmentTieDetachSelectedArchetypeKey,
   geodesicSegmentArchetypeKey,
   getGeodesicRayArchetypeKeys,
 } from "../../src/render/three/geodesicCannonRenderer";
@@ -35,6 +37,23 @@ describe("geodesic cannon renderer", () => {
     }));
 
     expect(records[0].archetypeKey).toBe(geodesicSegmentConnectedArchetypeKey);
+  });
+
+  it("publishes straightening geodesic segments with the orange archetype", () => {
+    const records = collectGeodesicRuntimeRenderRecords(createSegment({
+      connectionState: "straightening",
+    }));
+
+    expect(records[0].archetypeKey).toBe(geodesicSegmentStraighteningArchetypeKey);
+  });
+
+  it("publishes tie-detach selected geodesic segments with the selection archetype", () => {
+    const records = collectGeodesicRuntimeRenderRecords(createSegment({
+      connectionState: "connected",
+      highlightState: "tie-detach-selected",
+    }));
+
+    expect(records[0].archetypeKey).toBe(geodesicSegmentTieDetachSelectedArchetypeKey);
   });
 
   it("scales the segment record matrix by segment length", () => {

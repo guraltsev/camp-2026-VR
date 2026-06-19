@@ -198,8 +198,8 @@ describe("resolveAimTarget", () => {
       geodesicIds: ["g-a"],
     });
     const segment = createGeodesicSegment({
-      start: { x: 0.2, y: 0, z: 1.08 },
-      lengthMeters: 1.8,
+      start: { x: 0, y: 0, z: 1.08 },
+      lengthMeters: 2,
     });
     const registry = createRuntimeObjectRegistry([cannon, segment]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
@@ -232,7 +232,7 @@ describe("resolveAimTarget", () => {
     });
     const registry = createRuntimeObjectRegistry([cannon, segment]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
-    const camera = cameraLookingAt({ x: 0, y: -0.35, z: 1.08 }, { x: 1.05, y: 0, z: 1.08 });
+    const camera = cameraLookingAt({ x: 0, y: -0.35, z: 1.08 }, { x: 0.8, y: 0, z: 1.08 });
 
     const target = resolveAimTarget({
       world,
@@ -284,6 +284,37 @@ describe("resolveAimTarget", () => {
     expect(firstTarget?.geodesicEmitterGeodesicId).toBe("g-a");
     expect(secondTarget?.object?.id).toBe("cannon-a");
     expect(secondTarget?.geodesicEmitterGeodesicId).toBe("g-b");
+  });
+
+  it("still resolves other geodesic emitter handles while one handle is ignored", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+      activeGeodesicId: "g-a",
+      geodesicIds: ["g-a", "g-b"],
+      geodesicEmitterYawRadiansById: {
+        "g-a": 0,
+        "g-b": Math.PI / 2,
+      },
+    });
+    const registry = createRuntimeObjectRegistry([cannon]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera: cameraLookingAt(
+        { x: 2, y: 0.32, z: geodesicRayBeamHeightMeters },
+        { x: 0, y: 0.32, z: geodesicRayBeamHeightMeters },
+      ),
+      visiblePortalPaths: [visiblePath(rootPath)],
+      ignoredGeodesicIds: ["g-a"],
+    });
+
+    expect(target?.object?.id).toBe("cannon-a");
+    expect(target?.geodesicEmitterGeodesicId).toBe("g-b");
   });
 
   it("misses geodesic emitter handle capsules outside the narrowed radius", () => {

@@ -66,10 +66,13 @@ import {
 import {
   collectLockedIncidentGeodesicIdsForEmitter,
   collectGeodesicPortalWord,
+  advanceStraighteningGeodesics,
   extendGeodesic,
   getGeodesicConnection,
   getGeodesicSegments,
+  hasStraighteningIncidentGeodesic,
   isGeodesicLocked,
+  isGeodesicStraightening,
   placeGeodesicCannonAtGeodesicVertex,
   placeGeodesicCannonOnGeodesic,
   placeGeodesicCannonAtFloorPoint,
@@ -81,6 +84,7 @@ import {
   removeUnlockedGeodesicsFromCannon,
   resolveGeodesicNumber,
   shootGeodesic,
+  tieAndDetachIncidentGeodesics,
   geodesicRayBeamHeightMeters,
   type GeodesicCarryPortalTransition,
   type GeodesicPortalTraversal,
@@ -501,6 +505,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         activeProtractorToolState = {};
         clearProtractorToolFeedback();
       }
+      if (toolId !== "geodesic-cannon-tie-detach") {
+        syncTieAndDetachSelectionHighlights([]);
+        syncRuntimeObjectPortalInstances();
+        activeGeodesicCannonToolState = {
+          ...activeGeodesicCannonToolState,
+          tieAndDetachGeodesicIds: undefined,
+        };
+      }
       menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, toolId));
       syncDesktopPalette();
     },
@@ -517,6 +529,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onGeodesicCannonCarryRequested(cannonId) {
       startGeodesicCannonCarry(cannonId);
+    },
+    onGeodesicCannonTieAndDetachRequested(cannonId) {
+      startGeodesicCannonTieAndDetach(cannonId);
     },
     onGeodesicCannonRotateRequested(cannonId, geodesicId) {
       startGeodesicCannonRotation(cannonId, geodesicId);
@@ -571,6 +586,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     readonly carryPortalWordsByGeodesicId?: Readonly<Record<string, readonly GeodesicPortalTraversal[]>>;
     readonly carryPortalTransitionSerial?: number;
     readonly carryPortalTransitionSerialByGeodesicId?: Readonly<Record<string, number>>;
+    readonly tieAndDetachGeodesicIds?: readonly string[];
   } = {};
   let activeProtractorToolState: {
     readonly center?: ProtractorCenterSelection;
@@ -830,6 +846,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else if (menuState.selectedTool === "geodesic-cannon-aim") {
       updateActiveGeodesicCannonAim(frame.primaryActionRequested, activeAimRay);
       primaryActionConsumed = frame.primaryActionRequested;
+    } else if (worldPrimaryActionRequested && menuState.selectedTool === "geodesic-cannon-tie-detach") {
+      primaryActionConsumed = trySelectTieAndDetachGeodesicFromAim(activeAimRay);
     } else if (worldPrimaryActionRequested && menuState.selectedTool === "place-flag") {
       tryPlaceFlagFromAim(activeAimRay);
       primaryActionConsumed = true;
@@ -864,6 +882,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     updateGeodesicCreatureDebug(deltaSeconds);
     for (const runtime of placedFlagRuntimes.values()) {
       runtime.syncParent(cellMeshes);
+    }
+    const straightenedGeodesicIds = advanceStraighteningGeodesics({
+      world: appState.world,
+      registry: runtimeObjectRegistry,
+      deltaSeconds: frame.resetRequested ? 0 : deltaSeconds,
+    });
+    for (const geodesicId of straightenedGeodesicIds) {
+      refreshProtractorAnglesForGeodesic(geodesicId);
+      refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);
+    }
+    if (straightenedGeodesicIds.length > 0) {
+      syncSelectableHitboxDebug();
     }
     refreshMeasuredGeodesicLengths();
     const frameAfterObjectsMs = performance.now();
@@ -1458,8 +1488,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function cancelRuntimeMenuAndSelectedTool(): void {
     activeProtractorToolState = {};
+    activeGeodesicCannonToolState = {};
+    syncTieAndDetachSelectionHighlights([]);
     clearProtractorToolFeedback();
     menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "none"));
+    syncRuntimeObjectPortalInstances();
     syncDesktopPalette();
   }
 
@@ -2527,6 +2560,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     controls.setLookMode(menuState.isOpen ? "palette" : "camera");
     desktopToolIndicator.setTool(menuState.selectedTool, menuState.placeFlagOptions.flagType, {
       protractorPrompt: getProtractorToolPrompt(),
+      tieAndDetachPrompt: getTieAndDetachToolPrompt(),
     });
   }
 
@@ -2540,6 +2574,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     return "select: side2";
+  }
+
+  function getTieAndDetachToolPrompt(): string {
+    const selectedCount = activeGeodesicCannonToolState.tieAndDetachGeodesicIds?.length ?? 0;
+    return selectedCount === 0 ? "select: geodesic 1" : "select: geodesic 2";
   }
 
   function syncPlacedFlagRuntime(flag: RuntimeWorldObject): void {
@@ -3277,6 +3316,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         geodesicIds: focused.object.geodesicIds,
         geodesicLabelsById: getGeodesicLabelsById(focused.object.geodesicIds),
         lockedGeodesicIds: getLockedGeodesicIds(focused.object.geodesicIds),
+        canTieAndDetach: canTieAndDetachGeodesicsFromCannon(focused.object.id),
       });
       syncDesktopPalette();
       return true;
@@ -3325,6 +3365,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             geodesicIds: updatedCannon.geodesicIds,
             geodesicLabelsById: getGeodesicLabelsById(updatedCannon.geodesicIds),
             lockedGeodesicIds: getLockedGeodesicIds(updatedCannon.geodesicIds),
+            canTieAndDetach: canTieAndDetachGeodesicsFromCannon(updatedCannon.id),
           });
     }
 
@@ -3404,6 +3445,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function startGeodesicCannonCarry(cannonId: string, requestedGeodesicId?: string): void {
+    if (hasStraighteningIncidentGeodesic(runtimeObjectRegistry, cannonId)) {
+      syncDesktopPalette();
+      return;
+    }
+
     const cannon = prepareGeodesicCannonForLift(cannonId);
     if (cannon?.kind !== "geodesic-cannon") {
       menuState = closeRuntimeMenu(menuState);
@@ -3505,10 +3551,130 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       geodesicIds: updatedCannon.geodesicIds,
       geodesicLabelsById: getGeodesicLabelsById(updatedCannon.geodesicIds),
       lockedGeodesicIds: getLockedGeodesicIds(updatedCannon.geodesicIds),
+      canTieAndDetach: canTieAndDetachGeodesicsFromCannon(updatedCannon.id),
     });
     syncDesktopPalette();
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
+  }
+
+  function canTieAndDetachGeodesicsFromCannon(cannonId: string): boolean {
+    return collectLockedIncidentGeodesicIdsForEmitter(runtimeObjectRegistry, cannonId)
+      .filter((geodesicId) => !isGeodesicStraightening(runtimeObjectRegistry, geodesicId))
+      .length >= 2;
+  }
+
+  function startGeodesicCannonTieAndDetach(cannonId: string): void {
+    if (!canTieAndDetachGeodesicsFromCannon(cannonId)) {
+      syncDesktopPalette();
+      return;
+    }
+
+    syncTieAndDetachSelectionHighlights([]);
+    activeGeodesicCannonToolState = {
+      selectedCannonId: cannonId,
+      tieAndDetachGeodesicIds: [],
+    };
+    menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "geodesic-cannon-tie-detach"));
+    syncDesktopPalette();
+    if (!renderer.xr.isPresenting) {
+      void controls.requestPointerLock();
+    }
+  }
+
+  function trySelectTieAndDetachGeodesicFromAim(ray?: RootAimRay): boolean {
+    const cannonId = activeGeodesicCannonToolState.selectedCannonId;
+    if (!ray || !cannonId) {
+      return false;
+    }
+
+    const selectedGeodesicId = resolveTieAndDetachGeodesicFromAim(ray, cannonId);
+    if (!selectedGeodesicId) {
+      return false;
+    }
+
+    const selectedIds = activeGeodesicCannonToolState.tieAndDetachGeodesicIds ?? [];
+    if (selectedIds.includes(selectedGeodesicId)) {
+      return true;
+    }
+
+    const nextIds = [...selectedIds, selectedGeodesicId];
+    if (nextIds.length < 2) {
+      activeGeodesicCannonToolState = {
+        ...activeGeodesicCannonToolState,
+        tieAndDetachGeodesicIds: nextIds,
+      };
+      syncTieAndDetachSelectionHighlights(nextIds);
+      syncDesktopPalette();
+      syncRuntimeObjectPortalInstances();
+      return true;
+    }
+
+    tieAndDetachGeodesicsFromCannon(cannonId, [nextIds[0], nextIds[1]]);
+    return true;
+  }
+
+  function resolveTieAndDetachGeodesicFromAim(ray: RootAimRay, cannonId: string): string | undefined {
+    const target = resolveCurrentAimTarget(ray);
+    if (!targetIsWithinInteractionRange(target)) {
+      return undefined;
+    }
+
+    const geodesicId = target?.object?.kind === "geodesic-segment"
+      ? target.object.geodesicId
+      : target?.object?.kind === "geodesic-cannon"
+        ? target.geodesicEmitterGeodesicId
+        : undefined;
+    if (!geodesicId) {
+      return undefined;
+    }
+
+    const selectableIds = collectLockedIncidentGeodesicIdsForEmitter(runtimeObjectRegistry, cannonId)
+      .filter((id) => !isGeodesicStraightening(runtimeObjectRegistry, id));
+    return selectableIds.includes(geodesicId) ? geodesicId : undefined;
+  }
+
+  function tieAndDetachGeodesicsFromCannon(cannonId: string, selectedGeodesicIds: readonly [string, string]): void {
+    syncTieAndDetachSelectionHighlights([]);
+    const geodesicId = `geodesic:${Date.now()}:${geodesicIdCounter++}`;
+    const segments = tieAndDetachIncidentGeodesics({
+      world: appState.world,
+      registry: runtimeObjectRegistry,
+      emitterId: cannonId,
+      geodesicId,
+      incidentGeodesicIds: selectedGeodesicIds,
+    });
+    if (segments.length === 0) {
+      syncDesktopPalette();
+      syncRuntimeObjectPortalInstances();
+      return;
+    }
+
+    activeGeodesicCannonToolState = {};
+    menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "none"));
+    removeProtractorAnglesForMissingVertices(pruneMissingGeodesicIntersectionObjects(runtimeObjectRegistry));
+    syncDesktopPalette();
+    syncRuntimeObjectPortalInstances();
+    syncSelectableHitboxDebug();
+  }
+
+  function syncTieAndDetachSelectionHighlights(selectedGeodesicIds: readonly string[]): void {
+    const selected = new Set(selectedGeodesicIds);
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind !== "geodesic-segment") {
+        continue;
+      }
+
+      const nextHighlightState = selected.has(object.geodesicId) ? "tie-detach-selected" : undefined;
+      if (object.highlightState === nextHighlightState) {
+        continue;
+      }
+
+      runtimeObjectRegistry.update({
+        ...object,
+        highlightState: nextHighlightState,
+      });
+    }
   }
 
   function resolveCannonGeodesicId(
@@ -3525,6 +3691,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function prepareGeodesicCannonForLift(
     cannonId: string,
   ): Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }> | undefined {
+    if (hasStraighteningIncidentGeodesic(runtimeObjectRegistry, cannonId)) {
+      return undefined;
+    }
+
     const removed = removeUnlockedGeodesicsFromCannon(runtimeObjectRegistry, cannonId);
     if (removed.length > 0) {
       for (const geodesicId of removed) {
@@ -4196,6 +4366,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         menuState.selectedTool !== "place-flag" &&
         menuState.selectedTool !== "geodesic-cannon" &&
         menuState.selectedTool !== "geodesic-cannon-aim" &&
+        menuState.selectedTool !== "geodesic-cannon-tie-detach" &&
         menuState.selectedTool !== "measure-length" &&
         menuState.selectedTool !== "protractor"
       ) ||
@@ -4303,7 +4474,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const ignoredGeodesicIds = menuState.selectedTool === "geodesic-cannon-aim" &&
         activeGeodesicCannonToolState.activeGeodesicId
       ? [activeGeodesicCannonToolState.activeGeodesicId]
-      : undefined;
+      : menuState.selectedTool === "geodesic-cannon-tie-detach"
+        ? activeGeodesicCannonToolState.tieAndDetachGeodesicIds
+        : undefined;
     const aimCamera = syncAimRayCamera(ray);
 
     return resolveAimTargets({

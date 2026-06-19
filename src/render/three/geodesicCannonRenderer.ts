@@ -7,6 +7,8 @@ import { rigidTransformToThreeMatrix } from "./worldAxes";
 
 export const geodesicSegmentArchetypeKey = "geodesic-segment:ribbon-cross";
 export const geodesicSegmentConnectedArchetypeKey = "geodesic-segment:ribbon-cross:connected";
+export const geodesicSegmentStraighteningArchetypeKey = "geodesic-segment:ribbon-cross:straightening";
+export const geodesicSegmentTieDetachSelectedArchetypeKey = "geodesic-segment:ribbon-cross:tie-detach-selected";
 export const geodesicRayPostArchetypePrefix = "geodesic-ray:post";
 export const geodesicRayHeadArchetypePrefix = "geodesic-ray:head";
 export const geodesicIntersectionArchetypePrefix = "geodesic-intersection:balloon";
@@ -18,7 +20,7 @@ export const geodesicRayAssetPaths = {
 const geodesicRayAssetScale = 0.42;
 const geodesicRayPostAssetFloorOffsetMeters = 0.74;
 const geodesicIntersectionBalloonScale = 0.825;
-export const geodesicRayEmitterPosition = { x: 0.06, y: 1.08, z: 0 } as const;
+export const geodesicRayEmitterPosition = { x: 0, y: 1.08, z: 0 } as const;
 
 export function createGeodesicRuntimeRenderSources(
   assets?: PreparedWorldAssets,
@@ -29,6 +31,16 @@ export function createGeodesicRuntimeRenderSources(
       archetypeKey: geodesicSegmentConnectedArchetypeKey,
       color: 0xf6c445,
       opacity: 0.92,
+    }),
+    createSegmentSource({
+      archetypeKey: geodesicSegmentStraighteningArchetypeKey,
+      color: 0xf59e0b,
+      opacity: 0.94,
+    }),
+    createSegmentSource({
+      archetypeKey: geodesicSegmentTieDetachSelectedArchetypeKey,
+      color: 0x22c55e,
+      opacity: 0.98,
     }),
     ...createRayEmitterOnPostSources(assets),
     ...createIntersectionBalloonSources(assets),
@@ -90,9 +102,13 @@ export function collectGeodesicRuntimeRenderRecords(
     {
       objectId: object.id,
       cellId: object.cellId,
-      archetypeKey: object.connectionState === "connected"
-        ? geodesicSegmentConnectedArchetypeKey
-        : geodesicSegmentArchetypeKey,
+      archetypeKey: object.highlightState === "tie-detach-selected"
+        ? geodesicSegmentTieDetachSelectedArchetypeKey
+        : object.connectionState === "straightening"
+        ? geodesicSegmentStraighteningArchetypeKey
+        : object.connectionState === "connected"
+          ? geodesicSegmentConnectedArchetypeKey
+          : geodesicSegmentArchetypeKey,
       localMatrix: composeSegmentMatrix(object),
     },
   ];

@@ -178,6 +178,10 @@ function resolveObjectAimTargets(
       continue;
     }
 
+    if (object.kind === "geodesic-segment" && object.connectionState === "straightening") {
+      continue;
+    }
+
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
     const hit = object.kind === "protractor-angle"
       ? intersectRayWithSphere(
@@ -189,7 +193,7 @@ function resolveObjectAimTargets(
       : object.kind === "geodesic-segment"
       ? intersectRayWithSelectableSegment(object, ray.origin, ray.direction)
       : object.kind === "geodesic-cannon"
-        ? intersectRayWithGeodesicEmitterAimCylinder(ray.origin, ray.direction, object)
+        ? intersectRayWithGeodesicEmitterAimCylinder(ray.origin, ray.direction, object, ignoredGeodesicIds)
       : bounds
         ? intersectRayWithVerticalCylinder(ray.origin, ray.direction, bounds)
         : intersectRayWithSphere(ray.origin, ray.direction, object.localPose.translation, fallbackObjectRadiusMeters);
@@ -617,6 +621,7 @@ function intersectRayWithGeodesicEmitterAimCylinder(
   origin: Vec3,
   direction: Vec3,
   emitter: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+  ignoredGeodesicIds: ReadonlySet<string>,
 ): ObjectAimHit | undefined {
   const bounds = getGeodesicEmitterAimCylinderBounds(emitter);
   if (!bounds) {
@@ -627,7 +632,7 @@ function intersectRayWithGeodesicEmitterAimCylinder(
   const cylinderHit = intersectRayWithVerticalCylinder(origin, direction, bounds);
   const sphereHit = intersectRayWithSphere(origin, direction, sphereCenter, bounds.radius);
   const emitterHit = chooseNearestHit(cylinderHit, sphereHit);
-  const geodesicHit = intersectRayWithEmitterGeodesicHandles(origin, direction, emitter);
+  const geodesicHit = intersectRayWithEmitterGeodesicHandles(origin, direction, emitter, ignoredGeodesicIds);
   const hit = chooseEmitterAimHit(emitterHit, geodesicHit);
   if (!hit) {
     return undefined;
@@ -643,6 +648,7 @@ function intersectRayWithEmitterGeodesicHandles(
   origin: Vec3,
   direction: Vec3,
   emitter: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+  ignoredGeodesicIds: ReadonlySet<string>,
 ): ObjectAimHit | undefined {
   const center = {
     x: emitter.localPose.translation.x,
@@ -652,6 +658,10 @@ function intersectRayWithEmitterGeodesicHandles(
   let best: ObjectAimHit | undefined;
 
   for (const geodesicId of emitter.geodesicIds) {
+    if (ignoredGeodesicIds.has(geodesicId)) {
+      continue;
+    }
+
     const yawRadians = emitter.geodesicEmitterYawRadiansById?.[geodesicId] ?? emitter.aimYawRadians;
     const handleStart = {
       x: center.x + Math.cos(yawRadians) * geodesicRayBeamStartOffsetMeters,

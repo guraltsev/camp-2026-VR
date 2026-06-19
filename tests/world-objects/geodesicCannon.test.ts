@@ -3,6 +3,7 @@ import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObjectRegistry";
 import {
   collectLockedIncidentGeodesicIdsForEmitter,
+  advanceStraighteningGeodesics,
   createGeodesicCannonObject,
   collectGeodesicPortalWord,
   connectGeodesicToEmitter,
@@ -14,6 +15,7 @@ import {
   getGeodesicTail,
   getRememberedGeodesicIntersectionObject,
   isGeodesicLocked,
+  isGeodesicStraightening,
   minGeodesicSegmentLengthMeters,
   placeGeodesicCannonAtGeodesicVertex,
   placeGeodesicCannonOnGeodesic,
@@ -25,6 +27,7 @@ import {
   resolveGeodesicCannonAimYawRadians,
   resolveGeodesicNumber,
   shootGeodesic,
+  tieAndDetachIncidentGeodesics,
   traceGeodesicSegment,
   updateGeodesicIntersectionObjects,
   type GeodesicSegmentObject,
@@ -610,12 +613,12 @@ describe("geodesic cannon world objects", () => {
 
     expect(result.placed).toBe(true);
     expect(getGeodesicTail(registry, "g-a")).toMatchObject({
-      lengthMeters: 2,
+      lengthMeters: 2.2,
       terminal: { kind: "emitter-hit", emitterId: "cannon-c" },
       connectionState: "connected",
     });
     expect(getGeodesicTail(registry, "g-b")).toMatchObject({
-      lengthMeters: 2,
+      lengthMeters: 2.2,
       terminal: { kind: "emitter-hit", emitterId: "cannon-c" },
       connectionState: "connected",
     });
@@ -654,7 +657,7 @@ describe("geodesic cannon world objects", () => {
 
     const first = shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 4 });
 
-    expect(first.lengthMeters).toBeCloseTo(2.3);
+    expect(first.lengthMeters).toBeCloseTo(2.5);
     expect(first.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-b" });
     expect(registry.get(first.id)?.tooltip).toEqual({
       label: "Geodesic G1",
@@ -1192,6 +1195,145 @@ describe("geodesic cannon world objects", () => {
     expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual([]);
   });
 
+  it("ties and detaches two locked geodesics from an emitter as a straightening pair", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const left = createGeodesicCannonObject({
+      id: "cannon-left",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -2, y: 0, z: 0 }),
+    });
+    const center = createGeodesicCannonObject({
+      id: "cannon-center",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+    });
+    const top = createGeodesicCannonObject({
+      id: "cannon-top",
+      cellId: "a",
+      localPose: yawRigidTransform3(-Math.PI / 2, { x: 0, y: 2, z: 0 }),
+    });
+    registry.add(left);
+    registry.add(center);
+    registry.add(top);
+
+    shootGeodesic({ world, registry, cannon: left, geodesicId: "g-left", maxLengthMeters: 3 });
+    shootGeodesic({ world, registry, cannon: top, geodesicId: "g-top", maxLengthMeters: 3 });
+
+    const segments = tieAndDetachIncidentGeodesics({
+      world,
+      registry,
+      emitterId: "cannon-center",
+      geodesicId: "g-tied",
+    });
+
+    expect(segments).toHaveLength(2);
+    expect(segments.map((segment) => segment.connectionState)).toEqual(["straightening", "straightening"]);
+    expect(getCannonGeodesicIds(registry, "cannon-center")).toEqual([]);
+    expect(getCannonGeodesicIds(registry, "cannon-left")).toEqual(["g-tied"]);
+    expect(getCannonGeodesicIds(registry, "cannon-top")).toEqual(["g-tied"]);
+    expect(getCannonGeodesicYaw(registry, "cannon-left", "g-tied")).toBeCloseTo(0);
+    expect(getCannonGeodesicYaw(registry, "cannon-top", "g-tied")).toBeCloseTo(-Math.PI / 2);
+    expect(isGeodesicStraightening(registry, "g-tied")).toBe(true);
+    expect(isGeodesicLocked(registry, "g-tied")).toBe(true);
+    expect(getGeodesicSegments(registry, "g-left")).toEqual([]);
+    expect(getGeodesicSegments(registry, "g-top")).toEqual([]);
+  });
+
+  it("advances tied detached geodesics until they become one connected locked segment", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const left = createGeodesicCannonObject({
+      id: "cannon-left",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -2, y: 0, z: 0 }),
+    });
+    const center = createGeodesicCannonObject({
+      id: "cannon-center",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+    });
+    const top = createGeodesicCannonObject({
+      id: "cannon-top",
+      cellId: "a",
+      localPose: yawRigidTransform3(-Math.PI / 2, { x: 0, y: 2, z: 0 }),
+    });
+    registry.add(left);
+    registry.add(center);
+    registry.add(top);
+    shootGeodesic({ world, registry, cannon: left, geodesicId: "g-left", maxLengthMeters: 3 });
+    shootGeodesic({ world, registry, cannon: top, geodesicId: "g-top", maxLengthMeters: 3 });
+    tieAndDetachIncidentGeodesics({ world, registry, emitterId: "cannon-center", geodesicId: "g-tied" });
+
+    for (let i = 0; i < 30 && isGeodesicStraightening(registry, "g-tied"); i += 1) {
+      advanceStraighteningGeodesics({ world, registry, deltaSeconds: 1, speedMetersPerSecond: 1 });
+    }
+
+    const segments = getGeodesicSegments(registry, "g-tied");
+    expect(segments).toHaveLength(1);
+    expect(segments[0]?.connectionState).toBe("connected");
+    expect(segments[0]?.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-top" });
+    expect(getCannonGeodesicYaw(registry, "cannon-left", "g-tied")).toBeCloseTo(Math.PI / 4);
+    expect(getCannonGeodesicYaw(registry, "cannon-top", "g-tied")).toBeCloseTo(-3 * Math.PI / 4);
+    expect(isGeodesicStraightening(registry, "g-tied")).toBe(false);
+    expect(isGeodesicLocked(registry, "g-tied")).toBe(true);
+  });
+
+  it("deletes both straightening halves when either half enters a forbidden zone", () => {
+    const world = compileWorld(true);
+    const registry = createRuntimeObjectRegistry([
+      createGeodesicCannonObject({
+        id: "cannon-left",
+        cellId: "a",
+        localPose: yawRigidTransform3(0, { x: 0.25, y: 1, z: 0 }),
+      }),
+      createGeodesicCannonObject({
+        id: "cannon-top",
+        cellId: "a",
+        localPose: yawRigidTransform3(-Math.PI / 2, { x: 1, y: 1.75, z: 0 }),
+      }),
+    ]);
+    const start = { x: 1, y: 1, z: geodesicRayBeamHeightMeters };
+    const vertex = { x: 1.2, y: 1.5, z: geodesicRayBeamHeightMeters };
+    const end = { x: 1.95, y: 0.05, z: geodesicRayBeamHeightMeters };
+    const firstDirection = horizontalDirection(start, vertex);
+    const secondDirection = horizontalDirection(vertex, end);
+    registry.add(createSegment({
+      id: "g-tied:segment:0",
+      geodesicId: "g-tied",
+      start,
+      direction: firstDirection,
+      lengthMeters: horizontalDistance(start, vertex),
+      connectionState: "straightening",
+    }));
+    registry.add(createSegment({
+      id: "g-tied:segment:1",
+      geodesicId: "g-tied",
+      segmentIndex: 1,
+      start: vertex,
+      direction: secondDirection,
+      lengthMeters: horizontalDistance(vertex, end),
+      terminal: { kind: "emitter-hit", emitterId: "cannon-top" },
+      connectionState: "straightening",
+    }));
+    const source = registry.get("cannon-left");
+    if (source?.kind !== "geodesic-cannon") {
+      throw new Error("Expected source.");
+    }
+    registry.update({
+      ...source,
+      geodesicIds: ["g-tied"],
+      geodesicConnectionsById: {
+        "g-tied": { outgoingEmitterId: "cannon-left", incomingEmitterId: "cannon-top", state: "straightening" },
+      },
+    });
+
+    advanceStraighteningGeodesics({ world, registry, deltaSeconds: 1, speedMetersPerSecond: 1 });
+
+    expect(getGeodesicSegments(registry, "g-tied")).toEqual([]);
+    expect(getCannonGeodesicIds(registry, "cannon-left")).toEqual([]);
+  });
+
   it("looks up tails and removes segment chains", () => {
     const world = compileWorld(false);
     const registry = createRuntimeObjectRegistry();
@@ -1496,6 +1638,18 @@ function getCannonPoseYaw(
 
 function normalizeYaw(yawRadians: number): number {
   return Math.atan2(Math.sin(yawRadians), Math.cos(yawRadians));
+}
+
+function horizontalDistance(left: { readonly x: number; readonly y: number }, right: { readonly x: number; readonly y: number }): number {
+  return Math.hypot(right.x - left.x, right.y - left.y);
+}
+
+function horizontalDirection(
+  start: { readonly x: number; readonly y: number },
+  end: { readonly x: number; readonly y: number },
+): { readonly x: number; readonly y: number; readonly z: 0 } {
+  const length = horizontalDistance(start, end);
+  return { x: (end.x - start.x) / length, y: (end.y - start.y) / length, z: 0 };
 }
 
 function createCarryPortalTransition(

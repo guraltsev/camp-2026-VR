@@ -22,7 +22,8 @@ export type RuntimeToolId =
   | "protractor"
   | "geodesic-cannon-carry"
   | "geodesic-cannon-rotate"
-  | "geodesic-cannon-aim";
+  | "geodesic-cannon-aim"
+  | "geodesic-cannon-tie-detach";
 export type RuntimeDesktopToolId = RuntimeToolId;
 
 const defaultRuntimeDebugOverlayItems = ["fps", "location", "portal-quantities"] as const;
@@ -66,6 +67,7 @@ export interface RuntimeMenuState {
     readonly geodesicIds: readonly string[];
     readonly geodesicLabelsById?: Readonly<Record<string, string>>;
     readonly lockedGeodesicIds?: readonly string[];
+    readonly canTieAndDetach?: boolean;
   };
   readonly editingFlagId?: string;
 }
@@ -179,6 +181,7 @@ export function showRuntimeMenuGeodesicCannonActions(
     readonly geodesicIds?: readonly string[];
     readonly geodesicLabelsById?: Readonly<Record<string, string>>;
     readonly lockedGeodesicIds?: readonly string[];
+    readonly canTieAndDetach?: boolean;
   },
 ): RuntimeMenuState {
   return {
@@ -190,6 +193,7 @@ export function showRuntimeMenuGeodesicCannonActions(
       geodesicIds: options.geodesicIds ?? [],
       geodesicLabelsById: options.geodesicLabelsById,
       lockedGeodesicIds: options.lockedGeodesicIds,
+      canTieAndDetach: options.canTieAndDetach,
     },
   };
 }

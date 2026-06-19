@@ -201,6 +201,13 @@ export function resolveWristToolIndicatorVisual(
         color: "#facc15",
         label: "Aim ray",
       };
+    case "geodesic-cannon-tie-detach":
+      return {
+        icon: "image",
+        imageSource: wristToolIndicatorRayIconSource,
+        color: "#f59e0b",
+        label: "Tie",
+      };
     case "none":
       return undefined;
   }

@@ -75,6 +75,7 @@ export interface DesktopToolPaletteOptions {
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
   readonly onGeodesicCannonAddRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonCarryRequested?: (cannonId: string) => void;
+  readonly onGeodesicCannonTieAndDetachRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
@@ -445,7 +446,17 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     carryButton.addEventListener("click", () => {
       options.onGeodesicCannonCarryRequested?.(geodesicCannonContent.cannonId);
     });
-    actions.append(addButton, carryButton);
+
+    const tieAndDetachButton = document.createElement("button");
+    tieAndDetachButton.type = "button";
+    tieAndDetachButton.className = "desktop-tool-palette-button";
+    tieAndDetachButton.disabled = geodesicCannonContent.tieAndDetachAction.disabled;
+    tieAndDetachButton.ariaDisabled = String(geodesicCannonContent.tieAndDetachAction.disabled);
+    tieAndDetachButton.textContent = geodesicCannonContent.tieAndDetachAction.label;
+    tieAndDetachButton.addEventListener("click", () => {
+      options.onGeodesicCannonTieAndDetachRequested?.(geodesicCannonContent.cannonId);
+    });
+    actions.append(addButton, carryButton, tieAndDetachButton);
 
     const geodesicList = document.createElement("div");
     geodesicList.className = "desktop-tool-palette-geodesic-list";

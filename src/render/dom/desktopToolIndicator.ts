@@ -15,7 +15,10 @@ export interface DesktopToolIndicator {
   setTool(
     toolId: RuntimeDesktopToolId,
     flagType: PlacedFlagType,
-    options?: { readonly protractorPrompt?: string },
+    options?: {
+      readonly protractorPrompt?: string;
+      readonly tieAndDetachPrompt?: string;
+    },
   ): void;
   dispose(): void;
 }
@@ -90,7 +93,8 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
         "desktop-tool-indicator-geodesic-cannon",
         toolId === "geodesic-cannon" ||
           toolId === "geodesic-cannon-rotate" ||
-          toolId === "geodesic-cannon-aim",
+          toolId === "geodesic-cannon-aim" ||
+          toolId === "geodesic-cannon-tie-detach",
       );
       root.classList.toggle("desktop-tool-indicator-geodesic-cannon-carry", toolId === "geodesic-cannon-carry");
       root.classList.toggle("desktop-tool-indicator-protractor", toolId === "protractor");
@@ -103,6 +107,8 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
           ? "Carry"
         : toolId === "geodesic-cannon-aim"
           ? "Aim"
+        : toolId === "geodesic-cannon-tie-detach"
+          ? "Tie"
           : toolId === "measure-length"
             ? "Length"
           : toolId === "protractor"
@@ -114,10 +120,14 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
               : "";
       prompt.textContent = toolId === "protractor"
         ? indicatorOptions.protractorPrompt ?? "select: vertex"
+        : toolId === "geodesic-cannon-tie-detach"
+          ? indicatorOptions.tieAndDetachPrompt ?? "select: geodesic 1"
         : toolId === "measure-length"
           ? "select: geodesic"
           : "";
-      prompt.hidden = toolId !== "protractor" && toolId !== "measure-length";
+      prompt.hidden = toolId !== "protractor" &&
+        toolId !== "measure-length" &&
+        toolId !== "geodesic-cannon-tie-detach";
       root.ariaLabel = toolId === "place-flag"
         ? "Selected tool: sign"
         : toolId === "geodesic-cannon"
@@ -132,6 +142,8 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
               ? "Selected tool: carry geodesic ray emitter"
             : toolId === "geodesic-cannon-aim"
               ? "Selected tool: aim geodesic ray emitter"
+            : toolId === "geodesic-cannon-tie-detach"
+              ? `Selected tool: tie and detach, ${prompt.textContent}`
               : "No selected tool";
     },
     dispose() {
