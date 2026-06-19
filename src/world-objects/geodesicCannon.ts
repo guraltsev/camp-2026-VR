@@ -218,7 +218,7 @@ export const minGeodesicSegmentLengthMeters = 0.05;
 const vertexContinuityToleranceMeters = 10;
 const emitterConnectionToleranceMeters = 0.3;
 const geodesicIntersectionBalloonHeightOffsetMeters = 0.25;
-export const geodesicStraighteningSpeedMetersPerSecond = 0.2;
+export const geodesicStraighteningSpeedMetersPerSecond = 0.4;
 const geodesicStraighteningToleranceMeters = 0.01;
 const geodesicIntersectionMemoryByRegistry = new WeakMap<RuntimeObjectRegistry, Map<string, GeodesicIntersectionObject>>();
 
@@ -703,20 +703,29 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
     });
     input.registry.add(tail);
   }
+  const currentCannon = input.registry.get(input.cannon.id);
+  const cannonForUpdate = currentCannon?.kind === "geodesic-cannon"
+    ? {
+        ...currentCannon,
+        cellId: input.cannon.cellId,
+        localPose: input.cannon.localPose,
+        aimYawRadians: input.cannon.aimYawRadians,
+      }
+    : input.cannon;
   input.registry.update({
-    ...input.cannon,
+    ...cannonForUpdate,
     activeGeodesicId: input.geodesicId,
-    geodesicIds: input.cannon.geodesicIds.includes(input.geodesicId)
-      ? input.cannon.geodesicIds
-      : [...input.cannon.geodesicIds, input.geodesicId],
+    geodesicIds: cannonForUpdate.geodesicIds.includes(input.geodesicId)
+      ? cannonForUpdate.geodesicIds
+      : [...cannonForUpdate.geodesicIds, input.geodesicId],
     geodesicEmitterYawRadiansById: {
-      ...input.cannon.geodesicEmitterYawRadiansById,
+      ...cannonForUpdate.geodesicEmitterYawRadiansById,
       [input.geodesicId]: aimYawRadians,
     },
     geodesicConnectionsById: {
-      ...input.cannon.geodesicConnectionsById,
+      ...cannonForUpdate.geodesicConnectionsById,
       [input.geodesicId]: {
-        outgoingEmitterId: input.cannon.id,
+        outgoingEmitterId: cannonForUpdate.id,
         state: tail.terminal.kind === "emitter-hit" ? "connected" : "open",
         incomingEmitterId: tail.terminal.kind === "emitter-hit" ? tail.terminal.emitterId : undefined,
       },
@@ -1617,6 +1626,19 @@ function lockStraightenedGeodesic(input: {
   readonly end: Vec3;
   readonly geodesicNumber?: number;
 }): void {
+  const duplicateGeodesicId = findCoincidentConnectedGeodesic(input.registry, {
+    geodesicId: input.geodesicId,
+    sourceEmitterId: input.sourceEmitterId,
+    incomingEmitterId: input.incomingEmitterId,
+    cellId: input.cellId,
+    start: input.start,
+    end: input.end,
+  });
+  if (duplicateGeodesicId) {
+    removeGeodesic(input.registry, input.geodesicId);
+    return;
+  }
+
   removeGeodesicSegments(input.registry, input.geodesicId);
   const direction = normalizeHorizontalDirection(subVec3(input.end, input.start));
   input.registry.add({
@@ -1636,6 +1658,79 @@ function lockStraightenedGeodesic(input: {
     connectionState: "connected",
   });
   markGeodesicConnected(input.registry, input.geodesicId, input.sourceEmitterId, input.incomingEmitterId);
+}
+
+function findCoincidentConnectedGeodesic(
+  registry: RuntimeObjectRegistry,
+  input: {
+    readonly geodesicId: string;
+    readonly sourceEmitterId: string;
+    readonly incomingEmitterId: string;
+    readonly cellId: string;
+    readonly start: Vec3;
+    readonly end: Vec3;
+  },
+): string | undefined {
+  const candidateIds = new Set<string>();
+  for (const object of registry.getAll()) {
+    if (object.kind !== "geodesic-cannon") {
+      continue;
+    }
+
+    for (const [geodesicId, connection] of Object.entries(object.geodesicConnectionsById ?? {})) {
+      if (
+        geodesicId !== input.geodesicId &&
+        connection.state === "connected" &&
+        sameEmitterPair(connection, input.sourceEmitterId, input.incomingEmitterId)
+      ) {
+        candidateIds.add(geodesicId);
+      }
+    }
+  }
+
+  for (const candidateId of candidateIds) {
+    const segments = getGeodesicSegments(registry, candidateId);
+    if (segments.length === 1 && segmentConnectsEndpoints(segments[0], input.cellId, input.start, input.end)) {
+      return candidateId;
+    }
+  }
+
+  return undefined;
+}
+
+function sameEmitterPair(
+  connection: GeodesicEmitterConnection,
+  firstEmitterId: string,
+  secondEmitterId: string,
+): boolean {
+  return (
+    connection.outgoingEmitterId === firstEmitterId &&
+    connection.incomingEmitterId === secondEmitterId
+  ) || (
+    connection.outgoingEmitterId === secondEmitterId &&
+    connection.incomingEmitterId === firstEmitterId
+  );
+}
+
+function segmentConnectsEndpoints(
+  segment: GeodesicSegmentObject,
+  cellId: string,
+  first: Vec3,
+  second: Vec3,
+): boolean {
+  if (segment.cellId !== cellId) {
+    return false;
+  }
+
+  const segmentEnd = getGeodesicSegmentEnd(segment);
+  const toleranceSquared = geodesicStraighteningToleranceMeters * geodesicStraighteningToleranceMeters;
+  return (
+    distanceSquared(segment.start, first) <= toleranceSquared &&
+    distanceSquared(segmentEnd, second) <= toleranceSquared
+  ) || (
+    distanceSquared(segment.start, second) <= toleranceSquared &&
+    distanceSquared(segmentEnd, first) <= toleranceSquared
+  );
 }
 
 function unfoldIncomingEmitterPointToSourceCell(input: {

@@ -3615,23 +3615,24 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function resolveTieAndDetachGeodesicFromAim(ray: RootAimRay, cannonId: string): string | undefined {
-    const target = resolveCurrentAimTarget(ray);
-    if (!targetIsWithinInteractionRange(target)) {
-      return undefined;
-    }
-
-    const geodesicId = target?.object?.kind === "geodesic-segment"
-      ? target.object.geodesicId
-      : target?.object?.kind === "geodesic-cannon"
-        ? target.geodesicEmitterGeodesicId
-        : undefined;
-    if (!geodesicId) {
-      return undefined;
-    }
-
     const selectableIds = collectLockedIncidentGeodesicIdsForEmitter(runtimeObjectRegistry, cannonId)
       .filter((id) => !isGeodesicStraightening(runtimeObjectRegistry, id));
-    return selectableIds.includes(geodesicId) ? geodesicId : undefined;
+    for (const target of resolveCurrentAimTargets(ray)) {
+      if (!targetIsWithinInteractionRange(target)) {
+        continue;
+      }
+
+      const geodesicId = target.object?.kind === "geodesic-segment"
+        ? target.object.geodesicId
+        : target.object?.kind === "geodesic-cannon"
+          ? target.geodesicEmitterGeodesicId
+          : undefined;
+      if (geodesicId && selectableIds.includes(geodesicId)) {
+        return geodesicId;
+      }
+    }
+
+    return undefined;
   }
 
   function tieAndDetachGeodesicsFromCannon(cannonId: string, selectedGeodesicIds: readonly [string, string]): void {

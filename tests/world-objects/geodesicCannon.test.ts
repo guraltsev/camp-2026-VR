@@ -1279,6 +1279,58 @@ describe("geodesic cannon world objects", () => {
     expect(isGeodesicLocked(registry, "g-tied")).toBe(true);
   });
 
+  it("ties and detaches a vertex of a fully locked geodesic triangle", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const a = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1, y: 0, z: 0 }),
+    });
+    const b = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3((2 * Math.PI) / 3, { x: 1, y: 0, z: 0 }),
+    });
+    const c = createGeodesicCannonObject({
+      id: "cannon-c",
+      cellId: "a",
+      localPose: yawRigidTransform3((-2 * Math.PI) / 3, { x: 0, y: Math.sqrt(3), z: 0 }),
+    });
+    registry.add(a);
+    registry.add(b);
+    registry.add(c);
+    shootGeodesic({ world, registry, cannon: a, geodesicId: "g-ab", maxLengthMeters: 3 });
+    shootGeodesic({ world, registry, cannon: b, geodesicId: "g-bc", maxLengthMeters: 3 });
+    shootGeodesic({ world, registry, cannon: c, geodesicId: "g-ca", maxLengthMeters: 3 });
+
+    const segments = tieAndDetachIncidentGeodesics({
+      world,
+      registry,
+      emitterId: "cannon-a",
+      geodesicId: "g-tied",
+      incidentGeodesicIds: ["g-ab", "g-ca"],
+    });
+
+    expect(segments).toHaveLength(2);
+    expect(segments.map((segment) => segment.connectionState)).toEqual(["straightening", "straightening"]);
+    expect(getGeodesicSegments(registry, "g-ab")).toEqual([]);
+    expect(getGeodesicSegments(registry, "g-ca")).toEqual([]);
+    expect(getGeodesicSegments(registry, "g-bc")).toHaveLength(1);
+    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual([]);
+    expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-bc", "g-tied"]);
+    expect(getCannonGeodesicIds(registry, "cannon-c")).toEqual(["g-bc", "g-tied"]);
+
+    for (let i = 0; i < 30 && isGeodesicStraightening(registry, "g-tied"); i += 1) {
+      advanceStraighteningGeodesics({ world, registry, deltaSeconds: 1, speedMetersPerSecond: 1 });
+    }
+
+    expect(getGeodesicSegments(registry, "g-tied")).toEqual([]);
+    expect(getGeodesicSegments(registry, "g-bc")).toHaveLength(1);
+    expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-bc"]);
+    expect(getCannonGeodesicIds(registry, "cannon-c")).toEqual(["g-bc"]);
+  });
+
   it("deletes both straightening halves when either half enters a forbidden zone", () => {
     const world = compileWorld(true);
     const registry = createRuntimeObjectRegistry([
