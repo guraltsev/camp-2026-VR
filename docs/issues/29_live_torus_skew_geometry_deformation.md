@@ -59,7 +59,7 @@ The implementation should have two layers:
 ```text
 deformation family adapter
   -> produces a valid next CellComplexSpec
-  -> produces old-to-new runtime rebase maps
+  -> produces old-to-new dynamic runtime-object maps
   -> validates deformation-specific constraints
 
 world geometry session
@@ -82,7 +82,7 @@ export interface WorldDeformationFamily<TState extends WorldDeformationState> {
   normalizeState(baseSpec: CellComplexSpec, state: TState): TState;
   applyToSpec(baseSpec: CellComplexSpec, state: TState): CellComplexSpec;
 
-  createRebaseMaps(
+  createDynamicObjectMaps(
     previous: TState,
     next: TState,
     previousWorld: CompiledCellComplex,
@@ -102,7 +102,7 @@ export interface WorldDeformationFamily<TState extends WorldDeformationState> {
 }
 ```
 
-Suggested shared rebase contract:
+Suggested shared dynamic-object map contract:
 
 ```ts
 export interface CellDeformationMap {
@@ -117,6 +117,10 @@ map. For a later non-affine deformation, the adapter can use a local Jacobian or
 fall back to a conservative object reset policy. The infrastructure should not
 assume all deformations are torus skews or even affine, but the first persistent
 runtime-object preservation policy can require a usable `CellDeformationMap`.
+
+The `CellDeformationMap` is for live dynamic runtime objects only. Static
+authored state is regenerated from the new `CellComplexSpec`, not rebased from
+the old runtime registry.
 
 ### Supported MVP deformation class
 
@@ -255,7 +259,7 @@ and runtime-object archetypes.
 This is close to what live deformation needs, but the setup variables must
 become replaceable as one world-render bundle.
 
-### Runtime objects require an explicit rebase policy
+### Runtime objects require an explicit deformation policy
 
 Runtime objects are registry-owned and have cell-local poses. Examples include:
 
@@ -265,8 +269,11 @@ Runtime objects are registry-owned and have cell-local poses. Examples include:
 - geodesic segments,
 - geodesic intersections,
 - measured lengths,
-- protractor angles,
-- collision records for authored static assets.
+- protractor angles.
+
+Authored static asset collision records are also registry-owned, but they are
+not live dynamic objects. They should be regenerated from the next deformed
+spec so they match the rebuilt static visuals.
 
 Many operations pass `appState.world` into pure helpers at the moment they run,
 so they will work with a new world once the call sites read the new snapshot.
@@ -274,10 +281,10 @@ The tricky part is preserving or invalidating existing local object state when
 the cell geometry changes.
 
 Dynamic creature runtimes currently store private `state` and write into the
-registry during `update(...)`. If the registry is rebased without also rebasing
-the runtime's private state, the next update will overwrite the rebased registry
-object. These runtimes need a rebase method or they need to read their state
-back from the registry after a geometry commit.
+registry during `update(...)`. If the registry is transformed without also
+transforming the runtime's private state, the next update will overwrite the
+transformed registry object. These runtimes need a deformation hook or they need
+to read their state back from the registry after a geometry commit.
 
 ### Tools and geodesics can become stale
 
@@ -288,12 +295,12 @@ positions changed.
 
 The first implementation should use a conservative policy:
 
-- preserve ordinary placed objects and authored moving creatures by rebasing
-  their local poses,
-- clear or mark stale geodesic segments, measurements, and protractor angles on
-  a geometry commit,
-- rebuild selected geodesics later only after the geometry hot-swap path is
-  stable.
+- preserve ordinary placed objects and authored moving creatures by applying the
+  deformation family's dynamic-object transform,
+- clear or mark stale unlocked geodesic segments, measurements, and protractor
+  angles on a geometry commit,
+- preserve locked geodesics by rebuilding them from their emitter-copy word path
+  after the moved emitters are transformed.
 
 ## First Deformation Family: Torus Skew
 
@@ -349,15 +356,43 @@ aperture-compatible rigid portal transforms.
 
 ## Deformation Maps
 
-Every deformation family needs two related maps:
+Every deformation family needs three related contracts:
 
 1. Spec deformation:
-   generate the next `CellComplexSpec` from a base spec and a deformation
-   state.
+   generate the complete `CellComplexSpec` for deformation state `t`.
 
-2. Runtime rebase:
-   move existing player/runtime-object positions from old material coordinates
-   to new material coordinates.
+2. Dynamic runtime-object transform:
+   move live dynamic objects from deformation state `t0` to deformation state
+   `t1`.
+
+3. Computed-object rebuild policy:
+   recreate geometry-derived dynamic objects that should not be transported as
+   ordinary runtime poses.
+
+Static authored state belongs to the spec deformation. This includes:
+
+- cell base vertices,
+- `startingPosition`,
+- authored static object positions and orientations,
+- authored dynamic object initial positions and orientations.
+
+If a static object's position or yaw depends on the deformation parameter, then
+`applyToSpec(baseSpec, state)` must emit the position and orientation for that
+state. Static asset visuals and static asset collision registry entries must be
+rebuilt or overwritten from the same next spec so they cannot drift apart.
+
+Live dynamic runtime objects use a separate deformation-provided transform. A
+deformable world must provide, directly or through its deformation family
+configuration, a map of this shape:
+
+```text
+(cellId, position, rotation, t0, t1) -> (cellId, position, rotation)
+```
+
+The session and renderer should not infer this transform from torus-specific
+math. The torus skew adapter can implement the transform with lattice
+coordinates, but future worlds may author a different transform in the world
+spec or deformation metadata.
 
 For the torus parallelogram adapter, use lattice coordinates.
 
@@ -383,8 +418,8 @@ yaw' = atan2(heading'.y, heading'.x)
 ```
 
 This keeps objects aligned with the material coordinates of the deforming face.
-The collision shapes remain ordinary circular cylinders after the rebase; they
-are not sheared.
+The collision shapes remain ordinary circular cylinders after the transform;
+they are not sheared.
 
 For other deformation families:
 
@@ -392,7 +427,7 @@ For other deformation families:
   maps,
 - explicit vertex-driven convex polygon deformations should either provide a
   tested coordinate map, such as mean-value coordinates, or opt into resetting
-  runtime objects that cannot be safely rebased,
+  runtime objects that cannot be safely transformed,
 - deformations that cannot map directions coherently should not preserve
   yaw-sensitive runtime objects without a family-specific policy.
 
@@ -627,22 +662,26 @@ Commit steps:
 
 1. Capture old snapshot and old world.
 2. Assert the new snapshot is topology-compatible with the old snapshot.
-3. Build rebase maps from old deformation state to new deformation state.
-4. Rebase `playerPose`.
-5. Rebase registry objects that should persist.
-6. Rebase dynamic runtime private state or force those runtimes to pull from
-   the rebased registry state.
-7. Clear geometry-dependent transient tools that are not preserved in the MVP.
-8. Replace `activeWorldBundle`.
-9. Rebuild cell roots, cell render archetypes, static collision debug roots,
+3. Build dynamic-object deformation maps from old deformation state `t0` to new
+   deformation state `t1`.
+4. Transform `playerPose` through the dynamic-object map.
+5. Rebuild or overwrite authored static asset collision registry entries from
+   the next spec so they match rebuilt static visuals.
+6. Transform registry objects that should persist as live dynamic objects.
+7. Transform dynamic runtime private state or force those runtimes to pull from
+   the transformed registry state.
+8. Rebuild geometry-derived dynamic objects that have preservation semantics,
+   such as locked geodesics, and clear the rest.
+9. Replace `activeWorldBundle`.
+10. Rebuild cell roots, cell render archetypes, static collision debug roots,
    and warmup views using the new world.
-10. Recreate or refresh portal debug helpers so they close over the new path
+11. Recreate or refresh portal debug helpers so they close over the new path
     tables.
-11. Reinstall runtime diagnostics against the new world if diagnostics are
+12. Reinstall runtime diagnostics against the new world if diagnostics are
     active.
-12. Reparent runtime object roots to the new `cellMeshes`.
-13. Recompute visible portal paths and runtime-object portal instances.
-14. Render once.
+13. Reparent runtime object roots to the new `cellMeshes`.
+14. Recompute visible portal paths and runtime-object portal instances.
+15. Render once.
 
 This should be one synchronous main-thread commit. The expensive path-table
 computation happens before this point.
@@ -670,8 +709,8 @@ Checks:
 - same portal side indices,
 - same target cell ids and target portal ids,
 - same cell heights unless height deformation is explicitly added later,
-- same object ids for authored static/dynamic objects if preserving authored
-  objects in place,
+- same authored object ids in the spec when the deformation family preserves
+  authored objects,
 - reciprocal portal side lengths equal within tolerance,
 - reciprocal portal heights equal within tolerance.
 
@@ -685,56 +724,114 @@ topology edits, portal aperture mismatches, and side-index drift.
 
 ## Runtime Preservation Policy
 
-### Preserve and rebase
+### Static authored state
 
-Preserve these by applying the old-to-new deformation map:
+Do not treat authored static objects as live dynamic state. On every geometry
+snapshot build, `applyToSpec(...)` is responsible for producing the static
+positions and orientations for the new deformation state.
+
+This applies to:
+
+- `startingPosition`,
+- authored static asset objects,
+- authored dynamic creature initial objects,
+- any future authored static markers or decorations.
+
+On commit, static asset collision objects in the runtime registry should be
+rebuilt or overwritten from the next spec. They should not be independently
+rebased from the previous registry value, because that can make the visual mesh
+and collision cylinder disagree.
+
+`resetPlayerToHome()` should use the active snapshot's `startingPosition`, or a
+home pose recomputed from the active deformation state, not the startup
+`appState.playerPose`.
+
+### Preserve and transform dynamic state
+
+Preserve these by applying the deformation family's `t0 -> t1` dynamic-object
+transform:
 
 - player pose,
 - authored dynamic creature runtime state,
 - placed signs,
-- geodesic emitters if there are no active geodesic segments,
-- user-placed non-geodesic runtime objects,
-- authored static asset collision objects.
+- geodesic emitters,
+- user-placed non-geodesic runtime objects.
 
 For a runtime object:
 
 ```ts
-function rebaseRuntimeObjectPose(
+function transformRuntimeObjectPose(
   object: RuntimeWorldObject,
   map: CellDeformationMap,
 ): RuntimeWorldObject
 ```
 
-This should rebase:
+This should transform:
 
 - `localPose.translation`,
 - yaw encoded in `localPose.rotation`,
 - `aimStickyTarget.localPoint` when present.
 
-### Clear or mark stale in the MVP
+The generic commit path may require a usable dynamic-object transform to
+preserve yaw-sensitive objects. If a deformation family cannot map a class of
+dynamic objects coherently, it must explicitly opt that class into reset,
+recreation, hiding, or deletion with diagnostics.
 
-Clear these on commit in the first implementation:
+### Recreate computed dynamic objects
+
+Some runtime objects are computed from current geometry and should not be
+transported as ordinary poses. On commit, remove and recreate them from their
+source definitions when preservation semantics exist.
+
+Computed dynamic objects include:
 
 - geodesic segment objects,
-- geodesic intersection objects,
+- geodesic vertex/intersection objects,
 - measured geodesic length objects,
-- protractor angle objects,
+- protractor angle objects.
+
+Unlocked geodesic segments can be cleared in the MVP. Their previous chain is
+not a reliable statement about the deformed geometry.
+
+Locked geodesics are different. A locked geodesic represents a constraint
+between two emitter copies, together with an associated portal word path that
+identifies which copies of the emitters are connected. This is the same
+information used by the carrying logic. On a geometry commit:
+
+1. Transform the source and incoming emitters through the dynamic-object map.
+2. Preserve the associated portal word path because the topology is unchanged.
+3. Rebuild the geodesic segment chain in the new compiled world using that word
+   path and the moved emitter copies.
+4. Recompute emitter aim yaw, protractor angles, measured lengths, and any
+   displayed length labels from the rebuilt chain.
+5. If the locked geodesic cannot be rebuilt, remove or mark its computed objects
+   stale with diagnostics rather than showing the old chain.
+
+### Clear or mark stale in the MVP
+
+Clear these on commit in the first implementation unless they are recreated as
+part of a preserved locked geodesic:
+
+- unlocked geodesic segment objects,
+- stale geodesic vertex/intersection objects,
+- stale measured geodesic length objects,
+- stale protractor angle objects,
 - active geodesic cannon edit state,
 - active protractor tool state,
 - active measurement tool state.
 
-This prevents stale geometry from being presented as current. Later issues can
-rebuild geodesic chains from emitters after a deformation.
+This prevents stale geometry from being presented as current while still
+preserving locked geodesics that have enough source data to be recomputed.
 
-### Validate after rebase
+### Validate after transform
 
-After rebasing player and objects:
+After transforming player and dynamic objects:
 
 1. Run `testCellCollision(...)` for the player.
 2. If blocked by wall or forbidden zone, push inward using side normals where
    possible.
 3. If still invalid, move to the new cell center at the old height.
-4. For runtime objects, either keep only valid rebased objects or mark invalid
+4. For runtime objects, either keep only valid transformed objects or mark invalid
    objects as hidden/disabled with diagnostics.
 
 Because the torus skew steps are small, this should rarely trigger, but it is
@@ -893,15 +990,16 @@ Create `worldGeometryDeformations.ts` and
 - `CellDeformationMap`,
 - `DynamicGeometryStepOptions`,
 - `applyWorldDeformationToSpec(...)`,
-- `createCellDeformationMaps(...)`,
-- shared point/direction/pose rebase helpers where they are family-neutral.
+- `createDynamicObjectMaps(...)`,
+- dynamic object transform helpers for `(cell, pose, t0, t1) -> (cell, pose)`,
+- shared point/direction/pose helpers where they are family-neutral.
 
 Then create `deformations/torusSkewDeformation.ts` with:
 
 - `TorusSkewDeformationState`,
 - `buildTorusParallelogramVertices(...)`,
 - torus-specific `applyToSpec(...)`,
-- torus-specific affine `createRebaseMaps(...)`,
+- torus-specific affine dynamic-object transform maps,
 - torus-specific `nextStep(...)`.
 
 For the MVP, only support:
@@ -980,9 +1078,9 @@ const activeWorld = () => activeWorldBundle.snapshot.world;
 Mechanically replace runtime `appState.world` reads with `activeWorld()` where
 the code should see hot-swapped geometry.
 
-Leave the initial `appState.playerPose` and `appState.playerBody` as initial
-state. Consider replacing `resetPlayerToHome()` with a stored home pose that is
-rebased or recomputed for the current deformation.
+Leave `appState.playerBody` as initial state. Replace `resetPlayerToHome()` so
+it uses the active snapshot's deformed `startingPosition`, or a home pose
+recomputed from the active deformation state.
 
 ### 5. Add atomic commit
 
@@ -991,8 +1089,10 @@ then extract if it becomes too large.
 
 The commit should:
 
-- update `playerPose`,
-- rebase or clear runtime objects by policy,
+- transform `playerPose` through the dynamic-object map,
+- rebuild static authored collision registry entries from the next spec,
+- transform, rebuild, or clear runtime objects by policy,
+- rebuild preserved locked geodesics from their emitter-copy word paths,
 - replace `activeWorldBundle`,
 - rebuild meshes/archetypes/debug helpers,
 - sync portal instances,
@@ -1001,33 +1101,38 @@ The commit should:
 
 Do not install a partial snapshot.
 
-### 6. Add runtime object rebase hooks
+### 6. Add runtime object deformation hooks
 
 Add a minimal method to dynamic authored runtimes:
 
 ```ts
-rebaseGeometry(mapByCellId: ReadonlyMap<string, CellDeformationMap>): void;
+transformGeometry(mapByCellId: ReadonlyMap<string, CellDeformationMap>): void;
 ```
 
 It should update private `state`, registry state, root object transform, and
 collision wireframes.
 
-For static/collision-only authored asset objects, add a helper that updates or
-rebuilds their registry entries from the newly deformed spec or by applying the
-same cell map to the old registry objects.
+For static/collision-only authored asset objects, add a helper that rebuilds or
+overwrites their registry entries from the newly deformed spec. Do not use the
+old registry object as the source of truth for static authored objects.
 
-### 7. Add conservative transient-tool cleanup
+### 7. Add computed-object rebuild and cleanup
 
 On each geometry commit:
 
-- remove geodesic segments,
-- remove geodesic intersections,
-- remove measured geodesic lengths,
-- remove protractor angle objects,
+- remove unlocked geodesic segments,
+- remove stale geodesic vertex/intersection objects,
+- rebuild locked geodesic segment chains from their associated emitter-copy word
+  paths,
+- recompute measured locked-geodesic lengths and protractor angles after the
+  locked chains are rebuilt,
+- remove stale measured geodesic lengths and protractor angle objects that were
+  not rebuilt,
 - clear active geodesic/protractor edit state,
 - resync runtime object portal instances and hitbox debug.
 
-This can be relaxed later once geodesic rebuild semantics are designed.
+If a locked geodesic cannot be rebuilt, remove or mark its computed objects
+stale with diagnostics.
 
 ### 8. Add a temporary debug control
 
@@ -1085,8 +1190,8 @@ Cover:
 - negative skew produces a convex parallelogram,
 - side ids and portal ids are unchanged,
 - opposite side lengths remain equal,
-- lattice-coordinate point rebase preserves `(alpha, beta, z)`,
-- yaw rebase maps a vertical-lattice heading into the skewed heading,
+- lattice-coordinate point transform preserves `(alpha, beta, z)`,
+- yaw transform maps a vertical-lattice heading into the skewed heading,
 - invalid non-torus specs are rejected clearly.
 
 ### Compiler/path table tests
@@ -1113,14 +1218,22 @@ Cover:
 - failed builds preserve the old committed snapshot,
 - cancel prevents further queued steps.
 
-### Runtime rebase tests
+### Runtime transform tests
 
 Cover:
 
-- player pose rebase stays inside the skewed torus for ordinary positions,
-- placed sign pose and yaw are rebased,
+- the active starting position is recomputed from the deformed spec,
+- authored static asset visuals and collision registry entries use the same
+  deformed spec position and yaw,
+- player pose transform stays inside the skewed torus for ordinary positions,
+- placed sign pose and yaw are transformed through the dynamic-object map,
 - dynamic creature runtime private state and registry state remain aligned,
-- invalid rebased pose is repaired or rejected with diagnostics.
+- unlocked geodesic segment/intersection objects are cleared or marked stale,
+- locked geodesics preserve their emitter-copy word path and rebuild their
+  segment chain after the emitters move,
+- measured lengths and protractor angles attached to rebuilt locked geodesics
+  are recomputed,
+- invalid transformed pose is repaired or rejected with diagnostics.
 
 ### Renderer contract tests
 
@@ -1168,9 +1281,17 @@ cell-id sensitive.
 - Portal transforms are recompiled from the deformed sides.
 - Player pose is preserved by material/lattice coordinates, not reset on every
   step.
+- The active home/starting pose comes from the deformed spec, not the startup
+  pose.
+- Authored static objects and their collision records are regenerated from the
+  same deformed spec so visuals and collisions agree.
 - Ordinary runtime objects remain visible and collidable after the commit.
-- Geometry-dependent transient geodesic/measurement objects are safely cleared
-  or marked stale.
+- Dynamic runtime objects are transformed with the deformation family's
+  `(cell, pose, t0, t1) -> (cell, pose)` map.
+- Unlocked geometry-dependent transient geodesic/measurement objects are safely
+  cleared or marked stale.
+- Locked geodesics preserve their emitter-copy word paths, rebuild their segment
+  chains after the emitters move, and recompute their angles and lengths.
 - Debug state reports geometry version, deformation kind, current state, target
   state, in-flight build status, and build/commit timing.
 - Stale worker results cannot overwrite a newer committed target.
@@ -1214,7 +1335,8 @@ The safe mental model is:
 compiled world snapshot is immutable
 live runtime owns exactly one active snapshot
 expensive next snapshot builds in the background
-commit swaps the whole snapshot and rebases runtime state
+commit swaps the whole snapshot and transforms dynamic runtime state
+static authored state comes from the new spec
 ```
 
 If an implementation can only build or commit `"torus-skew"` because the worker,
