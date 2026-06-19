@@ -369,17 +369,26 @@ Every deformation family needs three related contracts:
    recreate geometry-derived dynamic objects that should not be transported as
    ordinary runtime poses.
 
-Static authored state belongs to the spec deformation. This includes:
+Static authored state belongs to the spec deformation, but the responsibility
+for moving positions and orientations between deformation states still belongs
+to the deformation family. The family-owned step transform takes a pose in a
+cell at deformation state `t0` and returns the corresponding pose in the same
+topological cell at deformation state `t1`. The session, renderer, movement
+code, and commit code must treat that as an opaque family operation.
+
+Static authored state includes:
 
 - cell base vertices,
 - `startingPosition`,
 - authored static object positions and orientations,
 - authored dynamic object initial positions and orientations.
 
-If a static object's position or yaw depends on the deformation parameter, then
+If a static object's position or yaw depends on the deformation parameter,
 `applyToSpec(baseSpec, state)` must emit the position and orientation for that
-state. Static asset visuals and static asset collision registry entries must be
-rebuilt or overwritten from the same next spec so they cannot drift apart.
+state, normally by using the same family-specific point and direction mapping
+used for live runtime objects. Static asset visuals and static asset collision
+registry entries must be rebuilt or overwritten from the same next spec so they
+cannot drift apart.
 
 Live dynamic runtime objects use a separate deformation-provided transform. A
 deformable world must provide, directly or through its deformation family
@@ -978,9 +987,17 @@ src/ui/paletteDefinition.ts
 Keep the first pass focused. Most implementation risk is in `createThreeApp.ts`
 because it currently has many direct `appState.world` reads.
 
-## Implementation Plan
+## Phased Implementation Plan
 
-### 1. Add pure deformation contracts and the torus adapter
+Each phase should be independently reviewable and should leave the app in a
+working state. The issue is complete only after the final acceptance phase; the
+earlier phases are intended to reduce review risk, not to weaken the runtime
+coherence requirement.
+
+### Phase 1: Pure deformation core
+
+Add the deformation contracts and torus adapter without touching renderer
+hot-swap behavior.
 
 Create `worldGeometryDeformations.ts` and
 `worldGeometryDeformationFamilies.ts` with:
@@ -999,10 +1016,10 @@ Then create `deformations/torusSkewDeformation.ts` with:
 - `TorusSkewDeformationState`,
 - `buildTorusParallelogramVertices(...)`,
 - torus-specific `applyToSpec(...)`,
-- torus-specific affine dynamic-object transform maps,
+- torus-specific affine point and direction maps,
 - torus-specific `nextStep(...)`.
 
-For the MVP, only support:
+For the first public deformation, only support:
 
 ```ts
 {
@@ -1033,9 +1050,8 @@ interface PrismBaseReplacement {
 The public MVP can expose only `torus-skew`, but the pure helper that applies
 base replacements should be reusable by later deformation families.
 
-### 2. Add topology and portal compatibility guards
-
-Add tests before wiring the renderer.
+Add the generic hot-swap/topology guard in this phase and test it before any
+renderer wiring.
 
 Required behavior:
 
@@ -1046,11 +1062,16 @@ Required behavior:
 - reciprocal side length mismatch fails,
 - nonconvex deformed base fails through existing validation.
 
-### 3. Add the worker build path
+### Phase 2: Snapshot build session
 
-Implement worker and client.
+Add the background build/session layer while still committing no snapshots to
+the live renderer.
 
-The worker should:
+The app must retain the immutable base `CellComplexSpec` used for deformation
+builds. The session should create complete `WorldGeometrySnapshot` values from
+that base spec and the requested deformation state.
+
+Implement worker and client:
 
 1. resolve the deformation family by `deformation.kind`,
 2. apply deformation to the base spec,
@@ -1066,7 +1087,13 @@ The main thread client should:
 - surface errors in debug state,
 - fall back gracefully if worker setup fails.
 
-### 4. Refactor `createThreeApp` around an active world bundle
+This phase is green when session/worker tests can build skewed torus snapshots,
+drop stale responses, and leave the current rendered world untouched.
+
+### Phase 3: Active world bundle refactor
+
+Refactor `createThreeApp.ts` around a replaceable active world bundle, but keep
+the initial bundle as the only installed bundle.
 
 Introduce:
 
@@ -1076,13 +1103,21 @@ const activeWorld = () => activeWorldBundle.snapshot.world;
 ```
 
 Mechanically replace runtime `appState.world` reads with `activeWorld()` where
-the code should see hot-swapped geometry.
+the code should see hot-swapped geometry. Also replace direct uses of
+startup-only path tables and capacities with active-bundle accessors.
 
 Leave `appState.playerBody` as initial state. Replace `resetPlayerToHome()` so
 it uses the active snapshot's deformed `startingPosition`, or a home pose
 recomputed from the active deformation state.
 
-### 5. Add atomic commit
+This phase is green when normal startup, movement, portal rendering, runtime
+objects, debug overlays, typecheck, and tests still pass with no deformation
+enabled.
+
+### Phase 4: Atomic commit with conservative runtime policy
+
+Install prepared snapshots at a frame boundary and provide the first usable
+debug-command torus skew path.
 
 Implement `commitWorldGeometrySnapshot(...)` inside `createThreeApp.ts` first,
 then extract if it becomes too large.
@@ -1091,8 +1126,11 @@ The commit should:
 
 - transform `playerPose` through the dynamic-object map,
 - rebuild static authored collision registry entries from the next spec,
-- transform, rebuild, or clear runtime objects by policy,
-- rebuild preserved locked geodesics from their emitter-copy word paths,
+- transform placed signs and ordinary runtime objects through the dynamic-object
+  map,
+- transform dynamic authored runtimes through a runtime hook or force them to
+  pull from transformed registry state,
+- clear unlocked geometry-derived objects and active geometry-tool edit state,
 - replace `activeWorldBundle`,
 - rebuild meshes/archetypes/debug helpers,
 - sync portal instances,
@@ -1100,8 +1138,6 @@ The commit should:
 - update diagnostics.
 
 Do not install a partial snapshot.
-
-### 6. Add runtime object deformation hooks
 
 Add a minimal method to dynamic authored runtimes:
 
@@ -1116,25 +1152,15 @@ For static/collision-only authored asset objects, add a helper that rebuilds or
 overwrites their registry entries from the newly deformed spec. Do not use the
 old registry object as the source of truth for static authored objects.
 
-### 7. Add computed-object rebuild and cleanup
+On each geometry commit, clear these unless they are rebuilt in Phase 5:
 
-On each geometry commit:
-
-- remove unlocked geodesic segments,
-- remove stale geodesic vertex/intersection objects,
-- rebuild locked geodesic segment chains from their associated emitter-copy word
-  paths,
-- recompute measured locked-geodesic lengths and protractor angles after the
-  locked chains are rebuilt,
-- remove stale measured geodesic lengths and protractor angle objects that were
-  not rebuilt,
-- clear active geodesic/protractor edit state,
-- resync runtime object portal instances and hitbox debug.
-
-If a locked geodesic cannot be rebuilt, remove or mark its computed objects
-stale with diagnostics.
-
-### 8. Add a temporary debug control
+- unlocked geodesic segment objects,
+- stale geodesic vertex/intersection objects,
+- stale measured geodesic length objects,
+- stale protractor angle objects,
+- active geodesic cannon edit state,
+- active protractor tool state,
+- active measurement tool state.
 
 Expose `window.noneuclidGeometry` only when debugging is enabled or when the
 selected world is the torus.
@@ -1148,11 +1174,38 @@ Cancel()
 state
 ```
 
-This gives a safe manual test path before adding UI.
+This phase is green when torus skew can advance in discrete debug-command steps
+without blocking movement, with coherent rendering, movement, collision, portal
+visibility, and runtime-object portal rendering after each commit.
 
-### 9. Add UI only after the debug path works
+### Phase 5: Locked geodesic rebuild
 
-Later UI can be:
+Complete the computed-object preservation policy for locked geodesics. This is
+part of completing this issue, not a follow-up.
+
+On each geometry commit:
+
+- transform source and incoming emitters through the dynamic-object map,
+- preserve the locked geodesic portal word path because topology is unchanged,
+- rebuild the locked geodesic segment chain in the new compiled world from the
+  moved emitters and preserved portal word,
+- recompute emitter aim yaw, protractor angles, measured lengths, and displayed
+  length labels from the rebuilt chain,
+- remove or mark the locked geodesic stale with diagnostics if it cannot be
+  rebuilt.
+
+Do not transform old segment chains as geometry. Old segment objects are
+discarded and replaced by freshly traced segments in the new snapshot.
+
+This phase is green when locked geodesics survive torus skew by reconstruction,
+while unlocked or unsupported computed geometry is cleared or marked stale.
+
+### Phase 6: Final acceptance hardening
+
+Run the full regression suite and do the manual checks called out below.
+
+Use the debug command path for acceptance before adding polished UI. Later UI
+can be:
 
 - a debug settings slider,
 - a pair of step buttons,
@@ -1309,13 +1362,16 @@ cell-id sensitive.
 - Do not allow topology changes during hot swap.
 - Do not add or remove assets during skew steps.
 - Do not support continuous per-frame morphing in the MVP.
-- Do not preserve existing geodesic chains across deformation in the MVP.
+- Do not preserve raw existing geodesic segment objects by transforming their
+  old endpoints across deformation. Locked geodesics are preserved only by
+  rebuilding fresh segment chains from transformed emitters and preserved portal
+  word paths.
 - Do not introduce a curvature engine or global geodesic solver.
 
 ## Follow-Up Work
 
-- Preserve and rebuild geodesic chains across deformation by replaying emitter
-  definitions through the new geometry.
+- Preserve additional unlocked or user-authored geodesic traces across
+  deformation when they have enough source information to be rebuilt safely.
 - Add a polished UI control after the debug command path is stable.
 - Implement a public `affine-prism-cells` deformation family as the second
   adapter after torus skew.
