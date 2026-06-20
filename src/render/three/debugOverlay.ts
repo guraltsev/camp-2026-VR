@@ -6,6 +6,7 @@ import type {
   WebGlRenderInfoState,
   XrDebugRenderState,
 } from "./renderState";
+import type { LiveGeometryDebugState } from "../../runtime/worldGeometrySession";
 
 export interface DebugOverlayState {
   readonly visible: boolean;
@@ -16,6 +17,7 @@ export interface DebugOverlayState {
   readonly portalEyes?: readonly PortalEyeRenderDebugState[];
   readonly portalInstances?: PortalInstanceRenderState;
   readonly location?: XrDebugRenderState;
+  readonly geometry?: LiveGeometryDebugState;
   readonly inspectedPathLine?: string;
 }
 
@@ -40,6 +42,7 @@ export function createDebugOverlay(container: HTMLElement): DebugOverlay {
         || state.portalEyes
         || state.portalInstances
         || state.location
+        || state.geometry
         || state.inspectedPathLine,
       );
       root.hidden = !state.visible || !hasContent;
@@ -58,6 +61,7 @@ export function createDebugOverlay(container: HTMLElement): DebugOverlay {
         state.portalInstances ? formatPortalInstanceLine(state.portalInstances) : undefined,
         state.portalInstances ? formatPortalArchetypeLine(state.portalInstances) : undefined,
         state.location ? formatLocationLine(state.location) : undefined,
+        state.geometry ? formatGeometryLine(state.geometry) : undefined,
         state.inspectedPathLine,
       ]
         .filter((line): line is string => Boolean(line))
@@ -135,6 +139,20 @@ export function formatLocationLine(state: XrDebugRenderState): string {
     `xr ${state.sessionStatus}`,
     blocked,
   ].join(" / ") + inputMode + visiblePaths + portal + root;
+}
+
+export function formatGeometryLine(state: LiveGeometryDebugState): string {
+  const target = state.target.kind === "torus-skew"
+    ? `target skew ${roundNumber(state.target.skewXMeters)}`
+    : `target ${state.target.kind}`;
+  const current = state.current.kind === "torus-skew"
+    ? `skew ${roundNumber(state.current.skewXMeters)}`
+    : state.current.kind;
+  const pending = state.buildInFlight ? "building" : "idle";
+  const timing = state.lastBuildMs === undefined ? "" : ` / build ${roundNumber(state.lastBuildMs)} ms`;
+  const error = state.lastError ? ` / error ${state.lastError}` : "";
+
+  return `geometry: v${state.version} / ${state.deformationKind} / ${current} / ${target} / ${pending}${timing}${error}`;
 }
 
 function formatVec3(point: { readonly x: number; readonly y: number; readonly z: number }): string {

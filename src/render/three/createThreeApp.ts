@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { reversePainterSortStable } from "@pmndrs/uikit";
 import type { AppState } from "../../appState";
+import type { CellComplexSpec } from "../../cell-complex/specs";
 import type { PortalPathTablesByRootCell } from "../../cell-complex/portalPaths";
 import type { PortalRenderPath } from "../../cell-complex/portalPaths";
 import { checkPortalPathString, createPortalPathDebugState } from "../../cell-complex/portalPathDebug";
@@ -17,6 +18,22 @@ import { normalizeVec3, vec3, type Vec3 } from "../../math/vec3";
 import { movePlayer } from "../../movement/movePlayer";
 import { createAppCommandDispatcher } from "../../runtime/appCommandDispatcher";
 import type { RuntimeCommand } from "../../runtime/runtimeCommands";
+import { applyGeometryCommitComputedObjectPolicy } from "../../runtime/worldGeometryComputedObjects";
+import {
+  createDefaultWorldDeformationFamilyRegistry,
+  createInitialWorldDeformationState,
+  getWorldDeformationFamilyOrThrow,
+} from "../../runtime/worldGeometryDeformationFamilies";
+import {
+  createWorldGeometrySession,
+  type LiveGeometryDebugState,
+  type WorldGeometrySnapshot,
+} from "../../runtime/worldGeometrySession";
+import {
+  transformPoseWithCellMaps,
+  transformRigidPoseWithMap,
+  type CellDeformationMap,
+} from "../../runtime/worldGeometryDeformations";
 import {
   createDebugSettingsFromRuntimeMenuState,
   closeRuntimeMenu,
@@ -263,6 +280,7 @@ export interface ThreeApp {
 
 export interface ThreeAppOptions {
   readonly selectedWorldId: string;
+  readonly worldSpec: CellComplexSpec;
   readonly debugLevel: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
   readonly debugOptions: readonly DebugOptionId[];
@@ -277,6 +295,12 @@ interface PortalEyeRenderState {
   readonly result: ComputeVisiblePortalPathsResult;
   readonly eyeIndex: number;
   readonly rootCellId: string;
+}
+
+interface ActiveWorldBundle {
+  readonly snapshot: WorldGeometrySnapshot;
+  readonly archetypeCapacitiesByCellId: ReadonlyMap<string, number>;
+  readonly warmupViewsByCellId: ReadonlyMap<string, ReturnType<typeof createCellWarmupViews>>;
 }
 
 interface RootAimRay {
@@ -556,20 +580,53 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   const cellMeshes = new Map<string, THREE.Object3D>();
   const rootRenderPathMaxDepth = 10;
   const maxVisiblePaths = 2_000;
-  const portalStaticCull = buildStaticallyCulledPortalPathTables(appState.world, {
+  const portalPathOptions = {
     maxDepth: rootRenderPathMaxDepth,
     skipImmediateReverse: true,
     toleranceMeters: 1e-6,
     maxKeptPathsPerRoot: 50_000,
+  } as const;
+  const deformationFamilyRegistry = createDefaultWorldDeformationFamilyRegistry();
+  const initialWorldSnapshot: WorldGeometrySnapshot = {
+    version: 0,
+    deformation: createInitialWorldDeformationState(options.worldSpec),
+    spec: options.worldSpec,
+    world: appState.world,
+    staticCull: buildStaticallyCulledPortalPathTables(appState.world, portalPathOptions),
+    buildStats: {
+      requestedAtMs: performance.now(),
+      completedAtMs: performance.now(),
+      worker: false,
+    },
+  };
+  let activeWorldBundle = createActiveWorldBundle(initialWorldSnapshot);
+  const geometrySession = createWorldGeometrySession({
+    baseSpec: options.worldSpec,
+    initialSnapshot: initialWorldSnapshot,
+    familyRegistry: deformationFamilyRegistry,
+    portalPathOptions,
+    stepOptions: {
+      maxStepMeters: 0.08,
+      snapToleranceMeters: 1e-6,
+    },
   });
-  const archetypeCapacitiesByCellId = deriveCellRenderArchetypeCapacities(
-    appState.world,
-    portalStaticCull,
-    maxVisiblePaths,
-  );
-  const warmupViewsByCellId = new Map(
-    appState.world.cells.map((cell) => [cell.id, createCellWarmupViews(cell)] as const),
-  );
+  const activeWorld = () => activeWorldBundle.snapshot.world;
+  const activeStaticCull = () => activeWorldBundle.snapshot.staticCull;
+
+  function createActiveWorldBundle(snapshot: WorldGeometrySnapshot): ActiveWorldBundle {
+    return {
+      snapshot,
+      archetypeCapacitiesByCellId: deriveCellRenderArchetypeCapacities(
+        snapshot.world,
+        snapshot.staticCull,
+        maxVisiblePaths,
+      ),
+      warmupViewsByCellId: new Map(
+        snapshot.world.cells.map((cell) => [cell.id, createCellWarmupViews(cell)] as const),
+      ),
+    };
+  }
+
   const dynamicObjectRuntimes: Array<GeodesciMarmotRuntime | SimpleGeoCreatureRuntime> = [];
   const placedFlagRuntimes = new Map<string, PlacedFlagRuntime>();
   const measuredGeodesicLengthRuntimes = new Map<string, MeasuredGeodesicLengthRuntime>();
@@ -660,9 +717,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     dumpGeodesicPath: dumpGeodesicPath,
     dumpLockedGeodesicWords: dumpLockedGeodesicWords,
   });
+  installGeometryDebugHelpersIfAvailable();
   syncDesktopPalette();
 
-  for (const cell of appState.world.cells) {
+  for (const cell of activeWorld().cells) {
     for (const objectSpec of cell.objects) {
       if (isGeodesciMarmotObjectSpec(objectSpec)) {
         const runtime = createGeodesciMarmotRuntime(objectSpec, cell.id, options.assets, runtimeObjectRegistry);
@@ -711,7 +769,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     camera,
     cellMeshes,
     activeCellId: playerPose.cellId,
-    warmupViewsByCellId,
+    warmupViewsByCellId: activeWorldBundle.warmupViewsByCellId,
   });
   runtimeDiagnostics().recordWarmup("startup", performance.now() - warmupStartMs);
 
@@ -748,6 +806,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       : smoothedFrameRateFps === undefined
         ? frameRateFps
         : THREE.MathUtils.lerp(smoothedFrameRateFps, frameRateFps, 0.15);
+    commitReadyWorldGeometrySnapshot();
     const xrActive = renderer.xr.isPresenting && xrSessionState.status === "active";
     const xrReferenceSpace = xrActive ? renderer.xr.getReferenceSpace() : null;
     const xrViewerPose = xrActive && xrFrame && xrReferenceSpace
@@ -786,7 +845,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         : frame.yawDeltaRadians;
       const playerYawDeltaRadians = rotatingGeodesicCannon ? 0 : yawDeltaRadians;
       moveResult = movePlayer({
-        world: appState.world,
+        world: activeWorld(),
         pose: playerPose,
         body: appState.playerBody,
         localDisplacement: rotatingGeodesicCannon ? { x: 0, y: 0, z: 0 } : frame.localDisplacement,
@@ -802,7 +861,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         const beforePhysicalCellId = playerPose.cellId;
         const physicalFrame = xrRig.consumePhysicalInput(effectiveHeadLocalMeters, playerPose.yawRadians);
         const physicalMoveResult = movePlayer({
-          world: appState.world,
+          world: activeWorld(),
           pose: playerPose,
           body: appState.playerBody,
           localDisplacement: physicalFrame.localDisplacement,
@@ -876,7 +935,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const playerObstacle = createPlayerCollisionState(playerPose);
 
     for (const runtime of dynamicObjectRuntimes) {
-      runtime.update(appState.world, frame.resetRequested ? 0 : deltaSeconds, [playerObstacle]);
+      runtime.update(activeWorld(), frame.resetRequested ? 0 : deltaSeconds, [playerObstacle]);
       runtime.syncParent(cellMeshes);
     }
     updateGeodesicCreatureDebug(deltaSeconds);
@@ -884,7 +943,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtime.syncParent(cellMeshes);
     }
     const straightenedGeodesicIds = advanceStraighteningGeodesics({
-      world: appState.world,
+      world: activeWorld(),
       registry: runtimeObjectRegistry,
       deltaSeconds: frame.resetRequested ? 0 : deltaSeconds,
     });
@@ -958,6 +1017,238 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
+  function commitReadyWorldGeometrySnapshot(): void {
+    const snapshot = geometrySession.pollReadySnapshot();
+    if (!snapshot) {
+      return;
+    }
+
+    commitWorldGeometrySnapshot(snapshot);
+  }
+
+  function commitWorldGeometrySnapshot(snapshot: WorldGeometrySnapshot): void {
+    const previousSnapshot = activeWorldBundle.snapshot;
+    const family = getWorldDeformationFamilyOrThrow(deformationFamilyRegistry, snapshot.deformation.kind);
+    const mapByCellId = family.createDynamicObjectMaps(
+      previousSnapshot.deformation as never,
+      snapshot.deformation as never,
+      previousSnapshot.world,
+      snapshot.world,
+    );
+
+    transformPlayerForGeometryCommit(mapByCellId);
+    transformRuntimeObjectsForGeometryCommit(mapByCellId, snapshot);
+    activeWorldBundle = createActiveWorldBundle(snapshot);
+    latestVisibleResult = undefined;
+    portalEyeRenderStates = [];
+    activePortalEyeIndex = 0;
+    clearGeometryToolStateAfterCommit();
+    rebuildCellMeshes();
+    for (const runtime of dynamicObjectRuntimes) {
+      runtime.syncParent(cellMeshes);
+    }
+    for (const runtime of placedFlagRuntimes.values()) {
+      runtime.syncParent(cellMeshes);
+    }
+    syncPortalInstanceRender();
+    syncRuntimeObjectPortalInstances();
+    syncDynamicObjectDebugWireframes();
+    syncStaticObjectCollisionWireframes();
+    syncSelectableHitboxDebug();
+    applyDesktopCameraPose();
+    portalDebugRuntime.dispose();
+    portalDebugRuntime = createPortalDebugRuntime();
+    installRuntimeDiagnostics(
+      activeWorld(),
+      debugLevel,
+      hasActiveDebugOption(debugLevel, debugOptions, "runtime-diagnostics"),
+    );
+  }
+
+  function transformPlayerForGeometryCommit(
+    mapByCellId: ReadonlyMap<string, CellDeformationMap>,
+  ): void {
+    const transformed = transformPoseWithCellMaps(
+      {
+        cellId: playerPose.cellId,
+        localPose: yawRigidTransform3(playerPose.yawRadians, playerPose.position),
+      },
+      mapByCellId,
+    );
+
+    if (!transformed || !activeWorld().cellsById.has(transformed.cellId)) {
+      resetPlayerToHome();
+      return;
+    }
+
+    playerPose = {
+      ...playerPose,
+      cellId: transformed.cellId,
+      position: transformed.localPose.translation,
+      yawRadians: yawFromPose(transformed.localPose),
+    };
+  }
+
+  function transformRuntimeObjectsForGeometryCommit(
+    mapByCellId: ReadonlyMap<string, CellDeformationMap>,
+    snapshot: WorldGeometrySnapshot,
+  ): void {
+    for (const runtime of dynamicObjectRuntimes) {
+      runtime.transformGeometry(mapByCellId);
+    }
+
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "asset") {
+        runtimeObjectRegistry.remove(object.id);
+      }
+    }
+
+    for (const object of runtimeObjectRegistry.getAll()) {
+      if (object.kind === "placed-flag") {
+        const transformed = transformPoseWithCellMaps(object, mapByCellId);
+        if (!transformed) {
+          runtimeObjectRegistry.remove(object.id);
+          removePlacedFlagRuntime(object.id);
+          continue;
+        }
+
+        const nextObject = {
+          ...object,
+          cellId: transformed.cellId,
+          localPose: transformed.localPose,
+        };
+        runtimeObjectRegistry.update(nextObject);
+        syncPlacedFlagRuntime(nextObject);
+      } else if (object.kind === "geodesic-cannon") {
+        const transformed = transformGeodesicCannonForGeometryCommit(object, mapByCellId);
+        if (!transformed) {
+          runtimeObjectRegistry.remove(object.id);
+          continue;
+        }
+
+        runtimeObjectRegistry.update(transformed);
+      }
+    }
+
+    rebuildStaticAssetRegistryObjects(snapshot);
+    rebuildGeometryDependentRuntimeObjectsAfterCommit(snapshot);
+  }
+
+  function transformGeodesicCannonForGeometryCommit(
+    object: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+    mapByCellId: ReadonlyMap<string, CellDeformationMap>,
+  ): Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }> | undefined {
+    const map = mapByCellId.get(object.cellId);
+    if (!map) {
+      return undefined;
+    }
+
+    const position = map.mapPoint(object.localPose.translation);
+    const aimYawRadians = transformYawWithMap(object.aimYawRadians, object.localPose.translation, map);
+    const geodesicEmitterYawRadiansById = object.geodesicEmitterYawRadiansById
+      ? Object.fromEntries(
+          Object.entries(object.geodesicEmitterYawRadiansById).map(([geodesicId, yawRadians]) => [
+            geodesicId,
+            transformYawWithMap(yawRadians, object.localPose.translation, map),
+          ]),
+        )
+      : undefined;
+
+    return {
+      ...object,
+      cellId: map.cellId,
+      localPose: yawRigidTransform3(aimYawRadians, position),
+      aimYawRadians,
+      geodesicEmitterYawRadiansById,
+    };
+  }
+
+  function transformYawWithMap(
+    yawRadians: number,
+    atPoint: Vec3,
+    map: CellDeformationMap,
+  ): number {
+    return yawFromPose(transformRigidPoseWithMap(yawRigidTransform3(yawRadians, atPoint), map));
+  }
+
+  function rebuildStaticAssetRegistryObjects(snapshot: WorldGeometrySnapshot): void {
+    for (const cell of snapshot.world.cells) {
+      for (const objectSpec of cell.objects) {
+        if (objectSpec.kind === "asset" && objectSpec.collision) {
+          runtimeObjectRegistry.add(createRuntimeStaticAssetObject(objectSpec, cell.id));
+        }
+      }
+    }
+  }
+
+  function rebuildGeometryDependentRuntimeObjectsAfterCommit(snapshot: WorldGeometrySnapshot): void {
+    applyGeometryCommitComputedObjectPolicy({
+      world: snapshot.world,
+      registry: runtimeObjectRegistry,
+      playerCellId: playerPose.cellId,
+      playerPoint: playerPose.position,
+      callbacks: {
+        removeMeasuredGeodesicLength: removeMeasuredGeodesicLengthRuntime,
+        syncMeasuredGeodesicLength: syncMeasuredGeodesicLengthRuntime,
+        removeProtractorAngle: removeProtractorAngleRuntime,
+        syncProtractorAngle: syncProtractorAngleRuntime,
+      },
+    });
+  }
+
+  function clearGeometryToolStateAfterCommit(): void {
+    activeGeodesicCannonToolState = {};
+    activeProtractorToolState = {};
+    clearCarriedGeodesicCannonGlow();
+    clearProtractorToolFeedback();
+    syncDesktopPalette();
+  }
+
+  function installGeometryDebugHelpersIfAvailable(): void {
+    if (geometrySession.state.current.kind !== "torus-skew" && debugLevel === "off") {
+      uninstallGeometryDebugHelpers();
+      return;
+    }
+
+    const helpers: GeometryDebugHelpers = {
+      SetTorusSkew(skewXMeters) {
+        const current = geometrySession.state.current;
+        if (current.kind !== "torus-skew") {
+          throw new Error("Torus skew is not available for the active world.");
+        }
+
+        geometrySession.setTarget({
+          ...current,
+          skewXMeters,
+        });
+      },
+      StepTorusSkew(deltaXMeters) {
+        const state = geometrySession.state;
+        const base = state.target.kind === "torus-skew"
+          ? state.target
+          : state.current.kind === "torus-skew"
+            ? state.current
+            : undefined;
+        if (!base) {
+          throw new Error("Torus skew is not available for the active world.");
+        }
+
+        geometrySession.setTarget({
+          ...base,
+          skewXMeters: base.skewXMeters + deltaXMeters,
+        });
+      },
+      Cancel() {
+        geometrySession.cancel();
+      },
+      get state() {
+        return geometrySession.state;
+      },
+    };
+
+    (window as WindowWithGeometryDebugHelpers).noneuclidGeometry = helpers;
+  }
+
   function applyMenuDebugState(nextMenuState: typeof menuState): void {
     menuState = nextMenuState;
     syncDebugSettingsUrl();
@@ -975,7 +1266,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       "portal-path-overlay-instances",
     );
     installRuntimeDiagnostics(
-      appState.world,
+      activeWorld(),
       settings.debugLevel,
       hasActiveDebugOption(settings.debugLevel, settings.debugOptions, "runtime-diagnostics"),
     );
@@ -990,6 +1281,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       dumpGeodesicPath: dumpGeodesicPath,
       dumpLockedGeodesicWords: dumpLockedGeodesicWords,
     });
+    installGeometryDebugHelpersIfAvailable();
     for (const runtime of dynamicObjectRuntimes) {
       runtime.syncParent(cellMeshes);
     }
@@ -1003,7 +1295,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function dumpGeodesicCreatures(): GeodesicCreatureDebugDump {
     const dump = collectGeodesicCreatureDebugDump({
-      world: appState.world,
+      world: activeWorld(),
       runtimes: dynamicObjectRuntimes,
       registry: runtimeObjectRegistry,
       cellRoots: cellMeshes,
@@ -1033,7 +1325,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     const segments = getGeodesicSegments(runtimeObjectRegistry, geodesicId);
-    const word = collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId);
+    const word = collectGeodesicPortalWord(activeWorld(), runtimeObjectRegistry, geodesicId);
     const carrySessionWord = activeGeodesicCannonToolState.carryPortalWordsByGeodesicId?.[geodesicId] ??
       (activeGeodesicCannonToolState.activeGeodesicId === geodesicId
         ? activeGeodesicCannonToolState.carryPortalWord
@@ -1090,7 +1382,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function createGeodesicWordDebugDump(geodesicId: string): GeodesicWordDebugDump {
     const segments = getGeodesicSegments(runtimeObjectRegistry, geodesicId);
-    const word = collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId);
+    const word = collectGeodesicPortalWord(activeWorld(), runtimeObjectRegistry, geodesicId);
     const start = segments[0]?.start;
     return {
       geodesicId,
@@ -1178,7 +1470,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     geodesicCreatureDebugElapsedSeconds = 0;
     const dump = collectGeodesicCreatureDebugDump({
-      world: appState.world,
+      world: activeWorld(),
       runtimes: dynamicObjectRuntimes,
       registry: runtimeObjectRegistry,
       cellRoots: cellMeshes,
@@ -1306,6 +1598,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       runtimeObjectRenderRoot.removeFromParent();
       portalDebugRuntime.dispose();
       uninstallGeneralDebugHelpers();
+      uninstallGeometryDebugHelpers();
+      geometrySession.dispose();
       debugOverlay.dispose();
       xrEntryUi.dispose();
       clipPolygonOverlay.dispose();
@@ -1553,7 +1847,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return undefined;
     }
 
-    const portal = appState.world.cellsById.get(previousCellId)?.portalsById.get(moveResult.crossedPortalId);
+    const portal = activeWorld().cellsById.get(previousCellId)?.portalsById.get(moveResult.crossedPortalId);
     if (!portal || portal.targetCellId !== moveResult.pose.cellId) {
       return undefined;
     }
@@ -1633,7 +1927,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       "forbidden-zone-wireframes",
     );
 
-    for (const cell of appState.world.cells) {
+    for (const cell of activeWorld().cells) {
       const cellMesh = new THREE.Group();
       cellMesh.name = `cell-root:${cell.id}`;
       cellMesh.visible = cell.id === currentlyVisibleCellId;
@@ -1644,12 +1938,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       scene.add(cellMesh);
     }
 
-    cellRenderArchetypes = buildCellRenderArchetypes(appState.world, {
+    cellRenderArchetypes = buildCellRenderArchetypes(activeWorld(), {
       debugLevel,
       portalPanelMode,
       eyeHeightMeters: DEFAULT_PLAYER_EYE_HEIGHT_METERS,
       assets: options.assets,
-      capacitiesByCellId: archetypeCapacitiesByCellId,
+      capacitiesByCellId: activeWorldBundle.archetypeCapacitiesByCellId,
       portalClipMaterialState,
       showForbiddenZoneWireframes: false,
     });
@@ -1681,7 +1975,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function resolvePortalEyeRenderRoot(cullingCamera: THREE.Camera): XrPortalEyeRenderRoot {
     return resolveXrPortalEyeRenderRoot({
-      world: appState.world,
+      world: activeWorld(),
       sourceCellId: playerPose.cellId,
       camera: cullingCamera,
     });
@@ -1702,7 +1996,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalClipMaterialState,
       getPortalViewportPixels(renderer),
     );
-    const table = portalStaticCull.tables.tablesByRootCellId.get(renderRoot.rootCellId);
+    const table = activeStaticCull().tables.tablesByRootCellId.get(renderRoot.rootCellId);
 
     if (!table) {
       latestVisibleResult = undefined;
@@ -1722,7 +2016,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     const computed = computeVisiblePortalPaths({
-      world: appState.world,
+      world: activeWorld(),
       rootCellId: renderRoot.rootCellId,
       pathTable: table,
       camera: renderRoot.camera,
@@ -1736,7 +2030,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       },
     });
     const renderedComputed = transformVisiblePortalResultToRenderFrame(computed, renderRoot.renderFromRootMatrix);
-    const summary = mergeStaticPathCounts(renderedComputed.summary, portalStaticCull, renderRoot.rootCellId);
+    const summary = mergeStaticPathCounts(renderedComputed.summary, activeStaticCull(), renderRoot.rootCellId);
     latestVisibleResult = {
       ...renderedComputed,
       summary,
@@ -1756,7 +2050,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       getPortalViewportPixels(renderer),
     );
     const hasTables = renderRoots.every((renderRoot) =>
-      portalStaticCull.tables.tablesByRootCellId.has(renderRoot.rootCellId)
+      activeStaticCull().tables.tablesByRootCellId.has(renderRoot.rootCellId)
     );
 
     if (!hasTables) {
@@ -1784,9 +2078,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       : undefined;
     const computedEyeStates = sharedRootCellId
       ? computeIndependentVisiblePortalPaths({
-          world: appState.world,
+          world: activeWorld(),
           rootCellId: sharedRootCellId,
-          pathTable: portalStaticCull.tables.tablesByRootCellId.get(sharedRootCellId)!,
+          pathTable: activeStaticCull().tables.tablesByRootCellId.get(sharedRootCellId)!,
           cameras: renderRoots.map((renderRoot) => renderRoot.camera),
           viewportPixels: getPortalViewportPixels(renderer),
           options: {
@@ -1806,14 +2100,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             rootCellId: renderRoot.rootCellId,
             result: {
               ...renderedComputed,
-              summary: mergeStaticPathCounts(renderedComputed.summary, portalStaticCull, renderRoot.rootCellId),
+              summary: mergeStaticPathCounts(renderedComputed.summary, activeStaticCull(), renderRoot.rootCellId),
             },
           };
         })
       : renderRoots.map((renderRoot, eyeIndex) => {
-        const table = portalStaticCull.tables.tablesByRootCellId.get(renderRoot.rootCellId)!;
+        const table = activeStaticCull().tables.tablesByRootCellId.get(renderRoot.rootCellId)!;
         const computed = computeVisiblePortalPaths({
-        world: appState.world,
+        world: activeWorld(),
         rootCellId: renderRoot.rootCellId,
         pathTable: table,
         camera: renderRoot.camera,
@@ -1834,7 +2128,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         rootCellId: renderRoot.rootCellId,
         result: {
           ...renderedComputed,
-          summary: mergeStaticPathCounts(renderedComputed.summary, portalStaticCull, renderRoot.rootCellId),
+          summary: mergeStaticPathCounts(renderedComputed.summary, activeStaticCull(), renderRoot.rootCellId),
         },
       };
       });
@@ -1895,7 +2189,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       portalClipData.update(visiblePaths);
     }
     const visiblePathsByDestinationCell = buildVisiblePathsByDestinationCell(
-      portalStaticCull.tables.tablesByRootCellId.get(rootCellId)?.pathsByDestinationCellId ?? new Map(),
+      activeStaticCull().tables.tablesByRootCellId.get(rootCellId)?.pathsByDestinationCellId ?? new Map(),
       visiblePathById,
     );
     updatePortalVisiblePathInstances(visiblePathsByDestinationCell);
@@ -1930,7 +2224,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     normalVisiblePathRenderingActive: boolean,
   ): PortalInstanceRenderDebugState {
     const visiblePathsByDestinationCell = buildVisiblePathsByDestinationCell(
-      portalStaticCull.tables.tablesByRootCellId.get(rootCellId)?.pathsByDestinationCellId ?? new Map(),
+      activeStaticCull().tables.tablesByRootCellId.get(rootCellId)?.pathsByDestinationCellId ?? new Map(),
       result.visiblePathById,
     );
 
@@ -2197,7 +2491,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
 
       return flattenVisiblePortalPathGroups(buildVisiblePathsByDestinationCell(
-        portalStaticCull.tables.tablesByRootCellId.get(playerPose.cellId)?.pathsByDestinationCellId ?? new Map(),
+        activeStaticCull().tables.tablesByRootCellId.get(playerPose.cellId)?.pathsByDestinationCellId ?? new Map(),
         latestVisibleResult.visiblePathById,
       ));
     }
@@ -2223,7 +2517,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       console.info(`Portal path debug is building contextually culled path tables to depth ${rootRenderPathMaxDepth}.`);
     }
     const staticCull = staticCullDebugActive
-      ? buildStaticallyCulledPortalPathTables(appState.world, {
+      ? buildStaticallyCulledPortalPathTables(activeWorld(), {
           maxDepth: rootRenderPathMaxDepth,
           skipImmediateReverse: true,
           toleranceMeters: 1e-6,
@@ -2249,7 +2543,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             );
           },
         })
-      : portalStaticCull;
+      : activeStaticCull();
     const candidateTables = staticCull.tables;
     const overlays: THREE.Object3D[] = [];
     let activeOverlayPathText: string | undefined;
@@ -2269,7 +2563,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const checkPath = (pathText: string): PortalPathCheckResultWithVisibility => {
       const check = checkPortalPathString(pathText, {
-        world: appState.world,
+        world: activeWorld(),
         rootCellId: playerPose.cellId,
         candidateTables,
         keptTables: staticCull.tables,
@@ -2343,7 +2637,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         removeActivePathTraceOverlay();
         const table = staticCull.tables.tablesByRootCellId.get(playerPose.cellId);
         const path = table?.pathsById.get(check.matchedPathId);
-        const destinationCell = check.destinationCellId ? appState.world.cellsById.get(check.destinationCellId) : undefined;
+        const destinationCell = check.destinationCellId ? activeWorld().cellsById.get(check.destinationCellId) : undefined;
 
         if (!path || !destinationCell) {
           return {
@@ -2388,7 +2682,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           objectCount = 1;
         }
 
-        activePathTraceOverlay = createPathTraceOverlay(appState.world, path);
+        activePathTraceOverlay = createPathTraceOverlay(activeWorld(), path);
         scene.add(activePathTraceOverlay);
         activeOverlayPathText = pathText;
         activeOverlayPathCheck = check;
@@ -2508,6 +2802,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           portalEyes: showPortalQuantities ? createPortalEyeDebugStates() : undefined,
           portalInstances: showPortalQuantities ? portalInstanceRenderState : undefined,
           location: showLocation ? xrDebugState : undefined,
+          geometry: showLocation ? geometrySession.state : undefined,
           inspectedPathLine: showPortalQuantities
             ? formatInspectedPathLine(activeOverlayPathText, activeOverlayPathCheck, latestVisibleResult)
             : undefined,
@@ -2896,7 +3191,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     const result = placeFlagAtFloorPoint({
-      world: appState.world,
+      world: activeWorld(),
       registry: runtimeObjectRegistry,
       cellId: target.cellId,
       eyePosition: target.localEyePosition,
@@ -2937,7 +3232,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
       const aimYawRadians = Math.atan2(horizontalForward.y, horizontalForward.x);
       const result = placeGeodesicCannonAtGeodesicVertex({
-        world: appState.world,
+        world: activeWorld(),
         registry: runtimeObjectRegistry,
         cellId: target.object.cellId,
         vertexPoint: target.object.aimStickyTarget?.localPoint ?? target.localPoint,
@@ -2975,7 +3270,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       const distanceAlongSegmentMeters = target.geodesicSegmentDistanceMeters ??
         getDistanceAlongGeodesicSegment(target.object, target.localPoint);
       const result = placeGeodesicCannonOnGeodesic({
-        world: appState.world,
+        world: activeWorld(),
         registry: runtimeObjectRegistry,
         geodesicId: target.object.geodesicId,
         segmentId: target.object.id,
@@ -3014,7 +3309,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     const aimYawRadians = Math.atan2(horizontalForward.y, horizontalForward.x);
     const result = placeGeodesicCannonAtFloorPoint({
-      world: appState.world,
+      world: activeWorld(),
       registry: runtimeObjectRegistry,
       cellId: target.cellId,
       floorPoint: target.localPoint,
@@ -3027,7 +3322,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const geodesicId = `geodesic:${Date.now()}:${geodesicIdCounter++}`;
     shootGeodesic({
-      world: appState.world,
+      world: activeWorld(),
       registry: runtimeObjectRegistry,
       cannon: result.object,
       geodesicId,
@@ -3098,7 +3393,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const geodesicId = target.object.geodesicId;
 
     const segment = extendGeodesic({
-      world: appState.world,
+      world: activeWorld(),
       registry: runtimeObjectRegistry,
       geodesicId,
     });
@@ -3143,12 +3438,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function resetPlayerToHome(): void {
-    playerPose = {
-      cellId: appState.playerPose.cellId,
-      position: appState.playerPose.position,
-      yawRadians: appState.playerPose.yawRadians,
-      pitchRadians: appState.playerPose.pitchRadians,
-    };
+    const startingPosition = activeWorld().startingPosition;
+    const fallbackCell = activeWorld().cells[0];
+    playerPose = startingPosition
+      ? {
+          cellId: startingPosition.cellId,
+          position: startingPosition.position,
+          yawRadians: startingPosition.yawRadians ?? 0,
+          pitchRadians: startingPosition.pitchRadians ?? 0,
+        }
+      : {
+          ...appState.playerPose,
+          cellId: fallbackCell?.id ?? appState.playerPose.cellId,
+        };
     xrRig.reset();
   }
 
@@ -3347,7 +3649,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       localPose: yawRigidTransform3(aimYawRadians, cannon.localPose.translation),
     };
     const segment = shootGeodesic({
-      world: appState.world,
+      world: activeWorld(),
       registry: runtimeObjectRegistry,
       cannon: cannonForNewGeodesic,
       geodesicId,
@@ -3471,7 +3773,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const carryPortalWordsByGeodesicId = Object.fromEntries(
       lockedIncidentGeodesicIds.map((incidentGeodesicId) => [
         incidentGeodesicId,
-        collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, incidentGeodesicId),
+        collectGeodesicPortalWord(activeWorld(), runtimeObjectRegistry, incidentGeodesicId),
       ]),
     );
     activeGeodesicCannonToolState = {
@@ -3480,7 +3782,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       carryPortalWordsByGeodesicId,
       carryPortalWord: geodesicId
         ? carryPortalWordsByGeodesicId[geodesicId] ??
-          collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId)
+          collectGeodesicPortalWord(activeWorld(), runtimeObjectRegistry, geodesicId)
         : undefined,
     };
     geodesicCannonRotationTargetLengthMeters = geodesicId
@@ -3639,7 +3941,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncTieAndDetachSelectionHighlights([]);
     const geodesicId = `geodesic:${Date.now()}:${geodesicIdCounter++}`;
     const segments = tieAndDetachIncidentGeodesics({
-      world: appState.world,
+      world: activeWorld(),
       registry: runtimeObjectRegistry,
       emitterId: cannonId,
       geodesicId,
@@ -3774,7 +4076,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             ? activeGeodesicCannonToolState.carryPortalWord
             : undefined);
         rebuildConnectedGeodesicBetweenEmitters({
-          world: appState.world,
+          world: activeWorld(),
           registry: runtimeObjectRegistry,
           geodesicId: incidentGeodesicId,
           carriedEmitterId: cannon.id,
@@ -3788,7 +4090,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else if (geodesicId && isGeodesicLocked(runtimeObjectRegistry, geodesicId)) {
       updateCarriedGeodesicPortalWord(cannon, previousCannon, geodesicId);
       rebuildConnectedGeodesicBetweenEmitters({
-        world: appState.world,
+        world: activeWorld(),
         registry: runtimeObjectRegistry,
         geodesicId,
         carriedEmitterId: cannon.id,
@@ -3828,7 +4130,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       (activeGeodesicCannonToolState.activeGeodesicId === geodesicId
         ? activeGeodesicCannonToolState.carryPortalWord
         : undefined) ??
-      collectGeodesicPortalWord(appState.world, runtimeObjectRegistry, geodesicId);
+      collectGeodesicPortalWord(activeWorld(), runtimeObjectRegistry, geodesicId);
     let nextWord: readonly GeodesicPortalTraversal[] | undefined;
     if (connection?.incomingEmitterId === cannon.id) {
       nextWord = [...currentWord, transition];
@@ -3904,7 +4206,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function carriedGeodesicCannonTouchesForbiddenZone(
     cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
   ): boolean {
-    const cell = appState.world.cellsById.get(cannon.cellId);
+    const cell = activeWorld().cellsById.get(cannon.cellId);
     if (!cell) {
       return false;
     }
@@ -4196,7 +4498,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     const totalLengthMeters = geodesicCannonRotationTargetLengthMeters ?? getGeodesicTotalLengthMeters(geodesicId);
     rebuildGeodesicToLength({
-      world: appState.world,
+      world: activeWorld(),
       registry: runtimeObjectRegistry,
       cannon,
       geodesicId,
@@ -4481,7 +4783,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const aimCamera = syncAimRayCamera(ray);
 
     return resolveAimTargets({
-      world: appState.world,
+      world: activeWorld(),
       registry: runtimeObjectRegistry,
       camera: aimCamera,
       visiblePortalPaths: getRuntimeObjectVisiblePaths(),
@@ -4882,7 +5184,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    for (const cell of appState.world.cells) {
+    for (const cell of activeWorld().cells) {
       const cellRoot = cellMeshes.get(cell.id);
       if (!cellRoot) {
         continue;
@@ -4917,7 +5219,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return;
     }
 
-    for (const cell of appState.world.cells) {
+    for (const cell of activeWorld().cells) {
       const cellRoot = cellMeshes.get(cell.id);
       if (!cellRoot) {
         continue;
@@ -5167,6 +5469,17 @@ type WindowWithGeneralDebugHelpers = typeof window & {
   noneuclidDebug?: GeneralDebugHelpers;
 };
 
+interface GeometryDebugHelpers {
+  SetTorusSkew(skewXMeters: number): void;
+  StepTorusSkew(deltaXMeters: number): void;
+  Cancel(): void;
+  readonly state: LiveGeometryDebugState;
+}
+
+type WindowWithGeometryDebugHelpers = typeof window & {
+  noneuclidGeometry?: GeometryDebugHelpers;
+};
+
 type PortalPathCheckResultWithVisibility = ReturnType<typeof checkPortalPathString> & VisiblePortalPathLookupResult;
 
 interface CameraPoseDebugDump {
@@ -5273,6 +5586,10 @@ function uninstallGeneralDebugHelpers(): void {
   delete target.dump_geodesic_path;
   delete target.dump_locked_geodesic_words;
   delete target.noneuclidDebug;
+}
+
+function uninstallGeometryDebugHelpers(): void {
+  delete (window as WindowWithGeometryDebugHelpers).noneuclidGeometry;
 }
 
 function liveVisibilityFields(
@@ -6121,6 +6438,10 @@ function distanceSquared(left: Vec3, right: Vec3): number {
   const dy = left.y - right.y;
   const dz = left.z - right.z;
   return dx * dx + dy * dy + dz * dz;
+}
+
+function yawFromPose(pose: { readonly rotation: { readonly m00: number; readonly m10: number } }): number {
+  return Math.atan2(pose.rotation.m10, pose.rotation.m00);
 }
 
 function createInitialXrDebugState(xrSessionState: XrSessionState, playerPose: PlayerPose): XrDebugRenderState {

@@ -45,7 +45,7 @@ describe("debug collision wireframes", () => {
 
   it("builds collision wireframes for static collidable assets such as the cube house", () => {
     const front = cube.cells.find((cell) => cell.id === "front");
-    const house = front?.visuals?.objects?.find((object) => object.id === "front-house");
+    const house = front?.visuals?.objects?.find((object) => object.kind === "asset" && object.collision);
 
     expect(house?.kind).toBe("asset");
     if (!front || !house || house.kind !== "asset") {
@@ -54,7 +54,7 @@ describe("debug collision wireframes", () => {
 
     const runtimeHouse = createRuntimeStaticAssetObject(house, front.id);
     const group = buildStaticObjectCollisionWireframeGroup(front.id, [runtimeHouse]);
-    const wireframe = group?.getObjectByName("object-collision-wireframe:front-house");
+    const wireframe = group?.getObjectByName(`object-collision-wireframe:${house.id}`);
     const expectedBounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(runtimeHouse));
 
     expect(group?.name).toBe("static-object-collision-wireframes:front");

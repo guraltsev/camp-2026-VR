@@ -40,6 +40,7 @@ async function startApp(container: HTMLDivElement): Promise<void> {
     await loadingStatus.track("Preparing renderer", () =>
       createThreeApp(container, appState, {
         selectedWorldId: launchOptions.selectedWorldId,
+        worldSpec: geometrySpec,
         debugLevel: launchOptions.debugLevel,
         portalPanelMode: launchOptions.portalPanelMode,
         debugOptions: launchOptions.debugOptions,

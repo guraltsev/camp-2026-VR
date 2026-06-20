@@ -17,6 +17,7 @@ import {
 } from "../render/three/debugCollisionWireframes";
 import type { PreparedWorldAssets } from "../render/three/preloadWorldAssets";
 import { applyWorldRigidTransform } from "../render/three/worldAxes";
+import { transformPoseWithCellMaps, type CellDeformationMap } from "../runtime/worldGeometryDeformations";
 import { degreesToRadians } from "./staticAssets";
 import type { RuntimeObjectRegistry } from "./runtimeObjectRegistry";
 import { runtimeObjectToDynamicObjectState, type RuntimeCreatureObject } from "./runtimeObjectRegistry";
@@ -53,6 +54,7 @@ export interface SimpleGeoCreatureRuntime {
   update(world: CompiledCellComplex, deltaSeconds: number, obstacles?: readonly DynamicObjectState[]): void;
   syncParent(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
   setCollisionWireframeVisible(visible: boolean): void;
+  transformGeometry(mapByCellId: ReadonlyMap<string, CellDeformationMap>): void;
   reset(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
 }
 
@@ -149,7 +151,7 @@ export function createSimpleGeoCreatureRuntime(
   root.add(prepared.scene);
   const initialObject = createRuntimeCreatureObject(objectSpec, startCellId);
   registry?.add(initialObject);
-  const initialState = runtimeObjectToDynamicObjectState(initialObject);
+  let initialState = runtimeObjectToDynamicObjectState(initialObject);
   let state = initialState;
   const collisionWireframe = buildObjectCollisionWireframe(objectSpec.id, state);
   collisionWireframe.visible = false;
@@ -211,6 +213,27 @@ export function createSimpleGeoCreatureRuntime(
     },
     setCollisionWireframeVisible(visible) {
       collisionWireframe.visible = visible;
+    },
+    transformGeometry(mapByCellId) {
+      const transformedState = transformPoseWithCellMaps(state, mapByCellId);
+      const transformedInitialState = transformPoseWithCellMaps(initialState, mapByCellId);
+      if (!transformedState || !transformedInitialState) {
+        return;
+      }
+
+      state = {
+        ...state,
+        cellId: transformedState.cellId,
+        localPose: transformedState.localPose,
+      };
+      initialState = {
+        ...initialState,
+        cellId: transformedInitialState.cellId,
+        localPose: transformedInitialState.localPose,
+      };
+      syncRegistryObject(registry, objectSpec.id, state);
+      applyObjectPose(root, state.localPose);
+      updateObjectCollisionWireframe(collisionWireframe, state);
     },
     reset(cellRoots) {
       elapsedSeconds = 0;
