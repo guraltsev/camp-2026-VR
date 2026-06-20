@@ -118,6 +118,7 @@ function withMeasuredGeodesicLengthTooltip(
   const label = formatMeasuredGeodesicLengthLabel(object, object.lengthMeters);
   return {
     ...object,
+    displayHelpMessage: "A persistent length result attached to a geodesic. Use the primary action to remove it.",
     tooltip: {
       label,
       rangeMeters: 3,

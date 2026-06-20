@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { HelpLensDefinition } from "../../ui/helpLensDefinition";
+import type { HelpLensDefinition, HelpLensRow } from "../../ui/helpLensDefinition";
 
 export interface HelpLensRenderer {
   update(options: {
@@ -62,15 +62,82 @@ function syncDomPanel(root: HTMLDivElement, definition: HelpLensDefinition): voi
   title.textContent = definition.title;
   const body = document.createElement("div");
   body.className = "help-lens-body";
-  body.textContent = definition.body;
+  appendTextWithMouseIcons(body, definition.body);
   const rows = document.createElement("div");
   rows.className = "help-lens-rows";
-  for (const rowText of definition.rows) {
+  for (const rowDefinition of definition.rows) {
     const row = document.createElement("div");
-    row.textContent = rowText;
+    row.className = "help-lens-row";
+    row.append(createHintNode(rowDefinition), document.createTextNode(rowDefinition.label));
     rows.append(row);
   }
   root.append(title, body, rows);
+}
+
+function createHintNode(row: HelpLensRow): HTMLElement {
+  const hint = document.createElement("span");
+  hint.className = "input-hint";
+  hint.setAttribute("aria-label", row.hint.label);
+  if (row.hint.iconSrc) {
+    const icon = document.createElement("img");
+    icon.className = "input-hint-icon";
+    icon.src = row.hint.iconSrc;
+    icon.alt = row.hint.label;
+    if (row.hint.mode === "desktop" && (row.hint.intent === "primary" || row.hint.intent === "context-menu")) {
+      icon.classList.add("input-hint-icon-inverted");
+    }
+    hint.append(icon);
+    return hint;
+  }
+
+  hint.classList.add("input-hint-text");
+  hint.textContent = row.hint.label;
+  return hint;
+}
+
+function appendTextWithMouseIcons(parent: HTMLElement, text: string): void {
+  const pattern = /(Left click|Right click|\b[FBHY]\b)/g;
+  let index = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+    if (match.index > index) {
+      parent.append(document.createTextNode(text.slice(index, match.index)));
+    }
+    parent.append(createInlineHintIcon(match[0]));
+    index = match.index + match[0].length;
+  }
+  if (index < text.length) {
+    parent.append(document.createTextNode(text.slice(index)));
+  }
+}
+
+function createInlineHintIcon(label: string): HTMLImageElement {
+  const icon = document.createElement("img");
+  icon.className = "input-hint-icon input-hint-icon-inline input-hint-icon-inverted";
+  icon.src = inlineIconSrcByLabel(label);
+  icon.alt = label;
+  return icon;
+}
+
+function inlineIconSrcByLabel(label: string): string {
+  switch (label) {
+    case "Left click":
+      return "/assets/icons/left-click-icon.png";
+    case "Right click":
+      return "/assets/icons/right-click-icon.png";
+    case "F":
+      return "/assets/icons/f-alphabet-round-icon.png";
+    case "B":
+      return "/assets/icons/b-alphabet-round-icon.png";
+    case "H":
+      return "/assets/icons/h-alphabet-round-icon.png";
+    case "Y":
+      return "/assets/icons/y-alphabet-round-icon.png";
+  }
+
+  return "";
 }
 
 function syncXrPanel(
@@ -122,7 +189,7 @@ function createXrHelpPanel(definition: HelpLensDefinition): THREE.Object3D {
   context.font = "bold 26px sans-serif";
   let rowY = 220;
   for (const row of definition.rows.slice(0, 3)) {
-    context.fillText(row, 84, rowY, 600);
+    context.fillText(`${row.hint.label}: ${row.label}`, 84, rowY, 600);
     rowY += 38;
   }
 
@@ -224,4 +291,3 @@ function disposeMaterial(material: THREE.Material | THREE.Material[]): void {
   }
   material.dispose();
 }
-

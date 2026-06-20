@@ -45,6 +45,7 @@ export interface SimpleGeoCreatureAuthoringParams {
   readonly do_not_collide_with?: readonly string[];
   /** Camel-case alias accepted for TypeScript callers. Serialized specs use do_not_collide_with. */
   readonly doNotCollideWith?: readonly string[];
+  readonly displayHelpMessage?: string;
 }
 
 export interface SimpleGeoCreatureRuntime {
@@ -119,6 +120,7 @@ export function createSimpleGeoCreature(
     collision: params.collision ?? defaultCreatureCollision(kind, authorScale),
     class: params.class ?? "creature",
     do_not_collide_with: params.do_not_collide_with ?? params.doNotCollideWith,
+    displayHelpMessage: params.displayHelpMessage,
   };
 }
 
@@ -276,6 +278,7 @@ function createRuntimeCreatureObject(objectSpec: SimpleGeoCreatureObjectSpec, ce
     class: objectSpec.class,
     do_not_collide_with: objectSpec.do_not_collide_with,
     portalRenderable: true,
+    displayHelpMessage: objectSpec.displayHelpMessage ?? "A moving creature that follows the geometry of this world.",
     tooltip: {
       label: objectSpec.kind === "geo-mouse" ? "geodesic mouse" : "geodesic butterfly",
       rangeMeters: 2.25,

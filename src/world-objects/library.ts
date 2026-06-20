@@ -43,9 +43,11 @@ interface StaticLibraryDefinition {
   readonly modelOffset?: (authorScale: number) => readonly [number, number, number];
   readonly collision?: (authorScale: number) => SimpleCollisionCylinderSpec;
   readonly do_not_collide_with?: readonly string[];
+  readonly displayHelpMessage?: string;
 }
 
 const smallHouseAssetScale = 2.5;
+const questionCubeAssetScale = 4;
 const smallHouseFootprintCenter = {
   // Center of public/assets/small_house/small_house.glb in authoring world axes,
   // measured from the asset bounds after the library's base model scale.
@@ -57,6 +59,7 @@ const staticLibraryDefinitions = {
   small_house: {
     assetPath: "small_house/small_house.glb",
     class: "house",
+    displayHelpMessage: "A static landmark. Use nearby landmarks to keep track of where you are in the world.",
     visualScale: smallHouseAssetScale,
     modelOffset: (scale) => [0, scale * smallHouseAssetScale * 0.5, 0],
     collision: (scale) => ({
@@ -72,6 +75,7 @@ const staticLibraryDefinitions = {
   tree: {
     assetPath: "Tree1/Tree.glb",
     class: "tree",
+    displayHelpMessage: "A static tree. It marks the local shape of this face and blocks movement at its trunk.",
     visualScaleXYZ: treeScaleXYZ,
     collision: (scale) => ({
       radius: scale * 0.42,
@@ -82,6 +86,7 @@ const staticLibraryDefinitions = {
   tree_swirl: {
     assetPath: "TreeSwirl/tree_swirl.glb",
     class: "tree",
+    displayHelpMessage: "A static tree. It marks the local shape of this face and blocks movement at its trunk.",
     visualScaleXYZ: treeScaleXYZ,
     collision: (scale) => ({
       radius: scale * 0.48,
@@ -97,6 +102,7 @@ const staticLibraryDefinitions = {
   bench: {
     assetPath: "Bench/Bench.glb",
     class: "bench",
+    displayHelpMessage: "A static bench. It is a landmark and collision object in this cell.",
     visualScale: 0.9,
     modelOffset: (scale) => [0, scale * 0.9 * 0.45, 0],
     collision: (scale) => ({
@@ -108,6 +114,7 @@ const staticLibraryDefinitions = {
   bicycle: {
     assetPath: "bicycle/Bicycle.glb",
     class: "bicycle",
+    displayHelpMessage: "A static bicycle. It is a landmark and collision object in this cell.",
     visualScale: 0.9,
     collision: (scale) => ({
       radius: scale * 0.85,
@@ -124,6 +131,7 @@ const staticLibraryDefinitions = {
   flower_pot: {
     assetPath: "flowerPot/flower_pot.glb",
     class: "decoration",
+    displayHelpMessage: "A small decorative object. It can help you recognize this part of the world.",
     visualScale: 0.75,
     collision: (scale) => ({
       radius: scale * 0.28,
@@ -134,6 +142,7 @@ const staticLibraryDefinitions = {
   stop_sign: {
     assetPath: "stopsign/stop_sign.glb",
     class: "sign",
+    displayHelpMessage: "A static sign. Use it as a landmark while exploring portal connections.",
     visualScale: 0.03,
     collision: (scale) => ({
       radius: scale * 0.32,
@@ -144,11 +153,24 @@ const staticLibraryDefinitions = {
   traffic_cone: {
     assetPath: "trafficCone/Cone.glb",
     class: "cone",
+    displayHelpMessage: "A static traffic cone. It marks this spot and blocks movement.",
     visualScale: 0.75,
     collision: (scale) => ({
       radius: scale * 0.32,
       height: scale * 0.75,
       offset: { x: 0, y: 0, z: scale * 0.375 },
+    }),
+  },
+  question_cube: {
+    assetPath: "questionblock/questionBlock.glb",
+    class: "question-cube",
+    displayHelpMessage: "A help cube. Aim at it to see a short tutorial prompt.",
+    visualScale: questionCubeAssetScale,
+    modelOffset: (scale) => [0, scale * questionCubeAssetScale * 0.13, 0],
+    collision: (scale) => ({
+      radius: scale * 0.55,
+      height: scale * 1.1,
+      offset: { x: 0, y: 0, z: scale * 0.55 },
     }),
   },
   clock: {
@@ -159,6 +181,7 @@ const staticLibraryDefinitions = {
   campfire: {
     assetPath: "_legacy/low_poly_campfire/scene.gltf",
     class: "decoration",
+    displayHelpMessage: "A static campfire landmark.",
     collision: (scale) => ({
       radius: scale * 0.55,
       height: scale * 0.45,
@@ -168,6 +191,7 @@ const staticLibraryDefinitions = {
   rocks: {
     assetPath: "_legacy/low_poly_rocks/scene.gltf",
     class: "decoration",
+    displayHelpMessage: "Static rocks. They are landmarks and collision objects in this cell.",
     collision: (scale) => ({
       radius: scale * 0.45,
       height: scale * 0.35,
@@ -177,6 +201,7 @@ const staticLibraryDefinitions = {
   emergency_button: {
     assetPath: "_legacy/low_poly_emergency_button/scene.gltf",
     class: "interactive",
+    displayHelpMessage: "A static button-like object. Use it as an exploration landmark.",
     collision: (scale) => ({
       radius: scale * 0.25,
       height: scale * 0.25,
@@ -186,6 +211,7 @@ const staticLibraryDefinitions = {
   computer_large: {
     assetPath: "computerlarge/ComputerLarge.glb",
     class: "geometry-computer",
+    displayHelpMessage: "Use this computer to change the torus skew when the current world supports live geometry changes.",
     visualScale: 0.9,
     modelOffset: (scale) => [0, 0, scale * 0.05],
     collision: (scale) => ({
@@ -203,6 +229,7 @@ export interface GeodesicMarmotAuthoringParams {
   readonly class?: string;
   readonly do_not_collide_with?: readonly string[];
   readonly doNotCollideWith?: readonly string[];
+  readonly displayHelpMessage?: string;
 }
 
 export type WorldLibraryObjectSpec = CellObjectSpec & {
@@ -224,6 +251,7 @@ export interface WorldObjectLibrary {
   readonly flower_pot: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   readonly stop_sign: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   readonly traffic_cone: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
+  readonly question_cube: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   /**
    * Autonomous creature objects. Authors may set speed, oscillationRate,
    * oscillationMagnitude, turn, scale, collision, class, and do_not_collide_with.
@@ -255,6 +283,7 @@ export const worldObjectLibrary: WorldObjectLibrary = {
   flower_pot: (name, params) => createDefinedStaticLibraryObject("flower_pot", name, params),
   stop_sign: (name, params) => createDefinedStaticLibraryObject("stop_sign", name, params),
   traffic_cone: (name, params) => createDefinedStaticLibraryObject("traffic_cone", name, params),
+  question_cube: (name, params) => createDefinedStaticLibraryObject("question_cube", name, params),
   geo_mouse: (name, params) =>
     brandLibraryObject(createSimpleGeoCreature("geo-mouse", name, "mouse/Mouse.glb", params)),
   geo_butterfly: (name, params) =>
@@ -281,6 +310,7 @@ export const worldObjectLibrary: WorldObjectLibrary = {
         scale: params.scale,
         class: params.class,
         do_not_collide_with: params.do_not_collide_with ?? params.doNotCollideWith,
+        displayHelpMessage: params.displayHelpMessage,
       }),
     ),
 };
@@ -316,6 +346,7 @@ function createDefinedStaticLibraryObject(
     collision: params.collision ?? definition.collision?.(authorScale),
     class: params.class ?? definition.class,
     do_not_collide_with: params.do_not_collide_with ?? params.doNotCollideWith ?? definition.do_not_collide_with,
+    displayHelpMessage: params.displayHelpMessage ?? definition.displayHelpMessage,
   };
 
   return createStaticLibraryObject(name, definition.assetPath, resolvedParams);

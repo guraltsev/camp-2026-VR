@@ -858,6 +858,37 @@ img.desktop-tool-tile-icon {
   display: none;
 }
 
+.input-hint {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.45em;
+  height: 1.45em;
+  vertical-align: -0.28em;
+}
+
+.input-hint-icon {
+  display: inline-block;
+  width: 1.45em;
+  height: 1.45em;
+  object-fit: contain;
+}
+
+.input-hint-icon-inline {
+  margin: 0 0.12em;
+  vertical-align: -0.32em;
+}
+
+.input-hint-icon-inverted {
+  filter: invert(1);
+}
+
+.input-hint-text {
+  padding: 0 0.35em;
+  border: 1px solid rgb(186 230 253 / 55%);
+  border-radius: 4px;
+  font: 800 0.92em/1.35 system-ui, sans-serif;
+}
+
 .help-lens {
   position: fixed;
   left: 50%;
@@ -894,6 +925,12 @@ img.desktop-tool-tile-icon {
   margin-top: 0.55rem;
   color: #bae6fd;
   font: 800 0.78rem/1.2 system-ui, sans-serif;
+}
+
+.help-lens-row {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
 }
 
 .desktop-palette-resume {

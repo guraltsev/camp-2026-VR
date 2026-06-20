@@ -112,6 +112,7 @@ export function createPlacedFlagObject(options: CreatePlacedFlagOptions): Placed
     localPose: options.localPose,
     collision: options.collision ?? defaultFlagCollision,
     portalRenderable: true,
+    displayHelpMessage: "A placed note. Open its menu to edit the text, change its color, or delete it.",
     tooltip: {
       label: "Sign",
       rangeMeters: 2.5,

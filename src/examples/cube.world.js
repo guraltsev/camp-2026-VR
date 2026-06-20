@@ -46,6 +46,13 @@ front_mouse = geo_mouse("front-runner", {
   oscillationMagnitude: 0.18,
 });
 
+start_help_cube = question_cube("start-help-question-cube", {
+  position: [-2.45, 0.05, 3.25],
+  scale: 1,
+  turn: -18,
+  displayHelpMessage: "Move with WASD or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.",
+});
+
 right_tree = tree("right-tree", {
   position: [0.8, 0, -0.5],
   turn: -20,
@@ -77,7 +84,7 @@ bottom_bicycle = bicycle("bottom-bicycle", {
   turn: 29,
 });
 
-OnFace("front", [front_mouse]);
+OnFace("front", [front_mouse, start_help_cube]);
 OnFace("right", [right_tree]);
 OnFace("back", [back_butterfly]);
 OnFace("left", [left_bench]);

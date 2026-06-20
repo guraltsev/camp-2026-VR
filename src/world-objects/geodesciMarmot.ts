@@ -30,6 +30,7 @@ export interface CreateGeodesciMarmotOptions {
   readonly scale?: number;
   readonly class?: string;
   readonly do_not_collide_with?: readonly string[];
+  readonly displayHelpMessage?: string;
 }
 
 export interface GeodesciMarmotRuntime {
@@ -59,6 +60,7 @@ export function createGeodesciMarmot(options: CreateGeodesciMarmotOptions): Geod
     },
     class: options.class ?? "creature",
     do_not_collide_with: options.do_not_collide_with,
+    displayHelpMessage: options.displayHelpMessage,
   };
 }
 
@@ -181,6 +183,7 @@ function createRuntimeCreatureObject(objectSpec: GeodesciMarmotObjectSpec, cellI
     class: objectSpec.class,
     do_not_collide_with: objectSpec.do_not_collide_with,
     portalRenderable: true,
+    displayHelpMessage: objectSpec.displayHelpMessage ?? "A moving marmot that follows geodesic paths through the world.",
     tooltip: {
       label: "geodesci marmot",
       rangeMeters: 2.25,

@@ -23,7 +23,7 @@ export function createFloatingObjectTooltip(container: HTMLElement): FloatingObj
         return;
       }
 
-      root.textContent = options.text ?? "";
+      renderTooltipText(root, options.text ?? "");
       const width = root.offsetWidth;
       const height = root.offsetHeight;
       const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
@@ -46,6 +46,62 @@ export function createFloatingObjectTooltip(container: HTMLElement): FloatingObj
       root.remove();
     },
   };
+}
+
+function renderTooltipText(root: HTMLDivElement, text: string): void {
+  root.replaceChildren();
+  const lines = text.split("\n");
+  lines.forEach((line, lineIndex) => {
+    if (lineIndex > 0) {
+      root.append(document.createElement("br"));
+    }
+    appendLineWithMouseIcons(root, line);
+  });
+}
+
+function appendLineWithMouseIcons(root: HTMLDivElement, line: string): void {
+  const pattern = /(Left click|Right click|\b[FBHY]\b)/g;
+  let index = 0;
+  for (const match of line.matchAll(pattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+    if (match.index > index) {
+      root.append(document.createTextNode(line.slice(index, match.index)));
+    }
+    root.append(createHintIcon(match[0]));
+    index = match.index + match[0].length;
+  }
+  if (index < line.length) {
+    root.append(document.createTextNode(line.slice(index)));
+  }
+}
+
+function createHintIcon(label: string): HTMLImageElement {
+  const icon = document.createElement("img");
+  icon.className = "input-hint-icon input-hint-icon-inline input-hint-icon-inverted";
+  icon.src = inlineIconSrcByLabel(label);
+  icon.alt = label;
+  return icon;
+}
+
+function inlineIconSrcByLabel(label: string): string {
+  switch (label) {
+    case "Left click":
+      return "/assets/icons/left-click-icon.png";
+    case "Right click":
+      return "/assets/icons/right-click-icon.png";
+    case "F":
+      return "/assets/icons/f-alphabet-round-icon.png";
+    case "B":
+      return "/assets/icons/b-alphabet-round-icon.png";
+    case "H":
+      return "/assets/icons/h-alphabet-round-icon.png";
+    case "Y":
+      return "/assets/icons/y-alphabet-round-icon.png";
+  }
+
+  return "";
 }
 
 function clamp(value: number, min: number, max: number): number {

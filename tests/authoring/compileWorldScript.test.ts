@@ -55,7 +55,7 @@ OnFace("triangle-room", [
     expect(spec.startingPosition?.cellId).toBe("front");
     expect(compiled.cells).toHaveLength(6);
     expect(front?.portalsById.get("side-1")?.targetCellId).toBe("right");
-    expect(front?.objects).toHaveLength(2);
+    expect(front?.objects).toHaveLength(3);
   });
 
   it("reports readable authoring errors for malformed scripts", () => {

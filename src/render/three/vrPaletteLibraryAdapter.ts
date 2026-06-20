@@ -404,7 +404,7 @@ function buildMainContent(
   });
   row.add(
     createToolTile("place-flag", "Sign", content.selectedTool, options, content.placeFlagType),
-    createToolTile("geodesic-cannon", "Ray", content.selectedTool, options),
+    createToolTile("geodesic-cannon", "Geodesic emitter", content.selectedTool, options),
     createToolTile("measure-length", "Length", content.selectedTool, options),
     createToolTile("protractor", "Protractor", content.selectedTool, options),
   );

@@ -61,11 +61,11 @@ function toolTooltip(toolId: string): string | undefined {
     case "place-flag":
       return "Place sign";
     case "geodesic-cannon":
-      return "Ray tool";
+      return "Create and terminate straight lines";
     case "measure-length":
       return "Measure length";
     case "protractor":
-      return "Protractor";
+      return "Measure angle";
     default:
       return undefined;
   }

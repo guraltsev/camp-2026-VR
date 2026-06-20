@@ -39,7 +39,7 @@ describe("compileCellComplex", () => {
     expect(compiledDodecahedron.cells.every((cell) => cell.portals.length === 5)).toBe(true);
     expect(compiledDodecahedron.cells.reduce((total, cell) => total + cell.portals.length, 0)).toBe(60);
     expect(compiledCube.cells.every((cell) => cell.sideCount === 4)).toBe(true);
-    expect(compiledCube.cellsById.get("front")?.objects).toHaveLength(2);
+    expect(compiledCube.cellsById.get("front")?.objects).toHaveLength(3);
     expect(compiledCube.cells.every((cell) => cell.objects.length >= 1)).toBe(true);
   });
 

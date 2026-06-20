@@ -15,7 +15,15 @@ describe("helpLensDefinition", () => {
 
     expect(help.title).toBe("Sign");
     expect(help.body).toContain("placed note");
-    expect(help.rows).toEqual(["Right click: Edit"]);
+    expect(help.rows).toEqual([{
+      hint: {
+        intent: "context-menu",
+        mode: "desktop",
+        label: "Right click",
+        iconSrc: "/assets/icons/right-click-icon.png",
+      },
+      label: "Edit",
+    }]);
   });
 
   it("creates selected-tool help when no object is focused", () => {
@@ -25,8 +33,24 @@ describe("helpLensDefinition", () => {
     });
 
     expect(help.title).toBe("Length tool");
-    expect(help.rows).toContain("Trigger: choose geodesic");
-    expect(help.rows).toContain("Side trigger: open choices");
+    expect(help.rows).toMatchObject([
+      { hint: { label: "Trigger" }, label: "choose geodesic" },
+      { hint: { label: "Side trigger" }, label: "open choices" },
+    ]);
+  });
+
+  it("uses an object's explicit display help message", () => {
+    const help = createHelpLensDefinition({
+      inputMode: "desktop",
+      selectedTool: "none",
+      focus: {
+        title: "Question cube",
+        displayHelpMessage: "Move with WASD and look at objects for prompts.",
+        actions: [],
+      },
+    });
+
+    expect(help.body).toBe("Move with WASD and look at objects for prompts.");
+    expect(help.rows).toEqual([]);
   });
 });
-

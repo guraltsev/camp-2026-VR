@@ -235,6 +235,7 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
     },
     collision: options.collision ?? defaultCannonCollision,
     portalRenderable: true,
+    displayHelpMessage: "Creates and edits geodesic rays. Open its menu to add, carry, rotate, aim, tie, detach, or delete rays.",
     tooltip: {
       label: "Geodesic emitter",
       rangeMeters: 2.5,
@@ -1484,6 +1485,7 @@ function createStraighteningSegment(options: {
     cellId: options.cellId,
     localPose: yawRigidTransform3(Math.atan2(direction.y, direction.x), options.start),
     portalRenderable: true,
+    displayHelpMessage: "A locally straight geodesic ray segment. Use the active tool to extend, measure, or select it.",
     tooltip: createGeodesicSegmentTooltip(options.geodesicNumber, "straightening"),
     geodesicId: options.geodesicId,
     geodesicNumber: options.geodesicNumber,
@@ -1997,6 +1999,7 @@ function createSegmentFromTrace(options: {
     cellId: options.trace.cellId,
     localPose: yawRigidTransform3(yaw, options.trace.start),
     portalRenderable: true,
+    displayHelpMessage: "A locally straight geodesic ray segment. Use the active tool to extend, measure, or select it.",
     tooltip: createGeodesicSegmentTooltip(options.geodesicNumber, connectionState),
     geodesicId: options.geodesicId,
     geodesicNumber: options.geodesicNumber,
@@ -2412,6 +2415,7 @@ function createGeodesicIntersectionObject(options: {
       localPoint: options.targetPoint,
     },
     portalRenderable: true,
+    displayHelpMessage: "A geodesic vertex. Use the protractor tool to select sides incident to this point.",
     tooltip: {
       label: "vertex",
       rangeMeters: 3,

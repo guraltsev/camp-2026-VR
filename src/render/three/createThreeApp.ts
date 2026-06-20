@@ -671,7 +671,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let carriedGeodesicCannonGlow: THREE.Mesh | undefined;
   let geodesicCreatureDebugElapsedSeconds = 0;
   let geodesicCreatureHealthyLogElapsedSeconds = geodesicCreatureHealthyLogIntervalSeconds;
-  let helpLensVisible = false;
+  let helpLensFocusedObjectId: string | undefined;
   const runtimeObjectRenderRoot = new THREE.Group();
   runtimeObjectRenderRoot.name = "runtime-object-archetype-renders";
   scene.add(runtimeObjectRenderRoot);
@@ -902,7 +902,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const activeAimRay = resolveActiveRootAimRay(xrActive, xrFrame, xrReferenceSpace);
     updateCarriedGeodesicCannonPose(xrActive, activeAimRay);
     if (frame.helpRequested && !desktopFlagEditor.isOpen()) {
-      helpLensVisible = !helpLensVisible;
+      requestHelpLensForFocusedObject(activeAimRay);
     }
     const worldPrimaryActionRequested = frame.primaryActionRequested && !menuState.isOpen && !desktopFlagEditor.isOpen();
     let primaryActionConsumed = false;
@@ -1771,9 +1771,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       if (action !== "none") {
         event.preventDefault();
         applyDesktopScenePaletteToggle(action);
-      } else if (helpLensVisible) {
+      } else if (helpLensFocusedObjectId) {
         event.preventDefault();
-        helpLensVisible = false;
+        helpLensFocusedObjectId = undefined;
       }
       return;
     }
@@ -5139,22 +5139,82 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function updateHelpLens(xrActive: boolean, activeAimRay: RootAimRay | undefined): void {
-    if (!helpLensVisible || menuState.isOpen || desktopFlagEditor.isOpen()) {
+    if (menuState.isOpen || desktopFlagEditor.isOpen()) {
       helpLensRenderer.update({ visible: false, xrActive, camera });
       return;
     }
 
     const focused = findFocusedRuntimeObject(activeAimRay);
+    if (helpLensFocusedObjectId) {
+      if (focused?.object.id !== helpLensFocusedObjectId) {
+        helpLensFocusedObjectId = undefined;
+      } else {
+        const definition = createHelpDefinitionForObject(focused.object, xrActive);
+        helpLensRenderer.update({ visible: definition !== undefined, xrActive, camera, definition });
+        return;
+      }
+    }
+
+    if (focused?.object.class === "question-cube") {
+      const focusedDefinition = createHelpDefinitionForObject(focused.object, xrActive);
+      helpLensRenderer.update({ visible: focusedDefinition !== undefined, xrActive, camera, definition: focusedDefinition });
+      return;
+    }
+
+    const automaticObject = findAutomaticHelpObject();
+    const definition = automaticObject ? createHelpDefinitionForObject(automaticObject, xrActive) : undefined;
     helpLensRenderer.update({
-      visible: true,
+      visible: definition !== undefined,
       xrActive,
       camera,
-      definition: createHelpLensDefinition({
-        focus: focused ? getWorldFocusMessageDefinition(focused.object) : undefined,
-        selectedTool: menuState.selectedTool,
-        inputMode: xrActive ? "xr" : "desktop",
-      }),
+      definition,
     });
+  }
+
+  function requestHelpLensForFocusedObject(activeAimRay: RootAimRay | undefined): void {
+    const focused = findFocusedRuntimeObject(activeAimRay);
+    const focusedObjectId = focused?.object.id;
+    helpLensFocusedObjectId = focusedObjectId === helpLensFocusedObjectId ? undefined : focusedObjectId;
+  }
+
+  function createHelpDefinitionForObject(
+    object: RuntimeWorldObject,
+    xrActive: boolean,
+  ): ReturnType<typeof createHelpLensDefinition> | undefined {
+    const focus = getWorldFocusMessageDefinition(object);
+    if (!focus) {
+      return undefined;
+    }
+
+    return createHelpLensDefinition({
+      focus,
+      selectedTool: menuState.selectedTool,
+      inputMode: xrActive ? "xr" : "desktop",
+    });
+  }
+
+  function findAutomaticHelpObject(): RuntimeWorldObject | undefined {
+    let best: { readonly object: RuntimeWorldObject; readonly distanceSquared: number } | undefined;
+    for (const object of runtimeObjectRegistry.getObjectsInCell(playerPose.cellId)) {
+      const rangeMeters = object.autoDisplayHelpRangeMeters;
+      if (!object.displayHelpMessage || rangeMeters === undefined) {
+        continue;
+      }
+
+      const dx = object.localPose.translation.x - playerPose.position.x;
+      const dy = object.localPose.translation.y - playerPose.position.y;
+      const dz = object.localPose.translation.z - playerPose.position.z;
+      const distanceSquared = dx * dx + dy * dy + dz * dz;
+      if (distanceSquared > rangeMeters * rangeMeters) {
+        continue;
+      }
+
+      if (!best || distanceSquared < best.distanceSquared) {
+        best = { object, distanceSquared };
+      }
+    }
+
+    return best?.object;
   }
 
   function removePlacedFlags(): void {

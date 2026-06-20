@@ -34,6 +34,8 @@ export interface RuntimeWorldObjectBase {
   readonly portalRenderable: boolean;
   readonly tooltip?: RuntimeObjectTooltip;
   readonly interactable?: RuntimeObjectInteraction;
+  readonly displayHelpMessage?: string;
+  readonly autoDisplayHelpRangeMeters?: number;
 }
 
 export interface RuntimeCreatureObject extends RuntimeWorldObjectBase {
@@ -186,6 +188,12 @@ export function createRuntimeStaticAssetObject(
   cellId: string,
 ): RuntimeStaticAssetObject {
   const geometryComputer = objectSpec.class === "geometry-computer";
+  const helpTooltip = !geometryComputer && objectSpec.displayHelpMessage
+    ? {
+        label: objectSpec.class === "question-cube" ? "Question cube" : objectSpec.class ?? objectSpec.id,
+        rangeMeters: objectSpec.autoDisplayHelpRangeMeters ?? 2.5,
+      }
+    : undefined;
 
   return {
     id: objectSpec.id,
@@ -200,12 +208,16 @@ export function createRuntimeStaticAssetObject(
     class: objectSpec.class,
     do_not_collide_with: objectSpec.do_not_collide_with,
     portalRenderable: false,
+    displayHelpMessage: objectSpec.displayHelpMessage ?? (geometryComputer
+      ? "Use this computer to change the torus skew when the current world supports live geometry changes."
+      : undefined),
+    autoDisplayHelpRangeMeters: objectSpec.autoDisplayHelpRangeMeters,
     tooltip: geometryComputer
       ? {
           label: "Geometry computer",
           rangeMeters: 3,
         }
-      : undefined,
+      : helpTooltip,
     interactable: geometryComputer
       ? {
           label: "Set torus skew",

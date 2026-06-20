@@ -164,7 +164,7 @@ export function resolveWristToolIndicatorVisual(
         icon: "image",
         imageSource: wristToolIndicatorRayIconSource,
         color: "#facc15",
-        label: "Ray",
+        label: "Geodesic emitter",
       };
     case "protractor":
       return {

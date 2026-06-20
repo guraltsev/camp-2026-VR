@@ -19,6 +19,10 @@ export interface StaticObjectAuthoringParams {
   readonly do_not_collide_with?: readonly string[];
   /** Camel-case alias accepted for TypeScript callers. Serialized specs use do_not_collide_with. */
   readonly doNotCollideWith?: readonly string[];
+  /** Concise object help shown by the help lens when the object is focused. */
+  readonly displayHelpMessage?: string;
+  /** If set, shows the help lens automatically while the player is within this range. */
+  readonly autoDisplayHelpRangeMeters?: number;
   readonly forwardTilt?: number;
   readonly sideTilt?: number;
   readonly turn?: number;
@@ -60,6 +64,8 @@ export function createStaticAssetObject(
     collision: params.collision,
     class: params.class,
     do_not_collide_with: params.do_not_collide_with ?? params.doNotCollideWith,
+    displayHelpMessage: params.displayHelpMessage,
+    autoDisplayHelpRangeMeters: params.autoDisplayHelpRangeMeters,
   };
 }
 

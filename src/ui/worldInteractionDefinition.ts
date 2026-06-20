@@ -34,6 +34,7 @@ export interface WorldFocusMessageDefinition {
   readonly subtitle?: string;
   readonly actions: readonly WorldInteractionAction[];
   readonly helpTopicId?: string;
+  readonly displayHelpMessage?: string;
 }
 
 export interface CreateWorldFocusMessageDefinitionOptions {
@@ -52,60 +53,60 @@ export function createWorldFocusMessageDefinition(
 
   switch (options.object.kind) {
     case "placed-flag":
-      return {
+      return withObjectHelp(options.object, {
         title,
         actions: [contextAction("edit-sign", "Edit")],
         helpTopicId: "sign",
-      };
+      });
     case "asset":
       if (options.object.interactable?.action === "open-geometry-computer") {
-        return {
+        return withObjectHelp(options.object, {
           title,
           actions: [contextAction("open-geometry-computer", "Torus skew")],
           helpTopicId: "geometry-computer",
-        };
+        });
       }
-      return { title, actions: [] };
+      return withObjectHelp(options.object, { title, actions: [] });
     case "geodesic-cannon":
-      return {
+      return withObjectHelp(options.object, {
         title,
         actions: [contextAction("open-object-menu", "Emitter menu")],
         helpTopicId: "geodesic-emitter",
-      };
+      });
     case "geodesic-segment":
-      return {
+      return withObjectHelp(options.object, {
         title,
         actions: getGeodesicSegmentActions(options),
         helpTopicId: "geodesic-segment",
-      };
+      });
     case "geodesic-intersection":
-      return {
+      return withObjectHelp(options.object, {
         title,
         actions: options.selectedTool === "protractor"
           ? [primaryAction("select-protractor-vertex", "Select for protractor")]
           : [],
         helpTopicId: "geodesic-vertex",
-      };
+      });
     case "measured-geodesic-length":
-      return {
+      return withObjectHelp(options.object, {
         title,
         actions: [primaryAction("remove-measurement", "Remove")],
         helpTopicId: "measured-length",
-      };
+      });
     case "protractor-angle":
-      return {
+      return withObjectHelp(options.object, {
         title,
         actions: [primaryAction("remove-angle", "Remove")],
         helpTopicId: "protractor-angle",
-      };
+      });
     case "geodesci-marmot":
     case "geo-mouse":
     case "geo-butterfly":
-      return {
+      return withObjectHelp(options.object, {
         title,
         actions: [],
         helpTopicId: "creature",
-      };
+      });
   }
 }
 
@@ -156,6 +157,16 @@ function getGeodesicSegmentActions(
   }];
 }
 
+function withObjectHelp(
+  object: RuntimeWorldObject,
+  definition: Omit<WorldFocusMessageDefinition, "displayHelpMessage">,
+): WorldFocusMessageDefinition {
+  return {
+    ...definition,
+    displayHelpMessage: object.displayHelpMessage,
+  };
+}
+
 function contextAction(id: WorldInteractionActionId, label: string): WorldInteractionAction {
   return {
     id,
@@ -181,4 +192,3 @@ function getActionHintLabels(mode: InputMode, action: WorldInteractionAction): r
   }
   return hints;
 }
-

@@ -447,30 +447,30 @@ function updatePaletteTooltip(
 
 function createPaletteTooltipMesh(label: string): THREE.Object3D {
   const canvas = document.createElement("canvas");
-  canvas.width = 384;
-  canvas.height = 112;
+  canvas.width = 448;
+  canvas.height = 96;
   const context = canvas.getContext("2d");
   if (!context) {
     return new THREE.Object3D();
   }
 
   context.clearRect(0, 0, canvas.width, canvas.height);
-  drawRoundedRect(context, 18, 22, 348, 68, 18);
+  drawRoundedRect(context, 22, 18, 404, 60, 14);
   context.fillStyle = "rgba(15, 23, 42, 0.95)";
   context.fill();
   context.lineWidth = 4;
   context.strokeStyle = "rgba(186, 230, 253, 0.9)";
   context.stroke();
   context.fillStyle = "#f8fafc";
-  context.font = "bold 30px sans-serif";
+  context.font = "bold 24px sans-serif";
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillText(label, canvas.width / 2, 56, 304);
+  context.fillText(label, canvas.width / 2, 48, 364);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.36, 0.105),
+    new THREE.PlaneGeometry(0.32, 0.069),
     new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,

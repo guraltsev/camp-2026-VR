@@ -31,7 +31,7 @@ describe("xrControllerHandModels", () => {
     expect(resolveWristToolIndicatorVisual("geodesic-cannon", "WoodenSign1")).toMatchObject({
       icon: "image",
       imageSource: "/assets/flashlight/Lightsaber.png",
-      label: "Ray",
+      label: "Geodesic emitter",
     });
     expect(resolveWristToolIndicatorVisual("protractor", "WoodenSign1")).toMatchObject({
       icon: "image",

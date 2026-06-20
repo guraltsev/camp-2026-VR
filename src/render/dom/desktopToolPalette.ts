@@ -372,7 +372,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     cannonButton.type = "button";
     cannonButton.className = "desktop-tool-tile";
     cannonButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "geodesic-cannon");
-    cannonButton.ariaLabel = "Geodesic ray";
+    cannonButton.ariaLabel = "Geodesic emitter";
     cannonButton.ariaPressed = String(mainContent.selectedTool === "geodesic-cannon");
     cannonButton.addEventListener("click", () => {
       options.onToolSelected("geodesic-cannon");
@@ -380,7 +380,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
 
     const cannonLabel = document.createElement("span");
     cannonLabel.className = "desktop-tool-tile-label";
-    cannonLabel.textContent = "ray";
+    cannonLabel.textContent = "geodesic emitter";
     cannonButton.append(createCannonTileIcon(), cannonLabel);
 
     const protractorButton = document.createElement("button");

@@ -1,12 +1,17 @@
 import type { RuntimeToolId } from "../runtime/runtimeMenuState";
 import type { InputMode } from "./inputIntents";
-import { getInputHintGlyph } from "./inputIntents";
+import { getInputHintGlyph, type InputHintGlyph } from "./inputIntents";
 import type { WorldFocusMessageDefinition } from "./worldInteractionDefinition";
+
+export interface HelpLensRow {
+  readonly hint: InputHintGlyph;
+  readonly label: string;
+}
 
 export interface HelpLensDefinition {
   readonly title: string;
   readonly body: string;
-  readonly rows: readonly string[];
+  readonly rows: readonly HelpLensRow[];
 }
 
 export interface CreateHelpLensDefinitionOptions {
@@ -25,78 +30,85 @@ export function createHelpLensDefinition(options: CreateHelpLensDefinitionOption
 
 function createFocusedHelpLens(focus: WorldFocusMessageDefinition, inputMode: InputMode): HelpLensDefinition {
   const topic = focus.helpTopicId ?? "default";
-  const body = helpBodyByTopic[topic] ?? "A world object you can inspect from here.";
+  const body = focus.displayHelpMessage ?? helpBodyByTopic[topic] ?? "A world object you can inspect from here.";
   const actionRows = focus.actions
     .filter((action) => action.available)
-    .map((action) => `${getInputHintGlyph(inputMode, action.intent).label}: ${action.label}`);
+    .map((action) => ({
+      hint: getInputHintGlyph(inputMode, action.intent),
+      label: action.label,
+    }));
 
   return {
     title: focus.title,
     body,
-    rows: actionRows.length > 0 ? actionRows : ["No direct action available."],
+    rows: actionRows,
   };
 }
 
 function createToolHelpLens(selectedTool: RuntimeToolId, inputMode: InputMode): HelpLensDefinition {
-  const primary = getInputHintGlyph(inputMode, "primary").label;
-  const context = getInputHintGlyph(inputMode, "context-menu").label;
+  const primaryHint = getInputHintGlyph(inputMode, "primary");
+  const contextHint = getInputHintGlyph(inputMode, "context-menu");
   switch (selectedTool) {
     case "place-flag":
       return {
         title: "Sign tool",
         body: "Places a note on the floor where you aim.",
-        rows: [`${primary}: place sign`, `${context}: open tools`],
+        rows: [row(primaryHint, "place sign"), row(contextHint, "open tools")],
       };
     case "geodesic-cannon":
       return {
         title: "Ray tool",
         body: "Places geodesic emitters and starts locally straight rays.",
-        rows: [`${primary}: place or continue ray`, `${context}: open choices`],
+        rows: [row(primaryHint, "place or continue ray"), row(contextHint, "open choices")],
       };
     case "measure-length":
       return {
         title: "Length tool",
         body: "Measures total length along a selected geodesic.",
-        rows: [`${primary}: choose geodesic`, `${context}: open choices`],
+        rows: [row(primaryHint, "choose geodesic"), row(contextHint, "open choices")],
       };
     case "protractor":
       return {
         title: "Protractor tool",
         body: "Measures the angle between two geodesic sides at a vertex.",
-        rows: [`${primary}: select vertex or side`, `${context}: open choices`],
+        rows: [row(primaryHint, "select vertex or side"), row(contextHint, "open choices")],
       };
     case "geodesic-cannon-carry":
       return {
         title: "Carry emitter",
         body: "Moves the selected geodesic emitter while preserving its editable rays.",
-        rows: [`${primary}: place emitter`],
+        rows: [row(primaryHint, "place emitter")],
       };
     case "geodesic-cannon-rotate":
       return {
         title: "Rotate ray",
         body: "Turns the selected geodesic around its emitter.",
-        rows: [`${primary}: finish rotation`],
+        rows: [row(primaryHint, "finish rotation")],
       };
     case "geodesic-cannon-aim":
       return {
         title: "Aim ray",
         body: "Points the selected geodesic toward the aimed location.",
-        rows: [`${primary}: accept aim`],
+        rows: [row(primaryHint, "accept aim")],
       };
     case "geodesic-cannon-tie-detach":
       return {
         title: "Tie and detach",
         body: "Selects two locked incident geodesics and rebuilds them as a detached path.",
-        rows: [`${primary}: select geodesic`],
+        rows: [row(primaryHint, "select geodesic")],
       };
     case "aim":
     case "none":
       return {
         title: "Explore",
         body: "Look at objects to see available actions, or open the tools menu.",
-        rows: [`${primary}: use selected action`, `${context}: open tools or object menu`],
+        rows: [row(primaryHint, "use selected action"), row(contextHint, "open tools or object menu")],
       };
   }
+}
+
+function row(hint: InputHintGlyph, label: string): HelpLensRow {
+  return { hint, label };
 }
 
 const helpBodyByTopic: Readonly<Record<string, string>> = {
@@ -109,4 +121,3 @@ const helpBodyByTopic: Readonly<Record<string, string>> = {
   "protractor-angle": "A persistent angle result between two selected geodesic sides.",
   creature: "A moving object following the geometry of the world.",
 };
-
