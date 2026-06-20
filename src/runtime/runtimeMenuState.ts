@@ -10,7 +10,8 @@ export type RuntimeMenuPageId =
   | "debug-settings"
   | "place-flag-options"
   | "edit-sign"
-  | "geodesic-cannon-actions";
+  | "geodesic-cannon-actions"
+  | "geometry-computer-actions";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
 export type RuntimeToolId =
@@ -69,6 +70,12 @@ export interface RuntimeMenuState {
     readonly lockedGeodesicIds?: readonly string[];
     readonly canTieAndDetach?: boolean;
   };
+  readonly geometryComputerOptions?: {
+    readonly computerId: string;
+    readonly available: boolean;
+    readonly currentSkewXMeters?: number;
+    readonly targetSkewXMeters?: number;
+  };
   readonly editingFlagId?: string;
 }
 
@@ -119,6 +126,7 @@ export function closeRuntimeMenu(state: RuntimeMenuState): RuntimeMenuState {
     page: "main",
     editSignOptions: undefined,
     geodesicCannonOptions: undefined,
+    geometryComputerOptions: undefined,
     editingFlagId: undefined,
   };
 }
@@ -151,6 +159,7 @@ export function showRuntimeMenuMainPage(state: RuntimeMenuState): RuntimeMenuSta
     selectedTool: "none",
     editSignOptions: undefined,
     geodesicCannonOptions: undefined,
+    geometryComputerOptions: undefined,
     editingFlagId: undefined,
   };
 }
@@ -194,6 +203,28 @@ export function showRuntimeMenuGeodesicCannonActions(
       geodesicLabelsById: options.geodesicLabelsById,
       lockedGeodesicIds: options.lockedGeodesicIds,
       canTieAndDetach: options.canTieAndDetach,
+    },
+  };
+}
+
+export function showRuntimeMenuGeometryComputerActions(
+  state: RuntimeMenuState,
+  options: {
+    readonly computerId: string;
+    readonly available: boolean;
+    readonly currentSkewXMeters?: number;
+    readonly targetSkewXMeters?: number;
+  },
+): RuntimeMenuState {
+  return {
+    ...state,
+    isOpen: true,
+    page: "geometry-computer-actions",
+    geometryComputerOptions: {
+      computerId: options.computerId,
+      available: options.available,
+      currentSkewXMeters: options.currentSkewXMeters,
+      targetSkewXMeters: options.targetSkewXMeters,
     },
   };
 }

@@ -52,6 +52,11 @@ export interface DesktopPaletteView {
       readonly addLabel: string;
       readonly geodesicLabels: readonly string[];
       readonly disabledGeodesicActions: readonly string[];
+    }
+    | {
+      readonly kind: "geometry-computer-actions";
+      readonly statusLabel: string;
+      readonly available: boolean;
     };
 }
 
@@ -79,6 +84,8 @@ export interface DesktopToolPaletteOptions {
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
+  readonly onGeometryComputerSetSkewRequested?: (computerId: string, skewXMeters: number) => void;
+  readonly onGeometryComputerStepSkewRequested?: (computerId: string, deltaXMeters: number) => void;
   readonly onResumeRequested: () => void;
 }
 
@@ -286,6 +293,19 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
         disabledGeodesicActions: definition.content.geodesics
           .filter((geodesic) => geodesic.locked)
           .flatMap((geodesic) => [`rotate:${geodesic.id}`, `aim:${geodesic.id}`]),
+      },
+    };
+  }
+
+  if (definition.content.kind === "geometry-computer-actions") {
+    return {
+      pageId: definition.pageId,
+      leftAction: definition.leftAction,
+      rightAction: definition.rightAction,
+      content: {
+        kind: "geometry-computer-actions",
+        statusLabel: definition.content.statusLabel,
+        available: definition.content.available,
       },
     };
   }
@@ -511,6 +531,59 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     }
     actions.append(geodesicList);
 
+    return actions;
+  }
+
+  if (definition.content.kind === "geometry-computer-actions") {
+    const content = definition.content;
+    const actions = document.createElement("div");
+    actions.className = "desktop-tool-palette-settings";
+
+    const section = document.createElement("section");
+    section.className = "desktop-tool-palette-section";
+
+    const heading = document.createElement("span");
+    heading.className = "desktop-tool-palette-field-label";
+    heading.textContent = "Torus skew";
+    section.append(heading);
+
+    const status = document.createElement("span");
+    status.className = "desktop-tool-palette-field-label";
+    status.textContent = content.statusLabel;
+    section.append(status);
+
+    const presetGrid = document.createElement("div");
+    presetGrid.className = "desktop-tool-palette-tool-grid";
+    for (const action of content.setActions) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "desktop-tool-palette-button";
+      button.disabled = action.disabled;
+      button.ariaDisabled = String(action.disabled);
+      button.textContent = action.label;
+      button.addEventListener("click", () => {
+        options.onGeometryComputerSetSkewRequested?.(content.computerId, action.skewXMeters);
+      });
+      presetGrid.append(button);
+    }
+    section.append(presetGrid);
+
+    const stepRow = document.createElement("div");
+    stepRow.className = "desktop-tool-palette-geodesic-row";
+    for (const action of content.stepActions) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "desktop-tool-palette-button";
+      button.disabled = action.disabled;
+      button.ariaDisabled = String(action.disabled);
+      button.textContent = action.label;
+      button.addEventListener("click", () => {
+        options.onGeometryComputerStepSkewRequested?.(content.computerId, action.deltaXMeters);
+      });
+      stepRow.append(button);
+    }
+    section.append(stepRow);
+    actions.append(section);
     return actions;
   }
 

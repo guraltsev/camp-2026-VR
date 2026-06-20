@@ -89,6 +89,23 @@ export interface GeodesicCannonActionsPaletteContent {
   }[];
 }
 
+export interface GeometryComputerActionsPaletteContent {
+  readonly kind: "geometry-computer-actions";
+  readonly computerId: string;
+  readonly available: boolean;
+  readonly statusLabel: string;
+  readonly setActions: readonly {
+    readonly skewXMeters: number;
+    readonly label: string;
+    readonly disabled: boolean;
+  }[];
+  readonly stepActions: readonly {
+    readonly deltaXMeters: number;
+    readonly label: string;
+    readonly disabled: boolean;
+  }[];
+}
+
 export interface PaletteDefinition {
   readonly pageId: RuntimeMenuPageId;
   readonly leftAction: PaletteHeaderAction;
@@ -100,7 +117,8 @@ export interface PaletteDefinition {
     | DebugSettingsPaletteContent
     | PlaceFlagOptionsPaletteContent
     | EditSignPaletteContent
-    | GeodesicCannonActionsPaletteContent;
+    | GeodesicCannonActionsPaletteContent
+    | GeometryComputerActionsPaletteContent;
 }
 
 export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinition {
@@ -213,6 +231,16 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
     };
   }
 
+  if (state.page === "geometry-computer-actions" && state.geometryComputerOptions) {
+    return {
+      pageId: "geometry-computer-actions",
+      leftAction: createHeaderAction("none"),
+      rightAction: createHeaderAction("close"),
+      reloadConfirmationActive,
+      content: createGeometryComputerActionsContent(state.geometryComputerOptions),
+    };
+  }
+
   return {
     pageId: "main",
     leftAction: createHeaderAction("settings"),
@@ -223,6 +251,34 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       selectedTool: state.selectedTool,
       placeFlagType: state.placeFlagOptions.flagType,
     },
+  };
+}
+
+function createGeometryComputerActionsContent(
+  options: NonNullable<RuntimeMenuState["geometryComputerOptions"]>,
+): GeometryComputerActionsPaletteContent {
+  const available = options.available;
+  const current = options.currentSkewXMeters;
+  const target = options.targetSkewXMeters;
+  const statusLabel = available
+    ? `Current ${formatMeters(current ?? 0)} / target ${formatMeters(target ?? current ?? 0)}`
+    : "Torus skew is only available in the torus world.";
+  const fixedSkews = [-2, -1, 0, 1, 2] as const;
+
+  return {
+    kind: "geometry-computer-actions",
+    computerId: options.computerId,
+    available,
+    statusLabel,
+    setActions: fixedSkews.map((skewXMeters) => ({
+      skewXMeters,
+      label: skewXMeters === 0 ? "Flat 0 m" : `${skewXMeters > 0 ? "+" : ""}${skewXMeters} m`,
+      disabled: !available,
+    })),
+    stepActions: [
+      { deltaXMeters: -0.25, label: "-0.25 m", disabled: !available },
+      { deltaXMeters: 0.25, label: "+0.25 m", disabled: !available },
+    ],
   };
 }
 
@@ -239,6 +295,11 @@ function createGeodesicCannonEntries(
     connectionSymbolLabel: lockedIds.has(geodesicId) ? "Locked geodesic segment between emitters" : undefined,
     deleteDisabled: false,
   }));
+}
+
+function formatMeters(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? `${rounded} m` : `${rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} m`;
 }
 
 function createHeaderAction(id: PaletteHeaderAction["id"]): PaletteHeaderAction {

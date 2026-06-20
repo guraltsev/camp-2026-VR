@@ -10,7 +10,7 @@ import { userObjectClass } from "./objectMetadata";
 
 export interface RuntimeObjectInteraction {
   readonly label: string;
-  readonly action: "edit-flag" | "select-geodesic-cannon";
+  readonly action: "edit-flag" | "select-geodesic-cannon" | "open-geometry-computer";
   readonly rangeMeters?: number;
 }
 
@@ -185,6 +185,8 @@ export function createRuntimeStaticAssetObject(
   objectSpec: AssetObjectSpec,
   cellId: string,
 ): RuntimeStaticAssetObject {
+  const geometryComputer = objectSpec.class === "geometry-computer";
+
   return {
     id: objectSpec.id,
     kind: "asset",
@@ -198,5 +200,20 @@ export function createRuntimeStaticAssetObject(
     class: objectSpec.class,
     do_not_collide_with: objectSpec.do_not_collide_with,
     portalRenderable: false,
+    tooltip: geometryComputer
+      ? {
+          label: "Geometry computer",
+          rangeMeters: 3,
+          desktopPrompt: "Geometry computer\nLMouse / F - set torus skew",
+          xrPrompt: "Geometry computer\nA / X - set torus skew",
+        }
+      : undefined,
+    interactable: geometryComputer
+      ? {
+          label: "Set torus skew",
+          action: "open-geometry-computer",
+          rangeMeters: 3,
+        }
+      : undefined,
   };
 }

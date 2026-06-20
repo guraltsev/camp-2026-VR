@@ -34,6 +34,8 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
+  readonly onGeometryComputerSetSkewRequested?: (computerId: string, skewXMeters: number) => void;
+  readonly onGeometryComputerStepSkewRequested?: (computerId: string, deltaXMeters: number) => void;
   readonly onSignKeyboardCharacter?: (character: string) => void;
   readonly onSignKeyboardBackspace?: () => void;
   readonly onSignDeleteRequested?: () => void;
@@ -313,6 +315,10 @@ function buildContent(
     return buildGeodesicCannonActionsContent(definition.content, options);
   }
 
+  if (definition.content.kind === "geometry-computer-actions") {
+    return buildGeometryComputerActionsContent(definition.content, options);
+  }
+
   if (definition.content.kind === "debug-settings") {
     return buildDebugSettingsContent(definition.content, options);
   }
@@ -565,6 +571,86 @@ function buildGeodesicCannonActionsContent(
   list.add(addButton, carryButton, tieAndDetachButton);
 
   panel.add(list);
+  return panel;
+}
+
+function buildGeometryComputerActionsContent(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "geometry-computer-actions" }>,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const panel = new Container({
+    width: "100%",
+    minHeight: 382,
+    flexDirection: "column",
+    gap: 12,
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 2,
+  });
+  panel.add(createSectionLabel("Torus skew"));
+  panel.add(new Text({
+    text: content.statusLabel,
+    fontSize: 18,
+    fontWeight: "medium",
+    color: textColor,
+    fill: textColor,
+    flexShrink: 1,
+    wordBreak: "break-word",
+  }));
+
+  const presetGrid = new Container({
+    width: "100%",
+    flexDirection: "column",
+    gap: 8,
+  });
+  for (let index = 0; index < content.setActions.length; index += 2) {
+    const row = new Container({
+      width: "100%",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: 8,
+    });
+    for (const action of content.setActions.slice(index, index + 2)) {
+      const button = createInteractiveSurface({
+        width: "49%",
+        height: 46,
+        label: action.label,
+        labelFontSize: 16,
+        disabled: action.disabled,
+        backgroundColor: action.disabled ? "#334155" : actionColor,
+        onClick: () => options.onGeometryComputerSetSkewRequested?.(content.computerId, action.skewXMeters),
+      });
+      button.userData.xrPaletteItemId = `geometry-computer:set:${action.skewXMeters}`;
+      button.userData.scenePaletteItemId = `geometry-computer:set:${action.skewXMeters}`;
+      row.add(button);
+    }
+    presetGrid.add(row);
+  }
+
+  const stepRow = new Container({
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  });
+  for (const action of content.stepActions) {
+    const button = createInteractiveSurface({
+      width: "49%",
+      height: 46,
+      label: action.label,
+      labelFontSize: 16,
+      disabled: action.disabled,
+      backgroundColor: action.disabled ? "#334155" : activeColor,
+      onClick: () => options.onGeometryComputerStepSkewRequested?.(content.computerId, action.deltaXMeters),
+    });
+    button.userData.xrPaletteItemId = `geometry-computer:step:${action.deltaXMeters}`;
+    button.userData.scenePaletteItemId = `geometry-computer:step:${action.deltaXMeters}`;
+    stepRow.add(button);
+  }
+
+  panel.add(presetGrid, stepRow);
   return panel;
 }
 

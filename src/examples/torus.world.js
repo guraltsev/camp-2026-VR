@@ -41,4 +41,17 @@ torus_flower_group = flower_group("torus-flower-group", {
   turn: 28,
 });
 
-OnFace("torus-room", [torus_house, torus_mouse, torus_bench, torus_traffic_cone, torus_flower_group]);
+torus_geometry_computer = computer_large("torus-geometry-computer", {
+  position: [-4.8, 0, -3.7],
+  scale: 1.15,
+  turn: 38,
+});
+
+OnFace("torus-room", [
+  torus_house,
+  torus_mouse,
+  torus_bench,
+  torus_traffic_cone,
+  torus_flower_group,
+  torus_geometry_computer,
+]);

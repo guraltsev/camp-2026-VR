@@ -33,6 +33,21 @@ describe("example worlds", () => {
     ]);
   });
 
+  it("places a geometry computer in the torus room", () => {
+    const torusRoom = torus.cells.find((cell) => cell.id === "torus-room");
+    const computer = torusRoom?.visuals?.objects?.find((object) => object.id === "torus-geometry-computer");
+
+    expect(computer).toMatchObject({
+      kind: "asset",
+      assetPath: "computerlarge/ComputerLarge.glb",
+      class: "geometry-computer",
+      collision: {
+        radius: 1.035,
+        height: 1.5525,
+      },
+    });
+  });
+
   it("keeps tetrahedron faces equilateral so portal-glued corners align", () => {
     for (const cell of tetrahedron.cells) {
       const sideLengths = cell.baseVertices.map((start, index) => {

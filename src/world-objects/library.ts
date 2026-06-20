@@ -183,6 +183,17 @@ const staticLibraryDefinitions = {
       offset: { x: 0, y: 0, z: scale * 0.125 },
     }),
   },
+  computer_large: {
+    assetPath: "computerlarge/ComputerLarge.glb",
+    class: "geometry-computer",
+    visualScale: 0.9,
+    modelOffset: (scale) => [0, 0, scale * 0.05],
+    collision: (scale) => ({
+      radius: scale * 0.9,
+      height: scale * 1.35,
+      offset: { x: 0, y: 0, z: scale * 0.675 },
+    }),
+  },
 } as const satisfies Record<string, StaticLibraryDefinition>;
 
 export interface GeodesicMarmotAuthoringParams {
@@ -225,6 +236,7 @@ export interface WorldObjectLibrary {
   readonly campfire: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   readonly rocks: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   readonly emergency_button: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
+  readonly computer_large: (name: string, params: StaticObjectAuthoringParams) => WorldLibraryObjectSpec;
   /**
    * Autonomous moving object. Authors may set scale, class, do_not_collide_with,
    * and velocity; the library owns its default asset, size, and collision area.
@@ -252,6 +264,7 @@ export const worldObjectLibrary: WorldObjectLibrary = {
   campfire: (name, params) => createDefinedStaticLibraryObject("campfire", name, params),
   rocks: (name, params) => createDefinedStaticLibraryObject("rocks", name, params),
   emergency_button: (name, params) => createDefinedStaticLibraryObject("emergency_button", name, params),
+  computer_large: (name, params) => createDefinedStaticLibraryObject("computer_large", name, params),
   geodesic_marmot: (name, params) =>
     brandLibraryObject(
       createGeodesciMarmot({

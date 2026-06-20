@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createRuntimeMenuState,
   showRuntimeMenuGeodesicCannonActions,
+  showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuSettings,
 } from "../../src/runtime/runtimeMenuState";
@@ -82,6 +83,27 @@ describe("desktopToolPalette", () => {
       throw new Error("Expected geodesic cannon actions content.");
     }
     expect(view.content.disabledGeodesicActions).toEqual(["rotate:g-a", "aim:g-a"]);
+  });
+
+  it("describes the geometry computer action menu", () => {
+    const definition = createPaletteDefinition(showRuntimeMenuGeometryComputerActions(createRuntimeMenuState({
+      selectedWorldId: "torus",
+      debugOverlayEnabled: true,
+    }), {
+      computerId: "torus-geometry-computer",
+      available: true,
+      currentSkewXMeters: 0,
+      targetSkewXMeters: 2,
+    }));
+    const view = describeDesktopPaletteView(definition);
+
+    expect(view.pageId).toBe("geometry-computer-actions");
+    expect(view.content.kind).toBe("geometry-computer-actions");
+    if (view.content.kind !== "geometry-computer-actions") {
+      throw new Error("Expected geometry computer actions content.");
+    }
+    expect(view.content.available).toBe(true);
+    expect(view.content.statusLabel).toBe("Current 0 m / target 2 m");
   });
 
 

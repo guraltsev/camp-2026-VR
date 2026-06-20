@@ -8,6 +8,7 @@ import {
   setRuntimeMenuSelectedTool,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuGeodesicCannonActions,
+  showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuMainPage,
   showRuntimeMenuEditSign,
   showRuntimeMenuPlaceFlagOptions,
@@ -190,5 +191,26 @@ describe("runtimeMenuState", () => {
         deleteDisabled: false,
       },
     ]);
+  });
+
+  it("creates a geometry computer action menu with torus skew controls", () => {
+    const definition = createPaletteDefinition(showRuntimeMenuGeometryComputerActions(createRuntimeMenuState({
+      selectedWorldId: "torus",
+    }), {
+      computerId: "torus-geometry-computer",
+      available: true,
+      currentSkewXMeters: 0.5,
+      targetSkewXMeters: 1,
+    }));
+
+    expect(definition.pageId).toBe("geometry-computer-actions");
+    expect(definition.rightAction.id).toBe("close");
+    expect(definition.content.kind).toBe("geometry-computer-actions");
+    if (definition.content.kind !== "geometry-computer-actions") {
+      throw new Error("Expected geometry computer actions.");
+    }
+    expect(definition.content.statusLabel).toBe("Current 0.5 m / target 1 m");
+    expect(definition.content.setActions.map((action) => action.label)).toEqual(["-2 m", "-1 m", "Flat 0 m", "+1 m", "+2 m"]);
+    expect(definition.content.stepActions.map((action) => action.label)).toEqual(["-0.25 m", "+0.25 m"]);
   });
 });

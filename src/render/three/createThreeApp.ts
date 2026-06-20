@@ -54,6 +54,7 @@ import {
   setRuntimeMenuEditingSignMessage,
   setRuntimeMenuReloadConfirmUntilMs,
   showRuntimeMenuGeodesicCannonActions,
+  showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuEditSign,
   showRuntimeMenuMainPage,
@@ -565,6 +566,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onGeodesicCannonDeleteRequested(cannonId, geodesicId) {
       deleteGeodesicFromCannon(cannonId, geodesicId);
+    },
+    onGeometryComputerSetSkewRequested(computerId, skewXMeters) {
+      setGeometryComputerSkewTarget(computerId, skewXMeters);
+    },
+    onGeometryComputerStepSkewRequested(computerId, deltaXMeters) {
+      stepGeometryComputerSkewTarget(computerId, deltaXMeters);
     },
     onSignKeyboardCharacter(character) {
       appendEditingSignCharacter(character);
@@ -1201,6 +1208,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     activeProtractorToolState = {};
     clearCarriedGeodesicCannonGlow();
     clearProtractorToolFeedback();
+    refreshOpenGeometryComputerMenu();
     syncDesktopPalette();
   }
 
@@ -1769,7 +1777,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function applyRuntimeMenuRightAction(): void {
-    if (menuState.page === "main" || menuState.page === "edit-sign" || menuState.page === "geodesic-cannon-actions") {
+    if (
+      menuState.page === "main" ||
+      menuState.page === "edit-sign" ||
+      menuState.page === "geodesic-cannon-actions" ||
+      menuState.page === "geometry-computer-actions"
+    ) {
       cancelRuntimeMenuAndSelectedTool();
       return;
     } else if (menuState.page === "debug-settings") {
@@ -3555,6 +3568,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     switch (target?.object?.kind) {
       case "placed-flag":
       case "geodesic-cannon":
+      case "asset":
         return tryOpenFocusedObjectMenu(ray);
       case "geodesic-segment":
         return tryExtendFocusedGeodesicFromAim(ray);
@@ -3624,7 +3638,81 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return true;
     }
 
+    if (focused.object.kind === "asset" && focused.object.interactable?.action === "open-geometry-computer") {
+      menuState = showRuntimeMenuGeometryComputerActions(
+        menuState,
+        createGeometryComputerMenuOptions(focused.object.id),
+      );
+      syncDesktopPalette();
+      return true;
+    }
+
     return false;
+  }
+
+  function createGeometryComputerMenuOptions(computerId: string): Parameters<typeof showRuntimeMenuGeometryComputerActions>[1] {
+    const state = geometrySession.state;
+    const current = state.current.kind === "torus-skew" ? state.current : undefined;
+    const target = state.target.kind === "torus-skew" ? state.target : undefined;
+
+    return {
+      computerId,
+      available: current !== undefined || target !== undefined,
+      currentSkewXMeters: current?.skewXMeters,
+      targetSkewXMeters: target?.skewXMeters,
+    };
+  }
+
+  function refreshOpenGeometryComputerMenu(): void {
+    const computerId = menuState.geometryComputerOptions?.computerId;
+    if (menuState.page !== "geometry-computer-actions" || !computerId) {
+      return;
+    }
+
+    menuState = showRuntimeMenuGeometryComputerActions(
+      menuState,
+      createGeometryComputerMenuOptions(computerId),
+    );
+  }
+
+  function setGeometryComputerSkewTarget(computerId: string, skewXMeters: number): void {
+    const state = geometrySession.state;
+    const base = state.target.kind === "torus-skew"
+      ? state.target
+      : state.current.kind === "torus-skew"
+        ? state.current
+        : undefined;
+    if (!base) {
+      refreshOpenGeometryComputerMenu();
+      syncDesktopPalette();
+      return;
+    }
+
+    geometrySession.setTarget({
+      ...base,
+      skewXMeters,
+    });
+    menuState = showRuntimeMenuGeometryComputerActions(
+      menuState,
+      createGeometryComputerMenuOptions(computerId),
+    );
+    syncDesktopPalette();
+  }
+
+  function stepGeometryComputerSkewTarget(computerId: string, deltaXMeters: number): void {
+    const state = geometrySession.state;
+    const base = state.target.kind === "torus-skew"
+      ? state.target
+      : state.current.kind === "torus-skew"
+        ? state.current
+        : undefined;
+    if (!base) {
+      refreshOpenGeometryComputerMenu();
+      syncDesktopPalette();
+      return;
+    }
+
+    setGeometryComputerSkewTarget(computerId, base.skewXMeters + deltaXMeters);
   }
 
   function addGeodesicToCannon(

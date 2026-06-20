@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { identityRigidTransform3 } from "../../src/math/rigidTransform3";
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
-import { createRuntimeObjectRegistry, type RuntimeCreatureObject } from "../../src/world-objects/runtimeObjectRegistry";
+import {
+  createRuntimeObjectRegistry,
+  createRuntimeStaticAssetObject,
+  type RuntimeCreatureObject,
+} from "../../src/world-objects/runtimeObjectRegistry";
 import type { GeodesicCannonObject } from "../../src/world-objects/geodesicCannon";
 import { userObjectClass } from "../../src/world-objects/library";
 
@@ -102,5 +106,29 @@ describe("runtimeObjectRegistry", () => {
     const registry = createRuntimeObjectRegistry([labelled, interactable, creature("mouse-c", "cell-a")]);
 
     expect(registry.getTooltipObjectsInCell("cell-a").map((object) => object.id)).toEqual(["mouse-a", "mouse-b"]);
+  });
+
+  it("marks geometry-computer static assets as tooltip-capable interactables", () => {
+    const computer = createRuntimeStaticAssetObject({
+      id: "computer-a",
+      kind: "asset",
+      assetPath: "computerlarge/ComputerLarge.glb",
+      position: { x: 0, y: 0, z: 0 },
+      class: "geometry-computer",
+      collision: {
+        radius: 0.9,
+        height: 1.35,
+      },
+    }, "cell-a");
+    const registry = createRuntimeObjectRegistry([computer]);
+
+    expect(computer.tooltip?.desktopPrompt).toBe("Geometry computer\nLMouse / F - set torus skew");
+    expect(computer.interactable).toEqual({
+      label: "Set torus skew",
+      action: "open-geometry-computer",
+      rangeMeters: 3,
+    });
+    expect(registry.getInteractableObjectsInCell("cell-a").map((object) => object.id)).toEqual(["computer-a"]);
+    expect(registry.getTooltipObjectsInCell("cell-a").map((object) => object.id)).toEqual(["computer-a"]);
   });
 });
