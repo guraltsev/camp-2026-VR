@@ -14,7 +14,7 @@ describe("helpLensDefinition", () => {
     });
 
     expect(help.title).toBe("Sign");
-    expect(help.body).toContain("placed note");
+    expect(help.body).toBe("A placed note in the world. Right click its menu to edit text or delete it.");
     expect(help.rows).toEqual([{
       hint: {
         intent: "context-menu",
@@ -39,18 +39,50 @@ describe("helpLensDefinition", () => {
     ]);
   });
 
-  it("uses an object's explicit display help message", () => {
+  it("formats explicit object help for desktop controls", () => {
     const help = createHelpLensDefinition({
       inputMode: "desktop",
       selectedTool: "none",
       focus: {
         title: "Question cube",
-        displayHelpMessage: "Move with WASD and look at objects for prompts.",
+        displayHelpMessage: "Move with Arrow keys or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.",
         actions: [],
       },
     });
 
-    expect(help.body).toBe("Move with WASD and look at objects for prompts.");
+    expect(help.body).toBe("Move with Arrow keys. Look at nearby objects for prompts. Left click uses the selected action. Right click opens tools and object menus. Press H while aiming at an object for its help.");
     expect(help.rows).toEqual([]);
+  });
+
+  it("formats explicit object help for VR controls", () => {
+    const help = createHelpLensDefinition({
+      inputMode: "xr",
+      selectedTool: "none",
+      focus: {
+        title: "Question cube",
+        displayHelpMessage: "Move with Arrow keys or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.",
+        actions: [],
+      },
+    });
+
+    expect(help.body).toBe("Move with the left stick. Look at nearby objects for prompts. Trigger uses the selected action. Side trigger opens tools and object menus. Press B while aiming at an object for its help.");
+    expect(help.rows).toEqual([]);
+  });
+
+  it("shows movement with the environment-specific explore help", () => {
+    const help = createHelpLensDefinition({
+      inputMode: "desktop",
+      selectedTool: "none",
+    });
+
+    expect(help.rows[0]).toMatchObject({
+      hint: {
+        intent: "move",
+        mode: "desktop",
+        label: "Arrow keys",
+        iconSrc: "/assets/icons/arrowkeys.png",
+      },
+      label: "move",
+    });
   });
 });

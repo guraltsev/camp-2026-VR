@@ -446,16 +446,17 @@ function updatePaletteTooltip(
 }
 
 function createPaletteTooltipMesh(label: string): THREE.Object3D {
+  const lines = wrapPaletteTooltipLabel(label);
   const canvas = document.createElement("canvas");
   canvas.width = 448;
-  canvas.height = 96;
+  canvas.height = 96 + Math.max(0, lines.length - 1) * 34;
   const context = canvas.getContext("2d");
   if (!context) {
     return new THREE.Object3D();
   }
 
   context.clearRect(0, 0, canvas.width, canvas.height);
-  drawRoundedRect(context, 22, 18, 404, 60, 14);
+  drawRoundedRect(context, 22, 18, 404, canvas.height - 36, 14);
   context.fillStyle = "rgba(15, 23, 42, 0.95)";
   context.fill();
   context.lineWidth = 4;
@@ -465,12 +466,16 @@ function createPaletteTooltipMesh(label: string): THREE.Object3D {
   context.font = "bold 24px sans-serif";
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillText(label, canvas.width / 2, 48, 364);
+  const firstLineY = canvas.height / 2 - ((lines.length - 1) * 17);
+  for (let index = 0; index < lines.length; index += 1) {
+    context.fillText(lines[index] ?? "", canvas.width / 2, firstLineY + index * 34, 364);
+  }
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  const planeWidth = 0.32;
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.32, 0.069),
+    new THREE.PlaneGeometry(planeWidth, planeWidth * (canvas.height / canvas.width)),
     new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
@@ -481,6 +486,31 @@ function createPaletteTooltipMesh(label: string): THREE.Object3D {
   mesh.name = "scene-palette-hover-tooltip:label";
   mesh.renderOrder = 1008;
   return mesh;
+}
+
+export function wrapPaletteTooltipLabel(label: string, maxLineLength = 38): readonly string[] {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return [""];
+  }
+
+  const lines: string[] = [];
+  let currentLine = "";
+  for (const word of words) {
+    const candidate = currentLine ? `${currentLine} ${word}` : word;
+    if (candidate.length > maxLineLength && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = candidate;
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
 }
 
 function drawRoundedRect(

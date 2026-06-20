@@ -83,7 +83,10 @@ function createHintNode(row: HelpLensRow): HTMLElement {
     icon.className = "input-hint-icon";
     icon.src = row.hint.iconSrc;
     icon.alt = row.hint.label;
-    if (row.hint.mode === "desktop" && (row.hint.intent === "primary" || row.hint.intent === "context-menu")) {
+    if (
+      row.hint.mode === "desktop" &&
+      (row.hint.intent === "move" || row.hint.intent === "primary" || row.hint.intent === "context-menu")
+    ) {
       icon.classList.add("input-hint-icon-inverted");
     }
     hint.append(icon);
@@ -96,7 +99,7 @@ function createHintNode(row: HelpLensRow): HTMLElement {
 }
 
 function appendTextWithMouseIcons(parent: HTMLElement, text: string): void {
-  const pattern = /(Left click|Right click|\b[FBHY]\b)/g;
+  const pattern = /(Arrow keys|Left click|Right click|\b[FBHY]\b)/g;
   let index = 0;
   for (const match of text.matchAll(pattern)) {
     if (match.index === undefined) {
@@ -123,6 +126,8 @@ function createInlineHintIcon(label: string): HTMLImageElement {
 
 function inlineIconSrcByLabel(label: string): string {
   switch (label) {
+    case "Arrow keys":
+      return "/assets/icons/arrowkeys.png";
     case "Left click":
       return "/assets/icons/left-click-icon.png";
     case "Right click":

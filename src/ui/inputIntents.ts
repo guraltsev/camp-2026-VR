@@ -1,6 +1,7 @@
 export type InputMode = "desktop" | "xr";
 
 export type InputIntent =
+  | "move"
   | "primary"
   | "context-menu"
   | "keyboard-context-fallback"
@@ -17,6 +18,10 @@ export interface InputHintGlyph {
 }
 
 const desktopHints: Readonly<Record<InputIntent, Omit<InputHintGlyph, "intent" | "mode">>> = {
+  move: {
+    label: "Arrow keys",
+    iconSrc: "/assets/icons/arrowkeys.png",
+  },
   primary: {
     label: "Left click",
     iconSrc: "/assets/icons/left-click-icon.png",
@@ -45,6 +50,9 @@ const desktopHints: Readonly<Record<InputIntent, Omit<InputHintGlyph, "intent" |
 };
 
 const xrHints: Readonly<Record<InputIntent, Omit<InputHintGlyph, "intent" | "mode">>> = {
+  move: {
+    label: "Left stick",
+  },
   primary: {
     label: "Trigger",
   },
@@ -78,4 +86,3 @@ export function getInputHintGlyph(mode: InputMode, intent: InputIntent): InputHi
     ...hint,
   };
 }
-

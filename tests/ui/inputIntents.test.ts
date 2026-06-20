@@ -15,6 +15,10 @@ describe("inputIntents", () => {
       label: "H",
       iconSrc: "/assets/icons/h-alphabet-round-icon.png",
     });
+    expect(getInputHintGlyph("desktop", "move")).toMatchObject({
+      label: "Arrow keys",
+      iconSrc: "/assets/icons/arrowkeys.png",
+    });
   });
 
   it("keeps XR primary and context independent from mouse icons", () => {
@@ -27,6 +31,11 @@ describe("inputIntents", () => {
       intent: "context-menu",
       mode: "xr",
       label: "Side trigger",
+    });
+    expect(getInputHintGlyph("xr", "move")).toEqual({
+      intent: "move",
+      mode: "xr",
+      label: "Left stick",
     });
   });
 

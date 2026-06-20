@@ -6,6 +6,8 @@ describe("paletteTooltips", () => {
     expect(resolvePaletteTooltipLabel("go-home")).toBe("Home");
     expect(resolvePaletteTooltipLabel("reload-world")).toBe("Reload");
     expect(resolvePaletteTooltipLabel("geodesic-cannon-action:add-geodesic")).toBe("Add geodesic");
+    expect(resolvePaletteTooltipLabel("geodesic-cannon-action:carry")).toBe("Move emitter while maintaining attached geodesics");
+    expect(resolvePaletteTooltipLabel("geodesic-cannon-action:tie-and-detach")).toBe("Select two geodesics attached to this emitter, tie them together, and release them from the emitter");
     expect(resolvePaletteTooltipLabel("geodesic-cannon-action:delete:g-a")).toBe("Delete geodesic");
     expect(resolvePaletteTooltipLabel("sign-action:trash")).toBe("Delete sign");
   });

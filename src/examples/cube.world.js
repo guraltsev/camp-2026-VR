@@ -50,7 +50,7 @@ start_help_cube = question_cube("start-help-question-cube", {
   position: [-2.45, 0.05, 3.25],
   scale: 1,
   turn: -18,
-  displayHelpMessage: "Move with WASD or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.",
+  displayHelpMessage: "Move with Arrow keys or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.",
 });
 
 right_tree = tree("right-tree", {

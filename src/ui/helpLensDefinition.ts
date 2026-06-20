@@ -30,7 +30,9 @@ export function createHelpLensDefinition(options: CreateHelpLensDefinitionOption
 
 function createFocusedHelpLens(focus: WorldFocusMessageDefinition, inputMode: InputMode): HelpLensDefinition {
   const topic = focus.helpTopicId ?? "default";
-  const body = focus.displayHelpMessage ?? helpBodyByTopic[topic] ?? "A world object you can inspect from here.";
+  const body = focus.displayHelpMessage
+    ? formatExplicitHelpBodyForInputMode(focus.displayHelpMessage, inputMode)
+    : helpBodyByTopic[topic]?.[inputMode] ?? "A world object you can inspect from here.";
   const actionRows = focus.actions
     .filter((action) => action.available)
     .map((action) => ({
@@ -46,6 +48,7 @@ function createFocusedHelpLens(focus: WorldFocusMessageDefinition, inputMode: In
 }
 
 function createToolHelpLens(selectedTool: RuntimeToolId, inputMode: InputMode): HelpLensDefinition {
+  const moveHint = getInputHintGlyph(inputMode, "move");
   const primaryHint = getInputHintGlyph(inputMode, "primary");
   const contextHint = getInputHintGlyph(inputMode, "context-menu");
   switch (selectedTool) {
@@ -101,8 +104,10 @@ function createToolHelpLens(selectedTool: RuntimeToolId, inputMode: InputMode): 
     case "none":
       return {
         title: "Explore",
-        body: "Look at objects to see available actions, or open the tools menu.",
-        rows: [row(primaryHint, "use selected action"), row(contextHint, "open tools or object menu")],
+        body: inputMode === "desktop"
+          ? "Move with Arrow keys. Look at objects to see available actions, or open the tools menu."
+          : "Move with the left stick. Look at objects to see available actions, or open the tools menu.",
+        rows: [row(moveHint, "move"), row(primaryHint, "use selected action"), row(contextHint, "open tools or object menu")],
       };
   }
 }
@@ -111,13 +116,53 @@ function row(hint: InputHintGlyph, label: string): HelpLensRow {
   return { hint, label };
 }
 
-const helpBodyByTopic: Readonly<Record<string, string>> = {
-  sign: "A placed note in the world. Open its menu to edit text or delete it.",
-  "geometry-computer": "Changes the torus skew for worlds that support live geometry deformation.",
-  "geodesic-emitter": "Creates and edits geodesic rays from this point.",
-  "geodesic-segment": "A locally straight ray segment. Some segments continue through portals.",
-  "geodesic-vertex": "A meeting point where geodesic sides can be selected for angle measurement.",
-  "measured-length": "A persistent length result attached to a geodesic.",
-  "protractor-angle": "A persistent angle result between two selected geodesic sides.",
-  creature: "A moving object following the geometry of the world.",
+function formatExplicitHelpBodyForInputMode(body: string, inputMode: InputMode): string {
+  if (inputMode === "desktop") {
+    return body
+      .replace("Move with Arrow keys or the left stick.", "Move with Arrow keys.")
+      .replace("Use primary action or trigger for the selected action.", "Left click uses the selected action.")
+      .replace("Use context action or side trigger for tools and object menus.", "Right click opens tools and object menus.")
+      .replace("Press H or B while aiming at an object for its help.", "Press H while aiming at an object for its help.");
+  }
+
+  return body
+    .replace("Move with Arrow keys or the left stick.", "Move with the left stick.")
+    .replace("Use primary action or trigger for the selected action.", "Trigger uses the selected action.")
+    .replace("Use context action or side trigger for tools and object menus.", "Side trigger opens tools and object menus.")
+    .replace("Press H or B while aiming at an object for its help.", "Press B while aiming at an object for its help.");
+}
+
+const helpBodyByTopic: Readonly<Record<string, Readonly<Record<InputMode, string>>>> = {
+  sign: {
+    desktop: "A placed note in the world. Right click its menu to edit text or delete it.",
+    xr: "A placed note in the world. Use the side trigger menu to edit text or delete it.",
+  },
+  "geometry-computer": {
+    desktop: "Changes the torus skew for worlds that support live geometry deformation.",
+    xr: "Changes the torus skew for worlds that support live geometry deformation.",
+  },
+  "geodesic-emitter": {
+    desktop: "Creates and edits geodesic rays from this point. Right click to open its menu.",
+    xr: "Creates and edits geodesic rays from this point. Use side trigger to open its menu.",
+  },
+  "geodesic-segment": {
+    desktop: "A locally straight ray segment. Left click with the active tool to extend, measure, or select it.",
+    xr: "A locally straight ray segment. Use trigger with the active tool to extend, measure, or select it.",
+  },
+  "geodesic-vertex": {
+    desktop: "A meeting point where geodesic sides can be selected for angle measurement.",
+    xr: "A meeting point where geodesic sides can be selected for angle measurement.",
+  },
+  "measured-length": {
+    desktop: "A persistent length result attached to a geodesic. Left click to remove it.",
+    xr: "A persistent length result attached to a geodesic. Use trigger to remove it.",
+  },
+  "protractor-angle": {
+    desktop: "A persistent angle result between two selected geodesic sides. Left click to remove it.",
+    xr: "A persistent angle result between two selected geodesic sides. Use trigger to remove it.",
+  },
+  creature: {
+    desktop: "A moving object following the geometry of the world.",
+    xr: "A moving object following the geometry of the world.",
+  },
 };
