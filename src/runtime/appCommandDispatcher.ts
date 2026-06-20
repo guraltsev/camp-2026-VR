@@ -5,10 +5,9 @@ export interface AppCommandDispatcher {
 }
 
 export interface CreateAppCommandDispatcherOptions {
-  readonly currentUrl: string;
   readonly reloadWorld: () => void;
   readonly goHome: () => void;
-  readonly navigateToUrl: (url: string) => void;
+  readonly changeWorld: (worldId: string) => void;
   readonly setDebugOverlayEnabled: (enabled: boolean) => void;
 }
 
@@ -32,16 +31,10 @@ export function dispatchRuntimeCommand(
       options.goHome();
       return;
     case "change-world":
-      options.navigateToUrl(buildWorldChangeUrl(options.currentUrl, command.worldId));
+      options.changeWorld(command.worldId);
       return;
     case "set-debug-overlay":
       options.setDebugOverlayEnabled(command.enabled);
       return;
   }
-}
-
-export function buildWorldChangeUrl(currentUrl: string, worldId: string): string {
-  const url = new URL(currentUrl);
-  url.searchParams.set("world", worldId);
-  return url.toString();
 }

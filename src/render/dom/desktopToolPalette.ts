@@ -75,6 +75,7 @@ export interface DesktopToolPaletteOptions {
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
   readonly onAimCollisionOutlinesToggled: (enabled: boolean) => void;
+  readonly onCopyUrlWithOptionsRequested?: () => void;
   readonly onToolSelected: (toolId: RuntimeDesktopToolId) => void;
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
@@ -811,6 +812,17 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
 
       aimCollisionToggle.append(aimCollisionCheckbox, aimCollisionText);
       debugSection.append(aimCollisionToggle);
+
+      if (options.onCopyUrlWithOptionsRequested) {
+        const copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.className = "desktop-tool-palette-button";
+        copyButton.textContent = "Copy URL with options";
+        copyButton.addEventListener("click", () => {
+          options.onCopyUrlWithOptionsRequested?.();
+        });
+        debugSection.append(copyButton);
+      }
 
     settings.append(debugSection);
     return settings;

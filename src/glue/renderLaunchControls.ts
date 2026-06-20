@@ -1,18 +1,14 @@
 import { worldCatalog } from "../authoring/worldCatalog";
-import {
-  type DebugSettings,
-  canApplyDebugSettingsAtRuntime,
-} from "./debugSettings";
+import type { DebugSettings } from "./debugSettings";
 import {
   debugOptionDefinitions,
   hasDebugOption,
   parseDebugOptions,
-  serializeDebugOptions,
   type DebugOptionId,
 } from "./debugOptions";
 import { debugLevelDefinitions, parseDebugLevel, type DebugLevelId } from "./debugLevels";
 import { parsePortalPanelMode, portalPanelModeDefinitions, type PortalPanelModeId } from "./portalPanelMode";
-import { parseUiOptions, serializeUiOptions, type UiOptionId } from "./uiOptions";
+import type { UiOptionId } from "./uiOptions";
 
 export interface RenderLaunchControlsOptions {
   readonly selectedWorldId: string;
@@ -22,7 +18,9 @@ export interface RenderLaunchControlsOptions {
   readonly debugLevel: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
   readonly debugOptions: readonly DebugOptionId[];
+  readonly onWorldChangeRequested?: (worldId: string) => void;
   readonly applyDebugSettings?: ((settings: DebugSettings) => void) | undefined;
+  readonly onCopyUrlWithOptionsRequested?: (() => void) | undefined;
 }
 
 export function renderLaunchControls(container: HTMLElement, options: RenderLaunchControlsOptions): void {
@@ -59,11 +57,7 @@ function createWorldPicker(selectedWorldId: string, options: RenderLaunchControl
   }
 
   picker.addEventListener("change", () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("world", picker.value);
-    url.searchParams.set("ui", serializeUiOptions(readUiOptionsFromWindow(options)));
-    url.searchParams.delete("worldPicker");
-    window.location.assign(url);
+    options.onWorldChangeRequested?.(picker.value);
   });
 
   return picker;
@@ -189,16 +183,22 @@ function createDebugModal(options: RenderLaunchControlsOptions): {
   applyButton.className = "launch-control debug-button";
   applyButton.textContent = "Apply";
 
-  actions.append(cancelButton, applyButton);
+  const copyUrlButton = document.createElement("button");
+  copyUrlButton.type = "button";
+  copyUrlButton.className = "launch-control debug-button-secondary";
+  copyUrlButton.textContent = "Copy URL with options";
+  copyUrlButton.addEventListener("click", () => {
+    options.onCopyUrlWithOptionsRequested?.();
+  });
+
+  actions.append(copyUrlButton, cancelButton, applyButton);
   form.append(actions);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const url = new URL(window.location.href);
     const selectedOptions = debugOptionDefinitions
       .map((option) => option.id)
       .filter((optionId) => checkboxMap.get(optionId)?.checked);
-    const serialized = serializeDebugOptions(selectedOptions);
     const selectedDebugLevel = levelSelect.value as DebugLevelId;
     const selectedPortalPanelMode = portalPanelSelect.value as PortalPanelModeId;
     const nextSettings: DebugSettings = {
@@ -207,27 +207,9 @@ function createDebugModal(options: RenderLaunchControlsOptions): {
       debugOptions: selectedOptions,
     };
 
-    url.searchParams.set("ui", serializeUiOptions(readUiOptionsFromWindow(options)));
-    url.searchParams.set("debugLevel", selectedDebugLevel);
-    url.searchParams.set("portalPanels", selectedPortalPanelMode);
-    url.searchParams.delete("debug");
-    url.searchParams.delete("worldPicker");
-
-    if (serialized) {
-      url.searchParams.set("debugOptions", serialized);
-    } else {
-      url.searchParams.delete("debugOptions");
-    }
-
     dialog.close();
 
-    if (canApplyDebugSettingsAtRuntime(nextSettings) && options.applyDebugSettings) {
-      window.history.replaceState({}, "", url);
-      options.applyDebugSettings(nextSettings);
-      return;
-    }
-
-    window.location.assign(url);
+    options.applyDebugSettings?.(nextSettings);
   });
 
   dialog.append(form);
@@ -255,18 +237,4 @@ function createDebugModal(options: RenderLaunchControlsOptions): {
       }
     },
   };
-}
-
-function readUiOptionsFromWindow(fallback: RenderLaunchControlsOptions): readonly UiOptionId[] {
-  const params = new URLSearchParams(window.location.search);
-  const uiOptions = parseUiOptions(params.get("ui"));
-
-  if (uiOptions.length > 0) {
-    return uiOptions;
-  }
-
-  return [
-    ...(fallback.renderWorldPicker ? (["WorldSelector"] as const) : []),
-    ...(fallback.renderDebugButton ? (["DebugButton"] as const) : []),
-  ];
 }

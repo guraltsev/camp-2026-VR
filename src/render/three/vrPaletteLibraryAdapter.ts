@@ -25,6 +25,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
   readonly onAimCollisionOutlinesToggled: (enabled: boolean) => void;
+  readonly onCopyUrlWithOptionsRequested?: () => void;
   readonly onToolSelected?: (toolId: RuntimeToolId) => void;
   readonly onPlaceFlagOptionsRequested?: () => void;
   readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
@@ -368,13 +369,7 @@ function buildContent(
     borderWidth: 1,
   });
   debugSection.add(createSectionLabel("Debug"));
-  debugSection.add(createToggleRow("Debug tools", definition.content.debugEnabled, (enabled) => {
-    options.onDebugEnabledChanged(enabled);
-  }, "debug-tools-toggle"));
-
-  if (definition.content.debugEnabled) {
-    debugSection.add(createActionButton("...", "debug-settings", options.onDebugSettingsRequested));
-  }
+  debugSection.add(createDebugToolsRow(definition.content.debugEnabled, options));
 
   settings.add(worldSection, debugSection);
   return settings;
@@ -1088,6 +1083,7 @@ function buildDebugSettingsContent(
     backgroundColor: sectionColor,
     borderColor,
     borderWidth: 1,
+    flexShrink: 0,
   });
   debugSection.add(createSectionLabel("Debug"));
     debugSection.add(createChoiceSection(
@@ -1135,6 +1131,13 @@ function buildDebugSettingsContent(
       },
       "aim-collision-outlines-toggle",
     ));
+    if (options.onCopyUrlWithOptionsRequested) {
+      debugSection.add(createActionButton(
+        "Copy URL with options",
+        "copy-url-with-options",
+        options.onCopyUrlWithOptionsRequested,
+      ));
+    }
 
   settings.add(debugSection);
   return settings;
@@ -1155,6 +1158,37 @@ function createSettingsScrollContainer(): Container {
     scrollbarBorderRadius: 7,
     scrollbarZIndex: 1004,
   });
+}
+
+function createDebugToolsRow(
+  debugEnabled: boolean,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const row = new Container({
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  });
+  row.add(createSectionLabel("Debug tools"));
+
+  const actions = new Container({
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    flexShrink: 0,
+  });
+  if (debugEnabled) {
+    actions.add(createActionButton("...", "debug-settings", options.onDebugSettingsRequested, { width: 56 }));
+  }
+  actions.add(createToggleButton(debugEnabled, (enabled) => {
+    options.onDebugEnabledChanged(enabled);
+  }, "debug-tools-toggle"));
+
+  row.add(actions);
+  return row;
 }
 
 function createSectionLabel(text: string): Text {
@@ -1242,6 +1276,15 @@ function createToggleRow(
     gap: 12,
   });
   row.add(createSectionLabel(label));
+  row.add(createToggleButton(enabled, onToggled, itemId));
+  return row;
+}
+
+function createToggleButton(
+  enabled: boolean,
+  onToggled: (enabled: boolean) => void,
+  itemId: string,
+): Container {
   const button = createInteractiveSurface({
     width: 96,
     height: 34,
@@ -1252,8 +1295,7 @@ function createToggleRow(
   });
   button.userData.xrPaletteItemId = itemId;
   button.userData.scenePaletteItemId = itemId;
-  row.add(button);
-  return row;
+  return button;
 }
 
 function createActionButton(

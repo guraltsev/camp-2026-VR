@@ -13,6 +13,7 @@ import type { CompiledPrismCell } from "../../cell-complex/prismCells";
 import type { DebugSettings } from "../../glue/debugSettings";
 import { hasActiveDebugOption, type DebugOptionId } from "../../glue/debugOptions";
 import type { DebugLevelId } from "../../glue/debugLevels";
+import type { LaunchOptions } from "../../glue/readLaunchOptions";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import { normalizeVec3, vec3, type Vec3 } from "../../math/vec3";
 import { movePlayer } from "../../movement/movePlayer";
@@ -40,7 +41,6 @@ import {
   createRuntimeMenuState,
   openRuntimeMenu,
   type RuntimeDebugOverlayItemId,
-  serializeRuntimeDebugOverlayItems,
   selectRuntimeMenuPlaceFlagToolType,
   setRuntimeMenuConsoleLogLevel,
   setRuntimeMenuDebugEnabled,
@@ -295,6 +295,10 @@ export interface ThreeAppOptions {
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly renderQualityEnabled: boolean;
   readonly assets: PreparedWorldAssets;
+  readonly onWorldChangeRequested?: (worldId: string) => void;
+  readonly onReloadRequested?: () => void;
+  readonly onLaunchOptionsChanged?: (patch: Partial<LaunchOptions>) => void;
+  readonly onCopyUrlWithOptionsRequested?: () => void;
 }
 
 interface PortalEyeRenderState {
@@ -408,17 +412,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let reloadConfirmationTimeout: number | undefined;
   const debugOverlay = createDebugOverlay(container);
   const commandDispatcher = createAppCommandDispatcher({
-    get currentUrl() {
-      return window.location.href;
-    },
     reloadWorld() {
-      window.location.reload();
+      options.onReloadRequested?.();
     },
     goHome() {
       resetPlayerToHome();
     },
-    navigateToUrl(url) {
-      window.location.assign(url);
+    changeWorld(worldId) {
+      options.onWorldChangeRequested?.(worldId);
     },
     setDebugOverlayEnabled(enabled) {
       applyMenuDebugState(setRuntimeMenuDebugOverlayEnabled(menuState, enabled));
@@ -531,6 +532,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onAimCollisionOutlinesToggled(enabled) {
       applyMenuDebugState(setRuntimeMenuAimCollisionOutlinesEnabled(menuState, enabled));
+    },
+    onCopyUrlWithOptionsRequested() {
+      options.onCopyUrlWithOptionsRequested?.();
     },
     onToolSelected(toolId) {
       if (toolId !== "protractor") {
@@ -1271,7 +1275,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function applyMenuDebugState(nextMenuState: typeof menuState): void {
     menuState = nextMenuState;
-    syncDebugSettingsUrl();
+    syncLaunchOptionsState();
     applyDebugSettings(createDebugSettingsFromRuntimeMenuState(menuState));
     syncDesktopPalette();
   }
@@ -1510,46 +1514,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     console.info(message, dump.records);
   }
 
-  function syncDebugSettingsUrl(): void {
+  function syncLaunchOptionsState(): void {
     const settings = createDebugSettingsFromRuntimeMenuState(menuState);
-    const url = new URL(window.location.href);
-    const serializedDebugOptions = settings.debugOptions.join(",");
-    const serializedOverlayItems = serializeRuntimeDebugOverlayItems(menuState.debugOverlayItems);
-
-    if (settings.debugLevel === "off") {
-      url.searchParams.delete("debugLevel");
-    } else {
-      url.searchParams.set("debugLevel", settings.debugLevel);
-    }
-
-    if (settings.portalPanelMode === "none") {
-      url.searchParams.delete("portalPanels");
-    } else {
-      url.searchParams.set("portalPanels", settings.portalPanelMode);
-    }
-
-    if (serializedDebugOptions) {
-      url.searchParams.set("debugOptions", serializedDebugOptions);
-    } else {
-      url.searchParams.delete("debugOptions");
-    }
-
-    if (menuState.debugOverlayEnabled) {
-      url.searchParams.delete("debugOverlay");
-    } else {
-      url.searchParams.set("debugOverlay", "false");
-    }
-
-    if (serializedOverlayItems === "fps,location,portal-quantities") {
-      url.searchParams.delete("debugOverlayItems");
-    } else {
-      url.searchParams.set("debugOverlayItems", serializedOverlayItems);
-    }
-
-    url.searchParams.delete("debug");
-    url.searchParams.delete("ui");
-    url.searchParams.delete("worldPicker");
-    window.history.replaceState({}, "", url);
+    options.onLaunchOptionsChanged?.({
+      debugLevel: settings.debugLevel,
+      portalPanelMode: settings.portalPanelMode,
+      debugOptions: settings.debugOptions,
+      debugOverlayEnabled: menuState.debugOverlayEnabled,
+      debugOverlayItems: menuState.debugOverlayItems,
+    });
   }
 
   window.addEventListener("resize", onResize);

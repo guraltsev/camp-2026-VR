@@ -36,6 +36,7 @@ export interface ScenePaletteControllerOptions {
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
   readonly onAimCollisionOutlinesToggled: (enabled: boolean) => void;
+  readonly onCopyUrlWithOptionsRequested?: () => void;
   readonly onToolSelected: (toolId: RuntimeToolId) => void;
   readonly onPlaceFlagOptionsRequested: () => void;
   readonly onPlaceFlagTypeSelected: (flagType: PlacedFlagType) => void;
@@ -112,6 +113,7 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
     onPortalInspectionToggled: options.onPortalInspectionToggled,
     onCollisionGeometryWireframesToggled: options.onCollisionGeometryWireframesToggled,
     onAimCollisionOutlinesToggled: options.onAimCollisionOutlinesToggled,
+    onCopyUrlWithOptionsRequested: options.onCopyUrlWithOptionsRequested,
     onToolSelected: options.onToolSelected,
     onPlaceFlagOptionsRequested: options.onPlaceFlagOptionsRequested,
     onPlaceFlagTypeSelected: options.onPlaceFlagTypeSelected,

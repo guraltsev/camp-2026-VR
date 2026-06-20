@@ -33,6 +33,7 @@ export interface VrPaletteControllerOptions {
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
   readonly onAimCollisionOutlinesToggled: (enabled: boolean) => void;
+  readonly onCopyUrlWithOptionsRequested?: () => void;
   readonly onGeodesicCannonTieAndDetachRequested?: (cannonId: string) => void;
 }
 
@@ -100,6 +101,7 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
     onPortalInspectionToggled: options.onPortalInspectionToggled,
     onCollisionGeometryWireframesToggled: options.onCollisionGeometryWireframesToggled,
     onAimCollisionOutlinesToggled: options.onAimCollisionOutlinesToggled,
+    onCopyUrlWithOptionsRequested: options.onCopyUrlWithOptionsRequested,
     onGeodesicCannonTieAndDetachRequested: options.onGeodesicCannonTieAndDetachRequested,
   });
   adapter.root.rotation.y = Math.PI;
