@@ -68,7 +68,7 @@ describe("XR controls", () => {
     expect(controls.consumeFrame([released], 1).primaryActionRequested).toBe(false);
   });
 
-  it("maps A/X style buttons to object interaction edges", () => {
+  it("maps side trigger buttons to object context interaction edges", () => {
     const controls = createXrControls();
     const released = {
       gamepad: {
@@ -103,17 +103,17 @@ describe("XR controls", () => {
     expect(controls.consumeFrame([released], 1).interactRequested).toBe(false);
   });
 
-  it("maps the right side trigger to carry action edges", () => {
+  it("does not map face buttons to carry shortcuts", () => {
     const controls = createXrControls();
     const released = { handedness: "right", gamepad: { buttons: [{ pressed: false }, { pressed: false }] } };
     const pressed = { handedness: "right", gamepad: { buttons: [{ pressed: false }, { pressed: true }] } };
     const leftPressed = { handedness: "left", gamepad: { buttons: [{ pressed: false }, { pressed: true }] } };
 
-    expect(isCarryActionPressed(pressed)).toBe(true);
+    expect(isCarryActionPressed(pressed)).toBe(false);
     expect(isCarryActionPressed(leftPressed)).toBe(false);
-    expect(createXrInputFrame([pressed], 1).carryActionRequested).toBe(true);
+    expect(createXrInputFrame([pressed], 1).carryActionRequested).toBe(false);
     expect(controls.consumeFrame([released], 1).carryActionRequested).toBe(false);
-    expect(controls.consumeFrame([pressed], 1).carryActionRequested).toBe(true);
+    expect(controls.consumeFrame([pressed], 1).carryActionRequested).toBe(false);
     expect(controls.consumeFrame([pressed], 1).carryActionRequested).toBe(false);
     expect(controls.consumeFrame([released], 1).carryActionRequested).toBe(false);
   });

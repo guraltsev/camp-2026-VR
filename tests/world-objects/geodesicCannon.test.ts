@@ -68,14 +68,14 @@ describe("geodesic cannon world objects", () => {
     });
     expect(cannon.tooltip?.label).toBe("Geodesic emitter");
     expect(cannon.tooltip?.rangeMeters).toBe(2.5);
-    expect(cannon.tooltip?.desktopPrompt).toBe("Geodesic emitter\nLMouse / F - menu\nRMouse - cycle");
-    expect(cannon.tooltip?.xrPrompt).toBe("Geodesic emitter\nA / X - menu");
+    expect(cannon.tooltip?.desktopPrompt).toBeUndefined();
+    expect(cannon.tooltip?.xrPrompt).toBeUndefined();
     expect(first.lengthMeters).toBe(2);
     expect(first.geodesicNumber).toBe(1);
     expect(first.tooltip?.label).toBe("Geodesic G1");
     expect(first.tooltip?.rangeMeters).toBe(6);
-    expect(first.tooltip?.desktopPrompt).toBe("Geodesic G1\nLMouse - extend");
-    expect(first.tooltip?.xrPrompt).toBe("Geodesic G1\nSelect - extend");
+    expect(first.tooltip?.desktopPrompt).toBeUndefined();
+    expect(first.tooltip?.xrPrompt).toBeUndefined();
     expect(second?.id).toBe(first.id);
     expect(second?.segmentIndex).toBe(0);
     expect(second?.lengthMeters).toBe(4);

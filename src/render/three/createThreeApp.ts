@@ -85,6 +85,7 @@ import {
   collectLockedIncidentGeodesicIdsForEmitter,
   collectGeodesicPortalWord,
   advanceStraighteningGeodesics,
+  canExtendGeodesicSegment,
   extendGeodesic,
   getGeodesicConnection,
   getGeodesicSegments,
@@ -166,9 +167,12 @@ import { createDebugOverlay } from "./debugOverlay";
 import { createDesktopControls } from "./desktopControls";
 import {
   createDesktopScenePaletteInput,
-  desktopTooltipHintRequestsAimCycle,
   reduceDesktopScenePaletteToggle,
 } from "./desktopScenePaletteInput";
+import {
+  createWorldFocusMessageDefinition,
+  formatWorldFocusMessageTextForLegacyFallback,
+} from "../../ui/worldInteractionDefinition";
 import { resolveDesktopScenePalettePlacement } from "./desktopScenePalettePlacement";
 import {
   collectGeodesicCreatureDebugDump,
@@ -934,8 +938,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       primaryActionConsumed = tryUseFocusedObjectPrimaryInteraction(activeAimRay);
     }
 
-    if (frame.interactRequested && !menuState.isOpen && !desktopFlagEditor.isOpen()) {
-      tryOpenFocusedObjectMenu(activeAimRay);
+    if (frame.interactRequested && !desktopFlagEditor.isOpen()) {
+      openContextMenuFromAim(activeAimRay);
     }
     const frameAfterMoveMs = performance.now();
     const frameBeforeObjectsMs = frameAfterMoveMs;
@@ -1543,6 +1547,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   window.addEventListener("resize", onResize);
   renderer.domElement.addEventListener("contextmenu", onDesktopContextMenu);
   window.addEventListener("mousedown", onDesktopMouseDown);
+  window.addEventListener("wheel", onDesktopWheel, { passive: false });
   window.addEventListener("keydown", onDesktopPaletteKeyDown);
   applyDesktopCameraPose();
   renderer.setAnimationLoop(renderFrame);
@@ -1562,6 +1567,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       window.removeEventListener("resize", onResize);
       renderer.domElement.removeEventListener("contextmenu", onDesktopContextMenu);
       window.removeEventListener("mousedown", onDesktopMouseDown);
+      window.removeEventListener("wheel", onDesktopWheel);
       window.removeEventListener("keydown", onDesktopPaletteKeyDown);
       scenePaletteController.dispose();
       xrControllerHandModels.dispose();
@@ -1743,25 +1749,41 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     event.preventDefault();
-    const activeAimRay = resolveActiveRootAimRay(false);
-    if (!menuState.isOpen) {
-      if (cycleFocusedAimTarget(activeAimRay) || focusedDesktopTooltipRequestsAimCycle(activeAimRay)) {
-        return;
-      }
-    }
-
-    applyDesktopScenePaletteToggle(reduceDesktopScenePaletteToggle(menuState.isOpen, "secondary-click"));
+    openContextMenuFromAim(resolveActiveRootAimRay(false));
   }
 
   function onDesktopPaletteKeyDown(event: KeyboardEvent): void {
-    if (event.code !== "Escape" || renderer.xr.isPresenting) {
+    if (renderer.xr.isPresenting) {
       return;
     }
 
-    const action = reduceDesktopScenePaletteToggle(menuState.isOpen, "escape-key");
-    if (action !== "none") {
+    if (event.code === "Escape") {
+      const action = reduceDesktopScenePaletteToggle(menuState.isOpen, "escape-key");
+      if (action !== "none") {
+        event.preventDefault();
+        applyDesktopScenePaletteToggle(action);
+      }
+      return;
+    }
+
+    if (event.code === "Tab" && !menuState.isOpen && !desktopFlagEditor.isOpen()) {
+      if (cycleFocusedAimTarget(resolveActiveRootAimRay(false))) {
+        event.preventDefault();
+      }
+    }
+  }
+
+  function onDesktopWheel(event: WheelEvent): void {
+    if (renderer.xr.isPresenting || menuState.isOpen || desktopFlagEditor.isOpen()) {
+      return;
+    }
+
+    if (event.target !== renderer.domElement && !controls.isPointerLocked()) {
+      return;
+    }
+
+    if (cycleFocusedAimTarget(resolveActiveRootAimRay(false))) {
       event.preventDefault();
-      applyDesktopScenePaletteToggle(action);
     }
   }
 
@@ -3566,10 +3588,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     switch (target?.object?.kind) {
-      case "placed-flag":
-      case "geodesic-cannon":
-      case "asset":
-        return tryOpenFocusedObjectMenu(ray);
       case "geodesic-segment":
         return tryExtendFocusedGeodesicFromAim(ray);
       case "measured-geodesic-length":
@@ -3600,11 +3618,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return true;
   }
 
-  function focusedDesktopTooltipRequestsAimCycle(ray?: RootAimRay): boolean {
-    const focused = findFocusedRuntimeObject(ray);
-    return desktopTooltipHintRequestsAimCycle(
-      focused ? getRuntimeObjectTooltipText(focused.object, "desktop") : undefined,
-    );
+  function openContextMenuFromAim(ray?: RootAimRay): void {
+    if (menuState.isOpen) {
+      applyDesktopScenePaletteToggle(reduceDesktopScenePaletteToggle(true, "secondary-click"));
+      return;
+    }
+
+    if (tryOpenFocusedObjectMenu(ray)) {
+      return;
+    }
+
+    menuState = openRuntimeMenu(menuState);
+    syncDesktopPalette();
   }
 
   function tryOpenFocusedObjectMenu(ray?: RootAimRay): boolean {
@@ -5084,15 +5109,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function getRuntimeObjectTooltipText(object: RuntimeWorldObject, inputMode: "desktop" | "xr"): string | undefined {
-    if (inputMode === "desktop" && object.tooltip?.desktopPrompt) {
-      return object.tooltip.desktopPrompt;
-    }
-
-    if (inputMode === "xr" && object.tooltip?.xrPrompt) {
-      return object.tooltip.xrPrompt;
-    }
-
-    return object.tooltip?.label ?? object.interactable?.label;
+    return formatWorldFocusMessageTextForLegacyFallback(
+      createWorldFocusMessageDefinition({
+        object,
+        selectedTool: menuState.selectedTool,
+        canExtendGeodesic: object.kind === "geodesic-segment" &&
+          canExtendGeodesicSegment(object) &&
+          !isGeodesicLocked(runtimeObjectRegistry, object.geodesicId),
+      }),
+      inputMode,
+    );
   }
 
   function removePlacedFlags(): void {

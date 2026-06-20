@@ -118,7 +118,8 @@ export function isInteractPressed(gamepad: GamepadLike | undefined): boolean {
 }
 
 export function isCarryActionPressed(source: XrInputSourceLike): boolean {
-  return source.handedness === "right" && source.gamepad?.buttons?.[1]?.pressed === true;
+  void source;
+  return false;
 }
 
 export function emptyXrInputFrame(): RuntimeInputFrame {

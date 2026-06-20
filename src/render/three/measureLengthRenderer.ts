@@ -4,6 +4,7 @@ import {
   type MeasuredGeodesicLengthObject,
 } from "../../world-objects/measureLengthTool";
 import { applyWorldRigidTransform } from "./worldAxes";
+import { createWorldResultBadge } from "./worldResultBadge";
 
 export interface MeasuredGeodesicLengthRuntime {
   readonly root: THREE.Object3D;
@@ -62,121 +63,22 @@ function createMeasuredGeodesicLengthRoot(object: MeasuredGeodesicLengthObject):
 
 function createLengthLabel(object: MeasuredGeodesicLengthObject): THREE.Object3D {
   const text = formatMeasuredGeodesicLengthLabel(object, object.lengthMeters);
-  if (typeof document === "undefined") {
-    return createFallbackLengthTooltip();
-  }
-
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 160;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    return createFallbackLengthTooltip();
-  }
-
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  drawRoundedRect(context, 36, 28, 440, 82, 18);
-  context.fillStyle = "rgba(20, 83, 45, 0.94)";
-  context.fill();
-  context.lineWidth = 6;
-  context.strokeStyle = "rgba(134, 239, 172, 0.96)";
-  context.stroke();
-
-  context.beginPath();
-  context.moveTo(238, 110);
-  context.lineTo(256, 134);
-  context.lineTo(274, 110);
-  context.closePath();
-  context.fillStyle = "rgba(20, 83, 45, 0.94)";
-  context.fill();
-  context.strokeStyle = "rgba(134, 239, 172, 0.96)";
-  context.stroke();
-
-  context.font = "bold 40px sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.lineWidth = 5;
-  context.strokeStyle = "rgba(2, 6, 23, 0.78)";
-  context.fillStyle = "#ffffff";
-  context.strokeText(text, canvas.width / 2, 70, 410);
-  context.fillText(text, canvas.width / 2, 70, 410);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.FrontSide,
+  const badge = createWorldResultBadge({
+    text,
+    variant: "length",
+    widthMeters: 0.5,
+    heightMeters: 0.15625,
+    pointer: "down",
+    doubleFaced: true,
+    renderOrder: labelRenderOrder,
   });
-  return createPositionedDoubleFacedTooltipBadge(material);
-}
-
-function createFallbackLengthTooltip(): THREE.Object3D {
-  return createPositionedDoubleFacedTooltipBadge(new THREE.MeshBasicMaterial({
-    color: 0x14532d,
-    transparent: true,
-    opacity: 0.94,
-    depthWrite: false,
-    side: THREE.FrontSide,
-  }));
-}
-
-function createPositionedDoubleFacedTooltipBadge(material: THREE.MeshBasicMaterial): THREE.Group {
-  const badge = createDoubleFacedTooltipBadge(material);
   badge.name = "measured-geodesic-length-floating-tooltip";
+  badge.children[0].name = "measured-geodesic-length-floating-tooltip:front";
+  badge.children[1].name = "measured-geodesic-length-floating-tooltip:back";
   badge.position.set(0, labelHeightMeters, 0);
   badge.rotation.y = Math.PI / 2;
   badge.renderOrder = labelRenderOrder;
   return badge;
-}
-
-function createDoubleFacedTooltipBadge(material: THREE.MeshBasicMaterial): THREE.Group {
-  const group = new THREE.Group();
-  const geometry = new THREE.PlaneGeometry(0.5, 0.15625);
-  const front = new THREE.Mesh(geometry, material);
-  front.name = "measured-geodesic-length-floating-tooltip:front";
-  front.position.z = 0.001;
-  front.renderOrder = labelRenderOrder;
-
-  const back = new THREE.Mesh(geometry.clone(), cloneTooltipMaterial(material));
-  back.name = "measured-geodesic-length-floating-tooltip:back";
-  back.position.z = -0.001;
-  back.rotation.y = Math.PI;
-  back.renderOrder = labelRenderOrder;
-
-  group.add(front, back);
-  return group;
-}
-
-function cloneTooltipMaterial(material: THREE.MeshBasicMaterial): THREE.MeshBasicMaterial {
-  const clone = material.clone();
-  if (material.map) {
-    clone.map = material.map.clone();
-    clone.map.needsUpdate = true;
-  }
-  return clone;
-}
-
-function drawRoundedRect(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-): void {
-  context.beginPath();
-  context.moveTo(x + radius, y);
-  context.lineTo(x + width - radius, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + radius);
-  context.lineTo(x + width, y + height - radius);
-  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  context.lineTo(x + radius, y + height);
-  context.quadraticCurveTo(x, y + height, x, y + height - radius);
-  context.lineTo(x, y + radius);
-  context.quadraticCurveTo(x, y, x + radius, y);
-  context.closePath();
 }
 
 function disposeObject3D(object: THREE.Object3D): void {

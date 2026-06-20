@@ -122,7 +122,10 @@ describe("runtimeObjectRegistry", () => {
     }, "cell-a");
     const registry = createRuntimeObjectRegistry([computer]);
 
-    expect(computer.tooltip?.desktopPrompt).toBe("Geometry computer\nLMouse / F - set torus skew");
+    expect(computer.tooltip).toEqual({
+      label: "Geometry computer",
+      rangeMeters: 3,
+    });
     expect(computer.interactable).toEqual({
       label: "Set torus skew",
       action: "open-geometry-computer",

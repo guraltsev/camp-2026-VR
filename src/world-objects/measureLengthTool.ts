@@ -121,8 +121,6 @@ function withMeasuredGeodesicLengthTooltip(
     tooltip: {
       label,
       rangeMeters: 3,
-      desktopPrompt: `${label}\nLMouse - remove`,
-      xrPrompt: `${label}\nSelect - remove`,
     },
   };
 }

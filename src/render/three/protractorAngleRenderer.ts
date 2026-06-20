@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { formatProtractorAngleLabel, type ProtractorAngleObject } from "../../world-objects/protractorTool";
 import { applyWorldRigidTransform } from "./worldAxes";
+import { createWorldResultBadge } from "./worldResultBadge";
 
 export interface ProtractorAngleRuntime {
   readonly root: THREE.Object3D;
@@ -136,70 +137,18 @@ function createBoundaryLine(name: string, radiusMeters: number, yawRadians = 0):
 
 function createAngleLabel(object: ProtractorAngleObject): THREE.Object3D {
   const label = formatProtractorAngleLabel(object.first, object.second, object.angleDegrees);
-  if (typeof document === "undefined") {
-    return createFallbackAngleTooltip(object);
-  }
-
-  const canvas = document.createElement("canvas");
-  canvas.width = 384;
-  canvas.height = 144;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    return createFallbackAngleTooltip(object);
-  }
-
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  drawRoundedRect(context, 18, 24, 348, 82, 18);
-  context.fillStyle = "rgba(15, 118, 110, 0.94)";
-  context.fill();
-  context.lineWidth = 6;
-  context.strokeStyle = "rgba(255, 209, 102, 0.96)";
-  context.stroke();
-
-  context.beginPath();
-  context.moveTo(174, 106);
-  context.lineTo(192, 128);
-  context.lineTo(210, 106);
-  context.closePath();
-  context.fillStyle = "rgba(15, 118, 110, 0.94)";
-  context.fill();
-  context.strokeStyle = "rgba(255, 209, 102, 0.96)";
-  context.stroke();
-
-  context.font = "bold 38px sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.lineWidth = 5;
-  context.strokeStyle = "rgba(2, 6, 23, 0.78)";
-  context.fillStyle = "#ffffff";
-  context.strokeText(label, canvas.width / 2, 66);
-  context.fillText(label, canvas.width / 2, 66);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.FrontSide,
+  const badge = createWorldResultBadge({
+    text: label,
+    variant: "angle",
+    widthMeters: 0.42,
+    heightMeters: 0.1575,
+    pointer: "down",
+    doubleFaced: true,
+    renderOrder: 57,
   });
-  const badge = createDoubleFacedTooltipBadge(material);
   badge.name = "protractor-angle-floating-tooltip";
-  positionAngleLabelBadge(badge, object);
-  badge.renderOrder = 57;
-  return badge;
-}
-
-function createFallbackAngleTooltip(object: ProtractorAngleObject): THREE.Group {
-  const material = new THREE.MeshBasicMaterial({
-    color: 0x0f766e,
-    transparent: true,
-    opacity: 0.94,
-    depthWrite: false,
-    side: THREE.FrontSide,
-  });
-  const badge = createDoubleFacedTooltipBadge(material);
-  badge.name = "protractor-angle-floating-tooltip";
+  badge.children[0].name = "protractor-angle-floating-tooltip:front";
+  badge.children[1].name = "protractor-angle-floating-tooltip:back";
   positionAngleLabelBadge(badge, object);
   badge.renderOrder = 57;
   return badge;
@@ -213,54 +162,6 @@ function positionAngleLabelBadge(badge: THREE.Object3D, object: ProtractorAngleO
     -Math.sin(labelAngle) * object.radiusMeters,
   );
   badge.rotation.y = labelAngle + Math.PI / 2;
-}
-
-function createDoubleFacedTooltipBadge(material: THREE.MeshBasicMaterial): THREE.Group {
-  const group = new THREE.Group();
-  const geometry = new THREE.PlaneGeometry(0.42, 0.1575);
-  const front = new THREE.Mesh(geometry, material);
-  front.name = "protractor-angle-floating-tooltip:front";
-  front.position.z = 0.001;
-  front.renderOrder = 57;
-
-  const back = new THREE.Mesh(geometry.clone(), cloneTooltipMaterial(material));
-  back.name = "protractor-angle-floating-tooltip:back";
-  back.position.z = -0.001;
-  back.rotation.y = Math.PI;
-  back.renderOrder = 57;
-
-  group.add(front, back);
-  return group;
-}
-
-function cloneTooltipMaterial(material: THREE.MeshBasicMaterial): THREE.MeshBasicMaterial {
-  const clone = material.clone();
-  if (material.map) {
-    clone.map = material.map.clone();
-    clone.map.needsUpdate = true;
-  }
-  return clone;
-}
-
-function drawRoundedRect(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-): void {
-  context.beginPath();
-  context.moveTo(x + radius, y);
-  context.lineTo(x + width - radius, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + radius);
-  context.lineTo(x + width, y + height - radius);
-  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  context.lineTo(x + radius, y + height);
-  context.quadraticCurveTo(x, y + height, x, y + height - radius);
-  context.lineTo(x, y + radius);
-  context.quadraticCurveTo(x, y, x + radius, y);
-  context.closePath();
 }
 
 class AngleArcCurve extends THREE.Curve<THREE.Vector3> {

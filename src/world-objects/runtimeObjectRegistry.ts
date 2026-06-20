@@ -204,8 +204,6 @@ export function createRuntimeStaticAssetObject(
       ? {
           label: "Geometry computer",
           rangeMeters: 3,
-          desktopPrompt: "Geometry computer\nLMouse / F - set torus skew",
-          xrPrompt: "Geometry computer\nA / X - set torus skew",
         }
       : undefined,
     interactable: geometryComputer

@@ -106,7 +106,3 @@ export function reduceDesktopScenePaletteToggle(
   }
   return isOpen ? "close" : "none";
 }
-
-export function desktopTooltipHintRequestsAimCycle(text: string | undefined): boolean {
-  return text?.toLocaleLowerCase().includes("cycle") ?? false;
-}

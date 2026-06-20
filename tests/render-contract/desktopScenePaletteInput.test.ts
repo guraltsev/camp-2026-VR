@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import {
   createDesktopScenePaletteInput,
-  desktopTooltipHintRequestsAimCycle,
   reduceDesktopScenePaletteToggle,
 } from "../../src/render/three/desktopScenePaletteInput";
 
@@ -11,12 +10,6 @@ describe("desktopScenePaletteInput", () => {
     expect(reduceDesktopScenePaletteToggle(false, "secondary-click")).toBe("open");
     expect(reduceDesktopScenePaletteToggle(true, "secondary-click")).toBe("right-action");
     expect(reduceDesktopScenePaletteToggle(true, "escape-key")).toBe("close");
-  });
-
-  it("recognizes desktop tooltip hints that reserve right-click for aim cycling", () => {
-    expect(desktopTooltipHintRequestsAimCycle("Geodesic emitter\nLMouse / F - menu\nRMouse - cycle")).toBe(true);
-    expect(desktopTooltipHintRequestsAimCycle("Sign\nLMouse / F - edit")).toBe(false);
-    expect(desktopTooltipHintRequestsAimCycle(undefined)).toBe(false);
   });
 
   it("emits a desktop scene pointer while the menu is open", () => {

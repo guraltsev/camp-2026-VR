@@ -107,8 +107,8 @@ describe("protractor tool objects", () => {
     });
 
     expect(angle.tooltip?.label).toBe("G1 ∠ G2 = 90°");
-    expect(angle.tooltip?.desktopPrompt).toBe("G1 ∠ G2 = 90°\nLMouse - remove");
-    expect(angle.tooltip?.xrPrompt).toBe("G1 ∠ G2 = 90°\nSelect - remove");
+    expect(angle.tooltip?.desktopPrompt).toBeUndefined();
+    expect(angle.tooltip?.xrPrompt).toBeUndefined();
   });
 
   it("wraps clockwise-looking selections into positive counterclockwise angles", () => {

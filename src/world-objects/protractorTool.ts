@@ -143,8 +143,6 @@ export function createProtractorAngleObject(options: {
     tooltip: {
       label,
       rangeMeters: 3,
-      desktopPrompt: `${label}\nLMouse - remove`,
-      xrPrompt: `${label}\nSelect - remove`,
     },
     centerObjectId: options.center.objectId,
     centerPoint: options.center.point,

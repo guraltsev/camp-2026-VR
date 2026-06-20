@@ -130,7 +130,7 @@ describe("placedFlags", () => {
     expect(flag.fontColor).toBe("#f8fafc");
   });
 
-  it("uses shared desktop and VR edit prompts for placed signs", () => {
+  it("keeps sign tooltip metadata separate from structured edit actions", () => {
     const flag = createPlacedFlagObject({
       id: "flag-a",
       cellId: "room-a",
@@ -141,9 +141,9 @@ describe("placedFlags", () => {
     expect(flag.tooltip).toMatchObject({
       label: "Sign",
       rangeMeters: 2.5,
-      desktopPrompt: "Sign\nLMouse / F - edit",
-      xrPrompt: "Sign\nA / X - edit",
     });
+    expect(flag.tooltip?.desktopPrompt).toBeUndefined();
+    expect(flag.tooltip?.xrPrompt).toBeUndefined();
     expect(flag.interactable).toMatchObject({
       label: "Edit sign",
       action: "edit-flag",
