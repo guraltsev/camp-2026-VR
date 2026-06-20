@@ -213,6 +213,7 @@ import {
   type RuntimeObjectRenderRecord,
   type RuntimeObjectRenderSourceMesh,
 } from "./runtimeObjectRenderRecords";
+import { collectPortalGhostRuntimeObjectRenderRecords } from "./runtimeObjectGhostRecords";
 import {
   createRenderQualityState,
   getPortalViewportPixels,
@@ -2414,14 +2415,23 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
       const localMatrix = rigidTransformToThreeMatrix(object.localPose);
       const prefix = runtimeObjectArchetypeKeyPrefix(object);
-      return [...runtimeObjectRenderSourcesByKey.keys()]
-        .filter((key) => key.startsWith(`${prefix}:mesh:`))
-        .map((archetypeKey) => ({
-          objectId: object.id,
-          cellId: object.cellId,
-          archetypeKey,
-          localMatrix,
-        }));
+      const archetypeKeys = [...runtimeObjectRenderSourcesByKey.keys()]
+        .filter((key) => key.startsWith(`${prefix}:mesh:`));
+      const baseRecords = archetypeKeys.map((archetypeKey) => ({
+        objectId: object.id,
+        cellId: object.cellId,
+        archetypeKey,
+        localMatrix,
+      }));
+
+      return [
+        ...baseRecords,
+        ...collectPortalGhostRuntimeObjectRenderRecords({
+          world: activeWorld(),
+          object,
+          archetypeKeys,
+        }),
+      ];
     });
 
     return playerRoverRenderModel
