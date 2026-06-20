@@ -858,6 +858,44 @@ img.desktop-tool-tile-icon {
   display: none;
 }
 
+.help-lens {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 12;
+  width: min(22rem, calc(100vw - 2rem));
+  transform: translate(1.6rem, -58%);
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgb(125 211 252 / 72%);
+  border-radius: 8px;
+  background: rgb(15 23 42 / 92%);
+  color: #f8fafc;
+  box-shadow: 0 0.7rem 1.5rem rgb(0 0 0 / 38%);
+  pointer-events: none;
+}
+
+.help-lens[hidden] {
+  display: none;
+}
+
+.help-lens-title {
+  margin-bottom: 0.35rem;
+  font: 800 1rem/1.15 system-ui, sans-serif;
+}
+
+.help-lens-body {
+  color: #e2e8f0;
+  font: 600 0.84rem/1.28 system-ui, sans-serif;
+}
+
+.help-lens-rows {
+  display: grid;
+  gap: 0.18rem;
+  margin-top: 0.55rem;
+  color: #bae6fd;
+  font: 800 0.78rem/1.2 system-ui, sans-serif;
+}
+
 .desktop-palette-resume {
   margin-top: 16px;
   padding: 10px 14px;

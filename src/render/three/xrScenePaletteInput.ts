@@ -103,6 +103,6 @@ export function isSelectPressed(gamepad: XRInputSource["gamepad"] | undefined): 
 }
 
 export function isMenuTogglePressed(gamepad: XRInputSource["gamepad"] | undefined): boolean {
-  return gamepad?.buttons?.[1]?.pressed === true
-    || gamepad?.buttons?.[3]?.pressed === true;
+  return gamepad?.buttons?.[4]?.pressed === true
+    || gamepad?.buttons?.[5]?.pressed === true;
 }

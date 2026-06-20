@@ -23,6 +23,7 @@ export function createXrControls(options: Partial<VrComfortOptions> = {}): XrCon
   let previousPrimaryActionPressed = false;
   let previousInteractPressed = false;
   let previousCarryActionPressed = false;
+  let previousHelpPressed = false;
 
   return {
     consumeFrame(inputSources, deltaSeconds) {
@@ -34,14 +35,18 @@ export function createXrControls(options: Partial<VrComfortOptions> = {}): XrCon
       const interactRequested = interactPressed && !previousInteractPressed;
       const carryActionPressed = sources.some((source) => isCarryActionPressed(source));
       const carryActionRequested = carryActionPressed && !previousCarryActionPressed;
+      const helpPressed = sources.some((source) => isHelpPressed(source.gamepad));
+      const helpRequested = helpPressed && !previousHelpPressed;
       previousPrimaryActionPressed = primaryActionPressed;
       previousInteractPressed = interactPressed;
       previousCarryActionPressed = carryActionPressed;
+      previousHelpPressed = helpPressed;
       return {
         ...frame,
         primaryActionRequested,
         interactRequested,
         carryActionRequested,
+        helpRequested,
       };
     },
   };
@@ -71,6 +76,7 @@ export function createXrInputFrame(
     primaryActionRequested: sources.some((source) => isPrimaryActionPressed(source.gamepad)),
     interactRequested: sources.some((source) => isInteractPressed(source.gamepad)),
     carryActionRequested: sources.some((source) => isCarryActionPressed(source)),
+    helpRequested: sources.some((source) => isHelpPressed(source.gamepad)),
     source: "xr",
   };
 }
@@ -122,6 +128,10 @@ export function isCarryActionPressed(source: XrInputSourceLike): boolean {
   return false;
 }
 
+export function isHelpPressed(gamepad: GamepadLike | undefined): boolean {
+  return gamepad?.buttons?.[1]?.pressed === true;
+}
+
 export function emptyXrInputFrame(): RuntimeInputFrame {
   return {
     localDisplacement: vec3(0, 0, 0),
@@ -131,6 +141,7 @@ export function emptyXrInputFrame(): RuntimeInputFrame {
     primaryActionRequested: false,
     interactRequested: false,
     carryActionRequested: false,
+    helpRequested: false,
     source: "xr",
   };
 }

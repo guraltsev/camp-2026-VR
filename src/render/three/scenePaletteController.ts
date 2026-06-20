@@ -7,6 +7,7 @@ import type {
 } from "../../runtime/runtimeMenuState";
 import type { PaletteDefinition } from "../../ui/paletteDefinition";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
+import { resolvePaletteTooltipLabel } from "../../ui/paletteTooltips";
 import { createScenePaletteLibraryAdapter } from "./scenePaletteLibraryAdapter";
 import type {
   ScenePaletteInputFrame,
@@ -79,6 +80,8 @@ const sceneRayObjects = new Map<string, THREE.Line>();
 interface PaletteHit {
   readonly point: THREE.Vector3;
   readonly action?: () => void;
+  readonly itemId?: string;
+  readonly tooltipLabel?: string;
 }
 
 export function createScenePaletteController(options: ScenePaletteControllerOptions): ScenePaletteController {
@@ -129,6 +132,8 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
   options.scene.add(paletteRoot);
   const paletteHitMarker = createPaletteHitMarker();
   options.scene.add(paletteHitMarker);
+  const paletteTooltip = createPaletteTooltip();
+  options.scene.add(paletteTooltip.root);
   const scenePointers = createScenePointers(options.getCamera);
   let currentDefinitionSignature = "";
   let previousMenuTogglePressed = false;
@@ -170,6 +175,7 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
           ? resolvePalettePlanePoint(adapter.root, activePointerSource.object)
           : undefined);
       updatePaletteHitMarker(paletteHitMarker, adapter.root, cursorPoint);
+      updatePaletteTooltip(paletteTooltip, adapter.root, paletteHit?.point, paletteHit?.tooltipLabel);
       if (paletteHit?.action && activePointer?.selectStarted) {
         paletteHit.action();
       }
@@ -177,6 +183,7 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
     setVisible(visible) {
       adapter.setVisible(visible);
       paletteHitMarker.visible = false;
+      paletteTooltip.root.visible = false;
       hideSceneRays();
     },
     dispose() {
@@ -186,6 +193,7 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
       paletteHitMarker.removeFromParent();
       paletteHitMarker.geometry.dispose();
       paletteHitMarker.material.dispose();
+      paletteTooltip.dispose();
       disposeSceneRays();
     },
   };
@@ -319,9 +327,11 @@ function resolvePaletteHit(
   }
 
   let action: (() => void) | undefined;
+  let itemId: string | undefined;
   for (const intersection of intersections) {
-    action = findPaletteAction(intersection.object);
-    if (action) {
+    action ??= findPaletteAction(intersection.object);
+    itemId ??= findPaletteItemId(intersection.object);
+    if (action && itemId) {
       break;
     }
   }
@@ -329,6 +339,8 @@ function resolvePaletteHit(
   return {
     point: firstIntersection.point.clone(),
     action,
+    itemId,
+    tooltipLabel: resolvePaletteTooltipLabel(itemId),
   };
 }
 
@@ -363,4 +375,140 @@ function findPaletteAction(object: THREE.Object3D | null): (() => void) | undefi
   }
 
   return undefined;
+}
+
+function findPaletteItemId(object: THREE.Object3D | null): string | undefined {
+  let current: THREE.Object3D | null = object;
+
+  while (current) {
+    const itemId = current.userData.scenePaletteItemId ?? current.userData.xrPaletteItemId;
+    if (typeof itemId === "string") {
+      return itemId;
+    }
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+interface PaletteTooltip {
+  readonly root: THREE.Object3D;
+  update(label: string): void;
+  dispose(): void;
+}
+
+function createPaletteTooltip(): PaletteTooltip {
+  const root = new THREE.Group();
+  root.name = "scene-palette-hover-tooltip";
+  root.visible = false;
+  let currentLabel = "";
+
+  return {
+    root,
+    update(label) {
+      if (label === currentLabel) {
+        return;
+      }
+
+      currentLabel = label;
+      for (const child of [...root.children]) {
+        disposeObject3D(child);
+      }
+      root.clear();
+      root.add(createPaletteTooltipMesh(label));
+    },
+    dispose() {
+      root.removeFromParent();
+      disposeObject3D(root);
+    },
+  };
+}
+
+function updatePaletteTooltip(
+  tooltip: PaletteTooltip,
+  paletteSurface: THREE.Object3D,
+  point: THREE.Vector3 | undefined,
+  label: string | undefined,
+): void {
+  if (!point || !label) {
+    tooltip.root.visible = false;
+    return;
+  }
+
+  tooltip.update(label);
+  paletteSurface.getWorldQuaternion(tooltip.root.quaternion);
+  menuSurfaceNormal.set(0, 0, 1).applyQuaternion(tooltip.root.quaternion).normalize();
+  tooltip.root.position.copy(point)
+    .addScaledVector(menuSurfaceNormal, 0.006)
+    .add(new THREE.Vector3(0.04, 0.04, 0).applyQuaternion(tooltip.root.quaternion));
+  tooltip.root.visible = true;
+  tooltip.root.updateMatrixWorld(true);
+}
+
+function createPaletteTooltipMesh(label: string): THREE.Object3D {
+  const canvas = document.createElement("canvas");
+  canvas.width = 384;
+  canvas.height = 112;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return new THREE.Object3D();
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  drawRoundedRect(context, 18, 22, 348, 68, 18);
+  context.fillStyle = "rgba(15, 23, 42, 0.95)";
+  context.fill();
+  context.lineWidth = 4;
+  context.strokeStyle = "rgba(186, 230, 253, 0.9)";
+  context.stroke();
+  context.fillStyle = "#f8fafc";
+  context.font = "bold 30px sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(label, canvas.width / 2, 56, 304);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.36, 0.105),
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  mesh.name = "scene-palette-hover-tooltip:label";
+  mesh.renderOrder = 1008;
+  return mesh;
+}
+
+function drawRoundedRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+): void {
+  context.beginPath();
+  context.moveTo(x + radius, y);
+  context.lineTo(x + width - radius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + radius);
+  context.lineTo(x + width, y + height - radius);
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  context.lineTo(x + radius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - radius);
+  context.lineTo(x, y + radius);
+  context.quadraticCurveTo(x, y, x + radius, y);
+  context.closePath();
+}
+
+function disposeObject3D(object: THREE.Object3D): void {
+  object.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.geometry.dispose();
+      disposeMaterial(child.material);
+    }
+  });
 }

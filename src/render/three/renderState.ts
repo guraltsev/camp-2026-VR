@@ -11,6 +11,7 @@ export interface RuntimeInputFrame {
   readonly primaryActionRequested: boolean;
   readonly interactRequested: boolean;
   readonly carryActionRequested: boolean;
+  readonly helpRequested: boolean;
   readonly source: "desktop" | "xr";
 }
 

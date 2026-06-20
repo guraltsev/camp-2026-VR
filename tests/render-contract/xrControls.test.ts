@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createXrControls, createXrInputFrame, isCarryActionPressed, isInteractPressed, isResetPressed, readPrimaryStickAxes } from "../../src/render/three/xrControls";
+import { createXrControls, createXrInputFrame, isCarryActionPressed, isHelpPressed, isInteractPressed, isResetPressed, readPrimaryStickAxes } from "../../src/render/three/xrControls";
 
 describe("XR controls", () => {
   it("never throws and returns no movement when gamepad data is missing", () => {
@@ -116,5 +116,18 @@ describe("XR controls", () => {
     expect(controls.consumeFrame([pressed], 1).carryActionRequested).toBe(false);
     expect(controls.consumeFrame([pressed], 1).carryActionRequested).toBe(false);
     expect(controls.consumeFrame([released], 1).carryActionRequested).toBe(false);
+  });
+
+  it("maps the help face button to help edges", () => {
+    const controls = createXrControls();
+    const released = { gamepad: { buttons: [{ pressed: false }, { pressed: false }] } };
+    const pressed = { gamepad: { buttons: [{ pressed: false }, { pressed: true }] } };
+
+    expect(isHelpPressed(pressed.gamepad)).toBe(true);
+    expect(createXrInputFrame([pressed], 1).helpRequested).toBe(true);
+    expect(controls.consumeFrame([released], 1).helpRequested).toBe(false);
+    expect(controls.consumeFrame([pressed], 1).helpRequested).toBe(true);
+    expect(controls.consumeFrame([pressed], 1).helpRequested).toBe(false);
+    expect(controls.consumeFrame([released], 1).helpRequested).toBe(false);
   });
 });

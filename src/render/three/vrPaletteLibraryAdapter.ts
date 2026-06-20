@@ -270,6 +270,7 @@ function createHeaderButton(
   });
   button.name = action.ariaLabel || "palette-header-action";
   button.userData.xrPaletteItemId = action.ariaLabel || action.label;
+  button.userData.scenePaletteItemId = action.id;
   const icon = createHeaderIcon(action.id);
   if (icon) {
     button.add(icon);

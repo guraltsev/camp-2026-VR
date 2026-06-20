@@ -64,6 +64,7 @@ import {
   toggleRuntimeMenuDebugOverlayItem,
 } from "../../runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../ui/paletteDefinition";
+import { createHelpLensDefinition } from "../../ui/helpLensDefinition";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
 import { playerPoseToDynamicObject, type PlayerPose } from "../../movement/playerPose";
 import {
@@ -173,6 +174,7 @@ import {
   createWorldFocusMessageDefinition,
   formatWorldFocusMessageTextForLegacyFallback,
 } from "../../ui/worldInteractionDefinition";
+import { createHelpLensRenderer } from "./helpLensRenderer";
 import { resolveDesktopScenePalettePlacement } from "./desktopScenePalettePlacement";
 import {
   collectGeodesicCreatureDebugDump,
@@ -466,6 +468,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   });
   const aimCrossMarker = createAimCrossMarker(scene);
   const floatingObjectTooltip = createFloatingObjectTooltip(document.body);
+  const helpLensRenderer = createHelpLensRenderer(document.body, scene);
   const xrEntryUi = createXrEntryUi(container, enterVr);
   const clipPolygonOverlay = createPortalClipPolygonOverlay(container);
   const sceneLighting = createStylizedSceneLighting(scene);
@@ -668,6 +671,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let carriedGeodesicCannonGlow: THREE.Mesh | undefined;
   let geodesicCreatureDebugElapsedSeconds = 0;
   let geodesicCreatureHealthyLogElapsedSeconds = geodesicCreatureHealthyLogIntervalSeconds;
+  let helpLensVisible = false;
   const runtimeObjectRenderRoot = new THREE.Group();
   runtimeObjectRenderRoot.name = "runtime-object-archetype-renders";
   scene.add(runtimeObjectRenderRoot);
@@ -897,6 +901,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     const activeAimRay = resolveActiveRootAimRay(xrActive, xrFrame, xrReferenceSpace);
     updateCarriedGeodesicCannonPose(xrActive, activeAimRay);
+    if (frame.helpRequested && !desktopFlagEditor.isOpen()) {
+      helpLensVisible = !helpLensVisible;
+    }
     const worldPrimaryActionRequested = frame.primaryActionRequested && !menuState.isOpen && !desktopFlagEditor.isOpen();
     let primaryActionConsumed = false;
     if (frame.carryActionRequested && !menuState.isOpen && !desktopFlagEditor.isOpen()) {
@@ -982,6 +989,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       applyDesktopCameraPose();
     }
     updateFloatingObjectTooltip(xrActive, activeAimRay);
+    updateHelpLens(xrActive, activeAimRay);
     const frameAfterCameraMs = performance.now();
     const frameBeforePortalMs = frameAfterCameraMs;
 
@@ -1576,6 +1584,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       desktopFlagEditor.dispose();
       aimCrossMarker.dispose();
       floatingObjectTooltip.dispose();
+      helpLensRenderer.dispose();
       clearXrObjectTooltip();
       controls.dispose();
       clearProtractorToolFeedback();
@@ -1762,6 +1771,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       if (action !== "none") {
         event.preventDefault();
         applyDesktopScenePaletteToggle(action);
+      } else if (helpLensVisible) {
+        event.preventDefault();
+        helpLensVisible = false;
       }
       return;
     }
@@ -1847,6 +1859,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         primaryActionRequested: false,
         interactRequested: false,
         carryActionRequested: false,
+        helpRequested: false,
         source: "xr",
       };
     }
@@ -5110,15 +5123,38 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function getRuntimeObjectTooltipText(object: RuntimeWorldObject, inputMode: "desktop" | "xr"): string | undefined {
     return formatWorldFocusMessageTextForLegacyFallback(
-      createWorldFocusMessageDefinition({
-        object,
-        selectedTool: menuState.selectedTool,
-        canExtendGeodesic: object.kind === "geodesic-segment" &&
-          canExtendGeodesicSegment(object) &&
-          !isGeodesicLocked(runtimeObjectRegistry, object.geodesicId),
-      }),
+      getWorldFocusMessageDefinition(object),
       inputMode,
     );
+  }
+
+  function getWorldFocusMessageDefinition(object: RuntimeWorldObject) {
+    return createWorldFocusMessageDefinition({
+      object,
+      selectedTool: menuState.selectedTool,
+      canExtendGeodesic: object.kind === "geodesic-segment" &&
+        canExtendGeodesicSegment(object) &&
+        !isGeodesicLocked(runtimeObjectRegistry, object.geodesicId),
+    });
+  }
+
+  function updateHelpLens(xrActive: boolean, activeAimRay: RootAimRay | undefined): void {
+    if (!helpLensVisible || menuState.isOpen || desktopFlagEditor.isOpen()) {
+      helpLensRenderer.update({ visible: false, xrActive, camera });
+      return;
+    }
+
+    const focused = findFocusedRuntimeObject(activeAimRay);
+    helpLensRenderer.update({
+      visible: true,
+      xrActive,
+      camera,
+      definition: createHelpLensDefinition({
+        focus: focused ? getWorldFocusMessageDefinition(focused.object) : undefined,
+        selectedTool: menuState.selectedTool,
+        inputMode: xrActive ? "xr" : "desktop",
+      }),
+    });
   }
 
   function removePlacedFlags(): void {

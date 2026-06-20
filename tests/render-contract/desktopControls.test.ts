@@ -76,6 +76,20 @@ describe("desktopControls", () => {
 
     controls.dispose();
   });
+
+  it("maps H to a help action edge", () => {
+    const { canvas, windowTarget } = installPointerLockDom();
+    const controls = createDesktopControls(canvas);
+
+    dispatchKey(windowTarget, "keydown", "KeyH");
+    const frame = controls.consumeFrame(1 / 60);
+    const nextFrame = controls.consumeFrame(1 / 60);
+
+    expect(frame.helpRequested).toBe(true);
+    expect(nextFrame.helpRequested).toBe(false);
+
+    controls.dispose();
+  });
 });
 
 function installPointerLockDom(): {

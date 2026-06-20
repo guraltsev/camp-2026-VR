@@ -17,6 +17,10 @@ describe("scenePaletteLibraryAdapter", () => {
     const imageSources = collectPaletteImageSources(adapter.root);
 
     expect(itemIds).not.toContain("tool:aim");
+    expect(itemIds).toContain("settings");
+    expect(itemIds).toContain("close");
+    expect(itemIds).toContain("go-home");
+    expect(itemIds).toContain("reload-world");
     expect(itemIds).toContain("tool:place-flag");
     expect(itemIds).toContain("tool:geodesic-cannon");
     expect(itemIds).toContain("tool:measure-length");

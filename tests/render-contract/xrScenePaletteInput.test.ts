@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 import { isMenuTogglePressed, isSelectPressed } from "../../src/render/three/xrScenePaletteInput";
 
 describe("xrScenePaletteInput", () => {
-  it("maps controller select and menu buttons without treating A/X as menu toggles", () => {
+  it("maps controller select and side trigger buttons without treating face buttons as menu toggles", () => {
     const gamepad = {
       buttons: [
         { pressed: true },
         { pressed: false },
         { pressed: false },
+        { pressed: false },
         { pressed: true },
+        { pressed: false },
       ],
     } as unknown as XRInputSource["gamepad"];
 
@@ -18,11 +20,11 @@ describe("xrScenePaletteInput", () => {
     const faceButtonGamepad = {
       buttons: [
         { pressed: false },
-        { pressed: false },
-        { pressed: false },
+        { pressed: true },
         { pressed: false },
         { pressed: true },
-        { pressed: true },
+        { pressed: false },
+        { pressed: false },
       ],
     } as unknown as XRInputSource["gamepad"];
 

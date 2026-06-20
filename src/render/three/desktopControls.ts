@@ -11,6 +11,7 @@ export interface DesktopInputFrame {
   readonly primaryActionRequested: boolean;
   readonly interactRequested: boolean;
   readonly carryActionRequested: boolean;
+  readonly helpRequested: boolean;
 }
 
 export type DesktopLookMode = "camera" | "palette";
@@ -64,6 +65,7 @@ export function createDesktopControls(
   let suppressNextPrimaryClick = false;
   let interactRequested = false;
   let carryActionRequested = false;
+  let helpRequested = false;
   let lookMode: DesktopLookMode = "camera";
 
   function onKeyDown(event: KeyboardEvent): void {
@@ -76,7 +78,8 @@ export function createDesktopControls(
       turnKeys.has(event.code) ||
       event.code === "KeyR" ||
       event.code === "KeyF" ||
-      event.code === "KeyG"
+      event.code === "KeyG" ||
+      event.code === "KeyH"
     ) {
       event.preventDefault();
     }
@@ -93,6 +96,11 @@ export function createDesktopControls(
 
     if (event.code === "KeyG") {
       carryActionRequested = true;
+      return;
+    }
+
+    if (event.code === "KeyH") {
+      helpRequested = true;
       return;
     }
 
@@ -173,6 +181,7 @@ export function createDesktopControls(
     suppressNextPrimaryClick = false;
     interactRequested = false;
     carryActionRequested = false;
+    helpRequested = false;
   }
 
   async function requestPointerLock(): Promise<boolean> {
@@ -221,6 +230,7 @@ export function createDesktopControls(
           primaryActionRequested: false,
           interactRequested: false,
           carryActionRequested: false,
+          helpRequested: false,
         };
       }
 
@@ -252,6 +262,7 @@ export function createDesktopControls(
       const framePaletteSelectRequested = lookMode === "palette" && paletteSelectRequested;
       const frameInteractRequested = interactRequested;
       const frameCarryActionRequested = lookMode === "camera" && carryActionRequested;
+      const frameHelpRequested = helpRequested;
 
       pendingMouseYawDeltaRadians = 0;
       pendingMousePitchDeltaRadians = 0;
@@ -262,6 +273,7 @@ export function createDesktopControls(
       paletteSelectRequested = false;
       interactRequested = false;
       carryActionRequested = false;
+      helpRequested = false;
 
       return {
         localDisplacement: vec3((rightInput / inputLength) * stepMeters, (forwardInput / inputLength) * stepMeters, 0),
@@ -274,6 +286,7 @@ export function createDesktopControls(
         primaryActionRequested: framePrimaryActionRequested,
         interactRequested: frameInteractRequested,
         carryActionRequested: frameCarryActionRequested,
+        helpRequested: frameHelpRequested,
       };
     },
     pause(): void {
