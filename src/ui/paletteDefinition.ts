@@ -8,6 +8,7 @@ import type {
   RuntimeMenuState,
   RuntimeToolId,
 } from "../runtime/runtimeMenuState";
+import type { InputMode } from "./inputIntents";
 import { placedFlagMaxMessageLength, placedFlagTypes, type PlacedFlagType } from "../world-objects/placedFlags";
 
 export interface PaletteSelectOption {
@@ -113,6 +114,22 @@ export interface GeometryComputerActionsPaletteContent {
   }[];
 }
 
+export interface TutorialPaletteContent {
+  readonly kind: "tutorial";
+  readonly objectId: string;
+  readonly title: string;
+  readonly body: string;
+  readonly pageLabel: string;
+  readonly previousAction: {
+    readonly label: string;
+    readonly disabled: boolean;
+  };
+  readonly nextAction: {
+    readonly label: string;
+    readonly disabled: boolean;
+  };
+}
+
 export interface PaletteDefinition {
   readonly pageId: RuntimeMenuPageId;
   readonly leftAction: PaletteHeaderAction;
@@ -125,10 +142,15 @@ export interface PaletteDefinition {
     | PlaceFlagOptionsPaletteContent
     | EditSignPaletteContent
     | GeodesicCannonActionsPaletteContent
-    | GeometryComputerActionsPaletteContent;
+    | GeometryComputerActionsPaletteContent
+    | TutorialPaletteContent;
 }
 
-export function createPaletteDefinition(state: RuntimeMenuState, appConfig: AppConfig = defaultAppConfig): PaletteDefinition {
+export function createPaletteDefinition(
+  state: RuntimeMenuState,
+  appConfig: AppConfig = defaultAppConfig,
+  inputMode: InputMode = "desktop",
+): PaletteDefinition {
   const reloadConfirmationActive = (state.reloadConfirmUntilMs ?? 0) > Date.now();
 
   if (state.page === "debug-settings" && appConfig.menu.debugSectionEnabled) {
@@ -250,6 +272,16 @@ export function createPaletteDefinition(state: RuntimeMenuState, appConfig: AppC
     };
   }
 
+  if (state.page === "tutorial" && state.tutorialOptions) {
+    return {
+      pageId: "tutorial",
+      leftAction: createHeaderAction("none"),
+      rightAction: createHeaderAction("close"),
+      reloadConfirmationActive,
+      content: createTutorialContent(state.tutorialOptions, inputMode),
+    };
+  }
+
   return {
     pageId: "main",
     leftAction: createHeaderAction("settings"),
@@ -262,6 +294,62 @@ export function createPaletteDefinition(state: RuntimeMenuState, appConfig: AppC
       toolOptions: createToolOptions(appConfig),
     },
   };
+}
+
+function createTutorialContent(
+  options: NonNullable<RuntimeMenuState["tutorialOptions"]>,
+  inputMode: InputMode,
+): TutorialPaletteContent {
+  const pageCount = options.pages.length;
+  const pageIndex = pageCount === 0
+    ? 0
+    : Math.max(0, Math.min(pageCount - 1, options.pageIndex));
+  const page = options.pages[pageIndex] ?? { title: "Tutorial", body: "" };
+
+  return {
+    kind: "tutorial",
+    objectId: options.objectId,
+    title: page.title,
+    body: resolveTutorialBodyForInputMode(page, inputMode),
+    pageLabel: pageCount === 0 ? "0 / 0" : `${pageIndex + 1} / ${pageCount}`,
+    previousAction: {
+      label: "<",
+      disabled: pageIndex <= 0,
+    },
+    nextAction: {
+      label: ">",
+      disabled: pageIndex >= pageCount - 1,
+    },
+  };
+}
+
+function resolveTutorialBodyForInputMode(
+  page: NonNullable<RuntimeMenuState["tutorialOptions"]>["pages"][number],
+  inputMode: InputMode,
+): string {
+  if (inputMode === "desktop") {
+    return page.desktopBody ?? formatTutorialBodyForInputMode(page.body, "desktop");
+  }
+
+  return page.xrBody ?? formatTutorialBodyForInputMode(page.body, "xr");
+}
+
+function formatTutorialBodyForInputMode(body: string, inputMode: InputMode): string {
+  if (inputMode === "desktop") {
+    return body
+      .replace("Move with Arrow keys or the left stick.", "Move with Arrow keys.")
+      .replace("Use primary action or trigger for the selected action.", "Left click uses the selected/default action.")
+      .replace("Use primary action or trigger for the selected/default action.", "Left click uses the selected/default action.")
+      .replace("Use context action or side trigger for tools and object menus.", "Right click opens tools and object menus.")
+      .replace("Press H or B while aiming at an object for its help.", "Press H while aiming at an object for its help.");
+  }
+
+  return body
+    .replace("Move with Arrow keys or the left stick.", "Move with the left stick.")
+    .replace("Use primary action or trigger for the selected action.", "Trigger uses the selected/default action.")
+    .replace("Use primary action or trigger for the selected/default action.", "Trigger uses the selected/default action.")
+    .replace("Use context action or side trigger for tools and object menus.", "Side trigger opens tools and object menus.")
+    .replace("Press H or B while aiming at an object for its help.", "Press B while aiming at an object for its help.");
 }
 
 function createToolOptions(appConfig: AppConfig): MainPaletteContent["toolOptions"] {

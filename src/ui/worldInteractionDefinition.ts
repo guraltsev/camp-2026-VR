@@ -7,6 +7,7 @@ export type WorldInteractionActionId =
   | "open-object-menu"
   | "edit-sign"
   | "open-geometry-computer"
+  | "open-tutorial"
   | "extend-geodesic"
   | "measure-length"
   | "select-protractor-side"
@@ -64,6 +65,12 @@ export function createWorldFocusMessageDefinition(
           title,
           actions: [contextAction("open-geometry-computer", "Torus skew")],
           helpTopicId: "geometry-computer",
+        });
+      }
+      if (options.object.interactable?.action === "open-tutorial") {
+        return withObjectHelp(options.object, {
+          title,
+          actions: [primaryAction("open-tutorial", "Tutorial")],
         });
       }
       return withObjectHelp(options.object, { title, actions: [] });

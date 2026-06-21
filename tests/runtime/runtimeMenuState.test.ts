@@ -6,12 +6,14 @@ import {
   setRuntimeMenuAimCollisionOutlinesEnabled,
   setRuntimeMenuEditingSignMessage,
   setRuntimeMenuSelectedTool,
+  setRuntimeMenuTutorialPageIndex,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuMainPage,
   showRuntimeMenuEditSign,
   showRuntimeMenuPlaceFlagOptions,
+  showRuntimeMenuTutorial,
 } from "../../src/runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 
@@ -212,5 +214,60 @@ describe("runtimeMenuState", () => {
     expect(definition.content.statusLabel).toBe("Current 0.5 m / target 1 m");
     expect(definition.content.setActions.map((action) => action.label)).toEqual(["-2 m", "-1 m", "Flat 0 m", "+1 m", "+2 m"]);
     expect(definition.content.stepActions.map((action) => action.label)).toEqual(["-0.25 m", "+0.25 m"]);
+  });
+
+  it("creates a paged tutorial menu", () => {
+    const state = showRuntimeMenuTutorial(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), {
+      objectId: "startingQuestionCube",
+      pages: [
+        { title: "Move", body: "Use arrows." },
+        { title: "Act", body: "Click things." },
+      ],
+    });
+
+    const firstPage = createPaletteDefinition(state);
+    const secondPage = createPaletteDefinition(setRuntimeMenuTutorialPageIndex(state, 1));
+
+    expect(firstPage.pageId).toBe("tutorial");
+    expect(firstPage.rightAction.id).toBe("close");
+    expect(firstPage.content).toMatchObject({
+      kind: "tutorial",
+      title: "Move",
+      body: "Use arrows.",
+      pageLabel: "1 / 2",
+      previousAction: { label: "<", disabled: true },
+      nextAction: { label: ">", disabled: false },
+    });
+    expect(secondPage.content).toMatchObject({
+      kind: "tutorial",
+      title: "Act",
+      body: "Click things.",
+      pageLabel: "2 / 2",
+      previousAction: { label: "<", disabled: false },
+      nextAction: { label: ">", disabled: true },
+    });
+  });
+
+  it("formats tutorial page bodies for desktop and VR", () => {
+    const state = showRuntimeMenuTutorial(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), {
+      objectId: "startingQuestionCube",
+      pages: [{
+        title: "Use actions",
+        body: "Use primary action or trigger for the selected/default action. Use context action or side trigger for tools and object menus.",
+      }],
+    });
+
+    expect(createPaletteDefinition(state, undefined, "desktop").content).toMatchObject({
+      kind: "tutorial",
+      body: "Left click uses the selected/default action. Right click opens tools and object menus.",
+    });
+    expect(createPaletteDefinition(state, undefined, "xr").content).toMatchObject({
+      kind: "tutorial",
+      body: "Trigger uses the selected/default action. Side trigger opens tools and object menus.",
+    });
   });
 });

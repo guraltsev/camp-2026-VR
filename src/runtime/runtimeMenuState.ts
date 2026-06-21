@@ -3,6 +3,7 @@ import type { DebugSettings } from "../glue/debugSettings";
 import type { DebugLevelId } from "../glue/debugLevels";
 import type { PortalPanelModeId } from "../glue/portalPanelMode";
 import type { PlacedFlagType } from "../world-objects/placedFlags";
+import type { TutorialPageSpec } from "../cell-complex/specs";
 
 export type RuntimeMenuPageId =
   | "main"
@@ -11,7 +12,8 @@ export type RuntimeMenuPageId =
   | "place-flag-options"
   | "edit-sign"
   | "geodesic-cannon-actions"
-  | "geometry-computer-actions";
+  | "geometry-computer-actions"
+  | "tutorial";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
 export type RuntimeToolId =
@@ -76,6 +78,11 @@ export interface RuntimeMenuState {
     readonly currentSkewXMeters?: number;
     readonly targetSkewXMeters?: number;
   };
+  readonly tutorialOptions?: {
+    readonly objectId: string;
+    readonly pages: readonly TutorialPageSpec[];
+    readonly pageIndex: number;
+  };
   readonly editingFlagId?: string;
 }
 
@@ -127,6 +134,7 @@ export function closeRuntimeMenu(state: RuntimeMenuState): RuntimeMenuState {
     editSignOptions: undefined,
     geodesicCannonOptions: undefined,
     geometryComputerOptions: undefined,
+    tutorialOptions: undefined,
     editingFlagId: undefined,
   };
 }
@@ -160,6 +168,7 @@ export function showRuntimeMenuMainPage(state: RuntimeMenuState): RuntimeMenuSta
     editSignOptions: undefined,
     geodesicCannonOptions: undefined,
     geometryComputerOptions: undefined,
+    tutorialOptions: undefined,
     editingFlagId: undefined,
   };
 }
@@ -225,6 +234,43 @@ export function showRuntimeMenuGeometryComputerActions(
       available: options.available,
       currentSkewXMeters: options.currentSkewXMeters,
       targetSkewXMeters: options.targetSkewXMeters,
+    },
+  };
+}
+
+export function showRuntimeMenuTutorial(
+  state: RuntimeMenuState,
+  options: {
+    readonly objectId: string;
+    readonly pages: readonly TutorialPageSpec[];
+    readonly pageIndex?: number;
+  },
+): RuntimeMenuState {
+  return {
+    ...state,
+    isOpen: true,
+    page: "tutorial",
+    tutorialOptions: {
+      objectId: options.objectId,
+      pages: options.pages,
+      pageIndex: clampTutorialPageIndex(options.pageIndex ?? 0, options.pages),
+    },
+  };
+}
+
+export function setRuntimeMenuTutorialPageIndex(
+  state: RuntimeMenuState,
+  pageIndex: number,
+): RuntimeMenuState {
+  if (!state.tutorialOptions) {
+    return state;
+  }
+
+  return {
+    ...state,
+    tutorialOptions: {
+      ...state.tutorialOptions,
+      pageIndex: clampTutorialPageIndex(pageIndex, state.tutorialOptions.pages),
     },
   };
 }
@@ -428,4 +474,12 @@ function orderRuntimeDebugOverlayItems(
 ): readonly RuntimeDebugOverlayItemId[] {
   const requestedItems = new Set(items);
   return defaultRuntimeDebugOverlayItems.filter((itemId) => requestedItems.has(itemId));
+}
+
+function clampTutorialPageIndex(pageIndex: number, pages: readonly TutorialPageSpec[]): number {
+  if (pages.length === 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(pages.length - 1, Math.trunc(pageIndex)));
 }

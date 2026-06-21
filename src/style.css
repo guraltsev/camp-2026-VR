@@ -359,6 +359,53 @@ body {
   color: #d9edf1;
 }
 
+.desktop-tool-palette-tutorial {
+  min-height: 260px;
+  justify-content: space-between;
+}
+
+.desktop-tool-palette-tutorial-title {
+  color: #f8fafc;
+  font: 750 1.45rem/1.1 system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.desktop-tool-palette-tutorial-body {
+  margin: 0;
+  color: #f8fafc;
+  font: 500 1rem/1.45 system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.desktop-tool-palette-tutorial-controls {
+  display: grid;
+  grid-template-columns: minmax(44px, 56px) 1fr minmax(44px, 56px);
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.desktop-tool-palette-icon-button {
+  display: inline-grid;
+  place-items: center;
+  padding: 8px;
+}
+
+.desktop-tool-palette-chevron-icon {
+  width: 13px;
+  height: 13px;
+  border-block-start: 3px solid currentColor;
+  border-inline-start: 3px solid currentColor;
+}
+
+.desktop-tool-palette-chevron-icon-previous {
+  transform: rotate(-45deg);
+}
+
+.desktop-tool-palette-chevron-icon-next {
+  transform: rotate(135deg);
+}
+
 .desktop-tool-palette-select,
 .desktop-tool-palette-button {
   min-height: 40px;

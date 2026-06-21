@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { worldCatalog } from "../../src/authoring/worldCatalog";
 import { cube, dodecahedron, icosahedron, octahedron, tetrahedron, torus } from "../../src/authoring/exampleWorlds";
-import { defaultStartingQuestionCubeMessage } from "../../src/authoring/worldBuilder";
+import {
+  defaultStartingQuestionCubeMessage,
+  defaultStartingQuestionCubeTutorialPages,
+} from "../../src/authoring/worldBuilder";
 import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder } from "../../src/movement/collision";
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
@@ -70,6 +73,7 @@ describe("example worlds", () => {
       kind: "asset",
       assetPath: "questionblock/questionBlock.glb",
       displayHelpMessage: defaultStartingQuestionCubeMessage,
+      tutorialPages: defaultStartingQuestionCubeTutorialPages,
     });
   });
 

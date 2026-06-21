@@ -31,6 +31,21 @@ describe("worldInteractionDefinition", () => {
     expect(formatWorldFocusMessageTextForLegacyFallback(definition, "xr")).toBe("Geodesic emitter\nSide trigger - Emitter menu");
   });
 
+  it("emits primary tutorial action for question cubes", () => {
+    const definition = createWorldFocusMessageDefinition({
+      object: {
+        ...baseObjectFields("question-a", "asset", "Question cube"),
+        assetPath: "questionblock/questionBlock.glb",
+        interactable: { label: "Open tutorial", action: "open-tutorial" },
+        tutorialPages: [{ title: "Move", body: "Use arrows." }],
+      } as RuntimeWorldObject,
+      selectedTool: "none",
+    });
+
+    expect(definition?.actions).toMatchObject([{ id: "open-tutorial", intent: "primary", label: "Tutorial" }]);
+    expect(formatWorldFocusMessageTextForLegacyFallback(definition, "desktop")).toBe("Question cube\nLeft click - Tutorial");
+  });
+
   it("emits primary extend for open geodesic segments only when available", () => {
     const definition = createWorldFocusMessageDefinition({
       object: segment(),

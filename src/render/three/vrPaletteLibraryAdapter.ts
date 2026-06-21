@@ -1,5 +1,5 @@
 import { Component, Container, Image, Text } from "@pmndrs/uikit";
-import { ArrowLeft, House, RotateCw, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
+import { ArrowLeft, ChevronLeft, ChevronRight, House, RotateCw, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -42,6 +42,8 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
   readonly onGeometryComputerSetSkewRequested?: (computerId: string, skewXMeters: number) => void;
   readonly onGeometryComputerStepSkewRequested?: (computerId: string, deltaXMeters: number) => void;
+  readonly onTutorialPreviousRequested?: () => void;
+  readonly onTutorialNextRequested?: () => void;
   readonly onSignKeyboardCharacter?: (character: string) => void;
   readonly onSignKeyboardBackspace?: () => void;
   readonly onSignDeleteRequested?: () => void;
@@ -390,6 +392,10 @@ function buildContent(
     return buildGeometryComputerActionsContent(definition.content, options);
   }
 
+  if (definition.content.kind === "tutorial") {
+    return buildTutorialContent(definition.content, options);
+  }
+
   if (definition.content.kind === "debug-settings") {
     return buildDebugSettingsContent(definition.content, options);
   }
@@ -682,6 +688,98 @@ function buildGeometryComputerActionsContent(
   }
 
   panel.add(presetGrid, stepRow);
+  return panel;
+}
+
+function buildTutorialContent(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "tutorial" }>,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const panel = new Container({
+    width: "100%",
+    minHeight: 382,
+    flexDirection: "column",
+    gap: 14,
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 2,
+  });
+  panel.add(new Text({
+    text: content.title,
+    fontSize: 34,
+    fontWeight: "bold",
+    color: textColor,
+    fill: textColor,
+    flexShrink: 0,
+    wordBreak: "break-word",
+  }));
+  panel.add(new Text({
+    text: content.body,
+    fontSize: 22,
+    fontWeight: "medium",
+    lineHeight: "140%",
+    color: textColor,
+    fill: textColor,
+    flexGrow: 1,
+    flexShrink: 1,
+    wordBreak: "break-word",
+  }));
+
+  const controls = new Container({
+    width: "100%",
+    height: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  });
+  const previousButton = createInteractiveSurface({
+    width: 72,
+    height: 46,
+    label: "",
+    disabled: content.previousAction.disabled,
+    backgroundColor: content.previousAction.disabled ? "#334155" : actionColor,
+    onClick: () => options.onTutorialPreviousRequested?.(),
+  });
+  previousButton.userData.xrPaletteItemId = "tutorial:previous";
+  previousButton.userData.scenePaletteItemId = "tutorial:previous";
+  previousButton.add(new ChevronLeft({
+    width: 28,
+    height: 28,
+    color: textColor,
+    fill: textColor,
+  }));
+
+  const pageLabel = new Text({
+    text: content.pageLabel,
+    fontSize: 18,
+    fontWeight: "bold",
+    color: mutedTextColor,
+    fill: mutedTextColor,
+    flexShrink: 0,
+  });
+
+  const nextButton = createInteractiveSurface({
+    width: 72,
+    height: 46,
+    label: "",
+    disabled: content.nextAction.disabled,
+    backgroundColor: content.nextAction.disabled ? "#334155" : actionColor,
+    onClick: () => options.onTutorialNextRequested?.(),
+  });
+  nextButton.userData.xrPaletteItemId = "tutorial:next";
+  nextButton.userData.scenePaletteItemId = "tutorial:next";
+  nextButton.add(new ChevronRight({
+    width: 28,
+    height: 28,
+    color: textColor,
+    fill: textColor,
+  }));
+
+  controls.add(previousButton, pageLabel, nextButton);
+  panel.add(controls);
   return panel;
 }
 

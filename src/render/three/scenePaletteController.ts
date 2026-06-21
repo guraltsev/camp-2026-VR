@@ -48,6 +48,8 @@ export interface ScenePaletteControllerOptions {
   readonly onGeodesicCannonDeleteRequested: (cannonId: string, geodesicId: string) => void;
   readonly onGeometryComputerSetSkewRequested: (computerId: string, skewXMeters: number) => void;
   readonly onGeometryComputerStepSkewRequested: (computerId: string, deltaXMeters: number) => void;
+  readonly onTutorialPreviousRequested: () => void;
+  readonly onTutorialNextRequested: () => void;
   readonly onSignKeyboardCharacter: (character: string) => void;
   readonly onSignKeyboardBackspace: () => void;
   readonly onSignDeleteRequested: () => void;
@@ -125,6 +127,8 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
     onGeodesicCannonDeleteRequested: options.onGeodesicCannonDeleteRequested,
     onGeometryComputerSetSkewRequested: options.onGeometryComputerSetSkewRequested,
     onGeometryComputerStepSkewRequested: options.onGeometryComputerStepSkewRequested,
+    onTutorialPreviousRequested: options.onTutorialPreviousRequested,
+    onTutorialNextRequested: options.onTutorialNextRequested,
     onSignKeyboardCharacter: options.onSignKeyboardCharacter,
     onSignKeyboardBackspace: options.onSignKeyboardBackspace,
     onSignDeleteRequested: options.onSignDeleteRequested,

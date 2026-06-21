@@ -134,4 +134,29 @@ describe("runtimeObjectRegistry", () => {
     expect(registry.getInteractableObjectsInCell("cell-a").map((object) => object.id)).toEqual(["computer-a"]);
     expect(registry.getTooltipObjectsInCell("cell-a").map((object) => object.id)).toEqual(["computer-a"]);
   });
+
+  it("marks question cube tutorial assets as primary tutorial interactables", () => {
+    const questionCube = createRuntimeStaticAssetObject({
+      id: "question-a",
+      kind: "asset",
+      assetPath: "questionblock/questionBlock.glb",
+      position: { x: 0, y: 0, z: 0 },
+      class: "question-cube",
+      tutorialPages: [{ title: "Move", body: "Use arrows." }],
+    }, "cell-a");
+    const registry = createRuntimeObjectRegistry([questionCube]);
+
+    expect(questionCube.tooltip).toEqual({
+      label: "Question cube",
+      rangeMeters: 2.5,
+    });
+    expect(questionCube.interactable).toEqual({
+      label: "Open tutorial",
+      action: "open-tutorial",
+      rangeMeters: 2.5,
+    });
+    expect(questionCube.autoDisplayHelpRangeMeters).toBeUndefined();
+    expect(registry.getInteractableObjectsInCell("cell-a").map((object) => object.id)).toEqual(["question-a"]);
+    expect(registry.getTooltipObjectsInCell("cell-a").map((object) => object.id)).toEqual(["question-a"]);
+  });
 });

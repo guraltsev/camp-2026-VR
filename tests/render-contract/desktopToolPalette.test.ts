@@ -5,6 +5,7 @@ import {
   showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuSettings,
+  showRuntimeMenuTutorial,
 } from "../../src/runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
 import { describeDesktopPaletteView } from "../../src/render/dom/desktopToolPalette";
@@ -104,6 +105,31 @@ describe("desktopToolPalette", () => {
     }
     expect(view.content.available).toBe(true);
     expect(view.content.statusLabel).toBe("Current 0 m / target 2 m");
+  });
+
+  it("describes the tutorial page controls", () => {
+    const definition = createPaletteDefinition(showRuntimeMenuTutorial(createRuntimeMenuState({
+      selectedWorldId: "cube",
+      debugOverlayEnabled: true,
+    }), {
+      objectId: "startingQuestionCube",
+      pages: [
+        { title: "Move", body: "Use arrows." },
+        { title: "Act", body: "Click things." },
+      ],
+      pageIndex: 1,
+    }));
+    const view = describeDesktopPaletteView(definition);
+
+    expect(view.pageId).toBe("tutorial");
+    expect(view.content.kind).toBe("tutorial");
+    if (view.content.kind !== "tutorial") {
+      throw new Error("Expected tutorial content.");
+    }
+    expect(view.content.title).toBe("Act");
+    expect(view.content.pageLabel).toBe("2 / 2");
+    expect(view.content.previousDisabled).toBe(false);
+    expect(view.content.nextDisabled).toBe(true);
   });
 
 

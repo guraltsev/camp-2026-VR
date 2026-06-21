@@ -107,7 +107,7 @@ function createToolHelpLens(selectedTool: RuntimeToolId, inputMode: InputMode): 
         body: inputMode === "desktop"
           ? "Move with Arrow keys. Look at objects to see available actions, or open the tools menu."
           : "Move with the left stick. Look at objects to see available actions, or open the tools menu.",
-        rows: [row(moveHint, "move"), row(primaryHint, "use selected action"), row(contextHint, "open tools or object menu")],
+        rows: [row(moveHint, "move"), row(primaryHint, "use selected/default action"), row(contextHint, "open tools or object menu")],
       };
   }
 }
@@ -120,14 +120,16 @@ function formatExplicitHelpBodyForInputMode(body: string, inputMode: InputMode):
   if (inputMode === "desktop") {
     return body
       .replace("Move with Arrow keys or the left stick.", "Move with Arrow keys.")
-      .replace("Use primary action or trigger for the selected action.", "Left click uses the selected action.")
+      .replace("Use primary action or trigger for the selected action.", "Left click uses the selected/default action.")
+      .replace("Use primary action or trigger for the selected/default action.", "Left click uses the selected/default action.")
       .replace("Use context action or side trigger for tools and object menus.", "Right click opens tools and object menus.")
       .replace("Press H or B while aiming at an object for its help.", "Press H while aiming at an object for its help.");
   }
 
   return body
     .replace("Move with Arrow keys or the left stick.", "Move with the left stick.")
-    .replace("Use primary action or trigger for the selected action.", "Trigger uses the selected action.")
+    .replace("Use primary action or trigger for the selected action.", "Trigger uses the selected/default action.")
+    .replace("Use primary action or trigger for the selected/default action.", "Trigger uses the selected/default action.")
     .replace("Use context action or side trigger for tools and object menus.", "Side trigger opens tools and object menus.")
     .replace("Press H or B while aiming at an object for its help.", "Press B while aiming at an object for its help.");
 }

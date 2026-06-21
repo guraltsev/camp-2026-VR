@@ -1,4 +1,4 @@
-import type { AssetObjectSpec, SimpleCollisionCylinderSpec } from "../cell-complex/specs";
+import type { AssetObjectSpec, SimpleCollisionCylinderSpec, TutorialPageSpec } from "../cell-complex/specs";
 
 export interface StaticObjectAuthoringParams {
   /**
@@ -23,6 +23,8 @@ export interface StaticObjectAuthoringParams {
   readonly displayHelpMessage?: string;
   /** If set, shows the help lens automatically while the player is within this range. */
   readonly autoDisplayHelpRangeMeters?: number;
+  /** Optional pages shown by object-specific tutorial menus. */
+  readonly tutorialPages?: readonly TutorialPageSpec[];
   readonly forwardTilt?: number;
   readonly sideTilt?: number;
   readonly turn?: number;
@@ -66,6 +68,7 @@ export function createStaticAssetObject(
     do_not_collide_with: params.do_not_collide_with ?? params.doNotCollideWith,
     displayHelpMessage: params.displayHelpMessage,
     autoDisplayHelpRangeMeters: params.autoDisplayHelpRangeMeters,
+    tutorialPages: params.tutorialPages,
   };
 }
 

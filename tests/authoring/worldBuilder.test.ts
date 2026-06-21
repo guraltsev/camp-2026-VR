@@ -3,6 +3,7 @@ import {
   authorSideToSideIndex,
   createWorldBuilder,
   defaultStartingQuestionCubeMessage,
+  defaultStartingQuestionCubeTutorialPages,
 } from "../../src/authoring/worldBuilder";
 import { createConvexPrismBaseVertices } from "../../src/cell-complex/prismBase";
 import { worldObjectLibrary } from "../../src/world-objects/library";
@@ -177,7 +178,7 @@ describe("worldBuilder", () => {
     expect(spec.startingPosition?.position.z).toBe(0);
   });
 
-  it("adds a starting question cube with a customizable message", () => {
+  it("adds a starting question cube with a customizable tutorial message", () => {
     const builder = createWorldBuilder();
 
     builder.PolygonFace("front", "#f00", squareBase);
@@ -195,12 +196,13 @@ describe("worldBuilder", () => {
         id: "startingQuestionCube",
         kind: "asset",
         assetPath: "questionblock/questionBlock.glb",
-        displayHelpMessage: "Try the movement controls.",
+        displayHelpMessage: defaultStartingQuestionCubeMessage,
+        tutorialPages: [{ title: "Tutorial", body: "Try the movement controls." }],
       },
     ]);
   });
 
-  it("uses the shared starting question cube message by default", () => {
+  it("uses the shared starting question cube tutorial by default", () => {
     const builder = createWorldBuilder();
 
     builder.PolygonFace("front", "#f00", squareBase);
@@ -213,6 +215,7 @@ describe("worldBuilder", () => {
     expect(spec.cells[0]?.visuals?.objects?.[0]).toMatchObject({
       id: "startingQuestionCube",
       displayHelpMessage: defaultStartingQuestionCubeMessage,
+      tutorialPages: defaultStartingQuestionCubeTutorialPages,
     });
   });
 

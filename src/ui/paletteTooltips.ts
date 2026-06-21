@@ -27,6 +27,10 @@ export function resolvePaletteTooltipLabel(itemId: string | undefined): string |
     return "Step skew";
   }
 
+  if (itemId.startsWith("tutorial:")) {
+    return itemId.endsWith(":previous") ? "Previous page" : "Next page";
+  }
+
   if (itemId.startsWith("sign-type:")) {
     return "Choose sign type";
   }

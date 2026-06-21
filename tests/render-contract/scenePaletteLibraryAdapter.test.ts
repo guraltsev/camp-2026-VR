@@ -5,6 +5,7 @@ import {
   showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuPlaceFlagOptions,
+  showRuntimeMenuTutorial,
 } from "../../src/runtime/runtimeMenuState";
 import { createScenePaletteLibraryAdapter } from "../../src/render/three/scenePaletteLibraryAdapter";
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
@@ -161,6 +162,32 @@ describe("scenePaletteLibraryAdapter", () => {
 
     expect(itemIds).not.toContain("go-home");
     expect(itemIds).not.toContain("reload-world");
+
+    adapter.dispose();
+  });
+
+  it("renders tutorial paging controls", () => {
+    const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
+    adapter.setDefinition(createPaletteDefinition(showRuntimeMenuTutorial(
+      createRuntimeMenuState({ selectedWorldId: "cube" }),
+      {
+        objectId: "startingQuestionCube",
+        pages: [
+          { title: "Move", body: "Use arrows." },
+          { title: "Act", body: "Click things." },
+        ],
+      },
+    )));
+
+    const itemIds = collectPaletteItemIds(adapter.root);
+    const actionIds = collectPaletteActionItemIds(adapter.root);
+
+    expect(itemIds).not.toContain("go-home");
+    expect(itemIds).not.toContain("reload-world");
+    expect(itemIds).toContain("tutorial:previous");
+    expect(itemIds).toContain("tutorial:next");
+    expect(actionIds).not.toContain("tutorial:previous");
+    expect(actionIds).toContain("tutorial:next");
 
     adapter.dispose();
   });

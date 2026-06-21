@@ -1,6 +1,6 @@
 import type { RigidTransform3 } from "../math/rigidTransform3";
 import type { DynamicObjectState, SimpleCollisionCylinder } from "../movement/dynamicObject";
-import type { AssetObjectSpec } from "../cell-complex/specs";
+import type { AssetObjectSpec, TutorialPageSpec } from "../cell-complex/specs";
 import { yawRigidTransform3 } from "../math/rigidTransform3";
 import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "./geodesicCannon";
 import type { MeasuredGeodesicLengthObject } from "./measureLengthTool";
@@ -10,7 +10,7 @@ import { userObjectClass } from "./objectMetadata";
 
 export interface RuntimeObjectInteraction {
   readonly label: string;
-  readonly action: "edit-flag" | "select-geodesic-cannon" | "open-geometry-computer";
+  readonly action: "edit-flag" | "select-geodesic-cannon" | "open-geometry-computer" | "open-tutorial";
   readonly rangeMeters?: number;
 }
 
@@ -36,6 +36,7 @@ export interface RuntimeWorldObjectBase {
   readonly interactable?: RuntimeObjectInteraction;
   readonly displayHelpMessage?: string;
   readonly autoDisplayHelpRangeMeters?: number;
+  readonly tutorialPages?: readonly TutorialPageSpec[];
 }
 
 export interface RuntimeCreatureObject extends RuntimeWorldObjectBase {
@@ -188,11 +189,20 @@ export function createRuntimeStaticAssetObject(
   cellId: string,
 ): RuntimeStaticAssetObject {
   const geometryComputer = objectSpec.class === "geometry-computer";
-  const helpTooltip = !geometryComputer && objectSpec.displayHelpMessage
-    ? {
-        label: objectSpec.class === "question-cube" ? "Question cube" : objectSpec.class ?? objectSpec.id,
-        rangeMeters: objectSpec.autoDisplayHelpRangeMeters ?? 2.5,
+  const questionCube = objectSpec.class === "question-cube";
+  const questionCubeRangeMeters = objectSpec.autoDisplayHelpRangeMeters ?? 2.5;
+  const helpTooltip = !geometryComputer
+    ? questionCube && objectSpec.tutorialPages && objectSpec.tutorialPages.length > 0
+      ? {
+          label: "Question cube",
+          rangeMeters: questionCubeRangeMeters,
+        }
+      : objectSpec.displayHelpMessage
+      ? {
+        label: questionCube ? "Question cube" : objectSpec.class ?? objectSpec.id,
+        rangeMeters: questionCube ? questionCubeRangeMeters : objectSpec.autoDisplayHelpRangeMeters ?? 2.5,
       }
+      : undefined
     : undefined;
 
   return {
@@ -212,13 +222,20 @@ export function createRuntimeStaticAssetObject(
       ? "Use this computer to change the torus skew when the current world supports live geometry changes."
       : undefined),
     autoDisplayHelpRangeMeters: objectSpec.autoDisplayHelpRangeMeters,
+    tutorialPages: objectSpec.tutorialPages,
     tooltip: geometryComputer
       ? {
           label: "Geometry computer",
           rangeMeters: 3,
         }
       : helpTooltip,
-    interactable: geometryComputer
+    interactable: questionCube && objectSpec.tutorialPages && objectSpec.tutorialPages.length > 0
+      ? {
+          label: "Open tutorial",
+          action: "open-tutorial",
+          rangeMeters: questionCubeRangeMeters,
+        }
+      : geometryComputer
       ? {
           label: "Set torus skew",
           action: "open-geometry-computer",

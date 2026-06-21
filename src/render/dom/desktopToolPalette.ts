@@ -60,6 +60,13 @@ export interface DesktopPaletteView {
       readonly kind: "geometry-computer-actions";
       readonly statusLabel: string;
       readonly available: boolean;
+    }
+    | {
+      readonly kind: "tutorial";
+      readonly title: string;
+      readonly pageLabel: string;
+      readonly previousDisabled: boolean;
+      readonly nextDisabled: boolean;
     };
 }
 
@@ -90,6 +97,8 @@ export interface DesktopToolPaletteOptions {
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
   readonly onGeometryComputerSetSkewRequested?: (computerId: string, skewXMeters: number) => void;
   readonly onGeometryComputerStepSkewRequested?: (computerId: string, deltaXMeters: number) => void;
+  readonly onTutorialPreviousRequested?: () => void;
+  readonly onTutorialNextRequested?: () => void;
   readonly onSignDeleteRequested?: () => void;
   readonly onResumeRequested: () => void;
 }
@@ -325,6 +334,21 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
     };
   }
 
+  if (definition.content.kind === "tutorial") {
+    return {
+      pageId: definition.pageId,
+      leftAction: definition.leftAction,
+      rightAction: definition.rightAction,
+      content: {
+        kind: "tutorial",
+        title: definition.content.title,
+        pageLabel: definition.content.pageLabel,
+        previousDisabled: definition.content.previousAction.disabled,
+        nextDisabled: definition.content.nextAction.disabled,
+      },
+    };
+  }
+
   return {
     pageId: definition.pageId,
     leftAction: definition.leftAction,
@@ -498,6 +522,56 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     section.append(stepRow);
     actions.append(section);
     return actions;
+  }
+
+  if (definition.content.kind === "tutorial") {
+    const tutorial = document.createElement("div");
+    tutorial.className = "desktop-tool-palette-settings";
+
+    const section = document.createElement("section");
+    section.className = "desktop-tool-palette-section desktop-tool-palette-tutorial";
+
+    const heading = document.createElement("span");
+    heading.className = "desktop-tool-palette-tutorial-title";
+    heading.textContent = definition.content.title;
+
+    const body = document.createElement("p");
+    body.className = "desktop-tool-palette-tutorial-body";
+    appendTutorialTextWithInputIcons(body, definition.content.body);
+
+    const controls = document.createElement("div");
+    controls.className = "desktop-tool-palette-tutorial-controls";
+
+    const previousButton = document.createElement("button");
+    previousButton.type = "button";
+    previousButton.className = "desktop-tool-palette-button desktop-tool-palette-icon-button";
+    previousButton.ariaLabel = "Previous tutorial page";
+    previousButton.disabled = definition.content.previousAction.disabled;
+    previousButton.ariaDisabled = String(definition.content.previousAction.disabled);
+    previousButton.append(createTutorialChevronIcon("previous"));
+    previousButton.addEventListener("click", () => {
+      options.onTutorialPreviousRequested?.();
+    });
+
+    const pageLabel = document.createElement("span");
+    pageLabel.className = "desktop-tool-palette-field-label";
+    pageLabel.textContent = definition.content.pageLabel;
+
+    const nextButton = document.createElement("button");
+    nextButton.type = "button";
+    nextButton.className = "desktop-tool-palette-button desktop-tool-palette-icon-button";
+    nextButton.ariaLabel = "Next tutorial page";
+    nextButton.disabled = definition.content.nextAction.disabled;
+    nextButton.ariaDisabled = String(definition.content.nextAction.disabled);
+    nextButton.append(createTutorialChevronIcon("next"));
+    nextButton.addEventListener("click", () => {
+      options.onTutorialNextRequested?.();
+    });
+
+    controls.append(previousButton, pageLabel, nextButton);
+    section.append(heading, body, controls);
+    tutorial.append(section);
+    return tutorial;
   }
 
   if (definition.content.kind === "settings") {
@@ -969,6 +1043,60 @@ function createTrashHeaderIcon(): HTMLElement {
   icon.textContent = "🗑";
   icon.setAttribute("aria-hidden", "true");
   return icon;
+}
+
+function createTutorialChevronIcon(direction: "previous" | "next"): HTMLElement {
+  const icon = document.createElement("span");
+  icon.className = `desktop-tool-palette-chevron-icon desktop-tool-palette-chevron-icon-${direction}`;
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
+function appendTutorialTextWithInputIcons(parent: HTMLElement, text: string): void {
+  const pattern = /(Arrow keys|Left click|Right click|\b[FBH]\b)/g;
+  let index = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    if (match.index > index) {
+      parent.append(document.createTextNode(text.slice(index, match.index)));
+    }
+    parent.append(createInlineInputIcon(match[0]));
+    index = match.index + match[0].length;
+  }
+
+  if (index < text.length) {
+    parent.append(document.createTextNode(text.slice(index)));
+  }
+}
+
+function createInlineInputIcon(label: string): HTMLImageElement {
+  const icon = document.createElement("img");
+  icon.className = "input-hint-icon input-hint-icon-inline input-hint-icon-inverted";
+  icon.src = inlineInputIconSrcByLabel(label);
+  icon.alt = label;
+  return icon;
+}
+
+function inlineInputIconSrcByLabel(label: string): string {
+  switch (label) {
+    case "Arrow keys":
+      return "/assets/icons/arrowkeys.png";
+    case "Left click":
+      return "/assets/icons/left-click-icon.png";
+    case "Right click":
+      return "/assets/icons/right-click-icon.png";
+    case "F":
+      return "/assets/icons/f-alphabet-round-icon.png";
+    case "B":
+      return "/assets/icons/b-alphabet-round-icon.png";
+    case "H":
+      return "/assets/icons/h-alphabet-round-icon.png";
+    default:
+      return "/assets/icons/h-alphabet-round-icon.png";
+  }
 }
 
 function createLockedGeodesicSegmentSymbol(): HTMLElement {

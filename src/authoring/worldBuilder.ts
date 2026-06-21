@@ -5,6 +5,7 @@ import type {
   FloorMaterialSpec,
   PrismCellSpec,
   StartingPositionSpec,
+  TutorialPageSpec,
 } from "../cell-complex/specs";
 import { createConvexPrismBaseVertices, type ConvexPrismBaseVertices } from "../cell-complex/prismBase";
 import { isWorldLibraryObjectSpec, type WorldLibraryObjectSpec } from "../world-objects/library";
@@ -15,7 +16,27 @@ import { degreesToRadians, type StaticObjectAuthoringParams } from "../world-obj
 const defaultHeightMeters = 15;
 const startingHouseLookOffsetDegrees = 12;
 export const defaultStartingQuestionCubeMessage =
-  "Move with Arrow keys or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.";
+  "Open this cube to page through the tutorial.";
+export const defaultStartingQuestionCubeTutorialPages: readonly TutorialPageSpec[] = [
+  {
+    title: "Move",
+    body: "Move with Arrow keys or the left stick. Look at nearby objects to see available actions.",
+    desktopBody: "Move with Arrow keys. Look at nearby objects to see available actions.",
+    xrBody: "Move with the left stick. Look at nearby objects to see available actions.",
+  },
+  {
+    title: "Use actions",
+    body: "Use primary action or trigger for the selected/default action. Use context action or side trigger for tools and object menus.",
+    desktopBody: "Left click uses the selected/default action. Right click or F opens tools and object menus.",
+    xrBody: "Trigger uses the selected/default action. Side trigger opens tools and object menus.",
+  },
+  {
+    title: "Get help",
+    body: "Press H or B while aiming at an object for its help.",
+    desktopBody: "Press H while aiming at an object for its help.",
+    xrBody: "Press B while aiming at an object for its help.",
+  },
+];
 
 interface MutableCell {
   readonly id: string;
@@ -41,6 +62,7 @@ export interface WorldBuilder {
 
 export interface StartingQuestionCubeAuthoringParams extends StaticObjectAuthoringParams {
   readonly message?: string;
+  readonly tutorialPages?: readonly TutorialPageSpec[];
 }
 
 export interface StartingPositionAuthoringParams {
@@ -171,7 +193,10 @@ export function createWorldBuilder(): WorldBuilder {
 
       const questionCube = worldObjectLibrary.question_cube("startingQuestionCube", {
         ...params,
-        displayHelpMessage: params.message ?? params.displayHelpMessage ?? defaultStartingQuestionCubeMessage,
+        displayHelpMessage: params.displayHelpMessage ?? defaultStartingQuestionCubeMessage,
+        tutorialPages: params.tutorialPages ?? (params.message
+          ? [{ title: "Tutorial", body: params.message }]
+          : defaultStartingQuestionCubeTutorialPages),
       });
       objectIds.add(questionCube.id);
       cell.visuals.objects.push(stripLibraryBrand(questionCube));

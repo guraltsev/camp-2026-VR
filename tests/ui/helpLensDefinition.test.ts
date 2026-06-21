@@ -50,7 +50,7 @@ describe("helpLensDefinition", () => {
       },
     });
 
-    expect(help.body).toBe("Move with Arrow keys. Look at nearby objects for prompts. Left click uses the selected action. Right click opens tools and object menus. Press H while aiming at an object for its help.");
+    expect(help.body).toBe("Move with Arrow keys. Look at nearby objects for prompts. Left click uses the selected/default action. Right click opens tools and object menus. Press H while aiming at an object for its help.");
     expect(help.rows).toEqual([]);
   });
 
@@ -65,7 +65,7 @@ describe("helpLensDefinition", () => {
       },
     });
 
-    expect(help.body).toBe("Move with the left stick. Look at nearby objects for prompts. Trigger uses the selected action. Side trigger opens tools and object menus. Press B while aiming at an object for its help.");
+    expect(help.body).toBe("Move with the left stick. Look at nearby objects for prompts. Trigger uses the selected/default action. Side trigger opens tools and object menus. Press B while aiming at an object for its help.");
     expect(help.rows).toEqual([]);
   });
 

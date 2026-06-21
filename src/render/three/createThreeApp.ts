@@ -54,6 +54,7 @@ import {
   setRuntimeMenuEditingFlagId,
   setRuntimeMenuEditingSignMessage,
   setRuntimeMenuReloadConfirmUntilMs,
+  setRuntimeMenuTutorialPageIndex,
   showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuDebugSettings,
@@ -61,6 +62,7 @@ import {
   showRuntimeMenuMainPage,
   showRuntimeMenuPlaceFlagOptions,
   showRuntimeMenuSettings,
+  showRuntimeMenuTutorial,
   setRuntimeMenuSelectedTool,
   toggleRuntimeMenuDebugOverlayItem,
 } from "../../runtime/runtimeMenuState";
@@ -620,6 +622,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onGeometryComputerStepSkewRequested(computerId, deltaXMeters) {
       stepGeometryComputerSkewTarget(computerId, deltaXMeters);
+    },
+    onTutorialPreviousRequested() {
+      stepOpenTutorialPage(-1);
+    },
+    onTutorialNextRequested() {
+      stepOpenTutorialPage(1);
     },
     onSignKeyboardCharacter(character) {
       appendEditingSignCharacter(character);
@@ -1716,7 +1724,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           referenceSpaceToWorldMatrix: xrRig.root.matrixWorld,
           inputSources,
         }),
-        definition: createPaletteDefinition(menuState, appConfig),
+        definition: createPaletteDefinition(menuState, appConfig, "xr"),
         placement,
       });
       xrControllerHandModels.update({
@@ -1749,7 +1757,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         isOpen: menuState.isOpen,
         placement,
       }),
-      definition: createPaletteDefinition(menuState, appConfig),
+      definition: createPaletteDefinition(menuState, appConfig, "desktop"),
       placement,
     });
   }
@@ -1825,7 +1833,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       menuState.page === "main" ||
       menuState.page === "edit-sign" ||
       menuState.page === "geodesic-cannon-actions" ||
-      menuState.page === "geometry-computer-actions"
+      menuState.page === "geometry-computer-actions" ||
+      menuState.page === "tutorial"
     ) {
       cancelRuntimeMenuAndSelectedTool();
       return;
@@ -3620,6 +3629,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     switch (target?.object?.kind) {
+      case "asset":
+        return tryOpenFocusedTutorial(target.object);
       case "geodesic-segment":
         return tryExtendFocusedGeodesicFromAim(ray);
       case "measured-geodesic-length":
@@ -3708,7 +3719,39 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return true;
     }
 
+    if (focused.object.kind === "asset" && tryOpenFocusedTutorial(focused.object)) {
+      return true;
+    }
+
     return false;
+  }
+
+  function tryOpenFocusedTutorial(object: RuntimeWorldObject): boolean {
+    if (object.kind !== "asset" || object.interactable?.action !== "open-tutorial") {
+      return false;
+    }
+
+    const pages = object.tutorialPages;
+    if (!pages || pages.length === 0) {
+      return false;
+    }
+
+    menuState = showRuntimeMenuTutorial(menuState, {
+      objectId: object.id,
+      pages,
+    });
+    syncDesktopPalette();
+    return true;
+  }
+
+  function stepOpenTutorialPage(delta: -1 | 1): void {
+    const options = menuState.tutorialOptions;
+    if (menuState.page !== "tutorial" || !options) {
+      return;
+    }
+
+    menuState = setRuntimeMenuTutorialPageIndex(menuState, options.pageIndex + delta);
+    syncDesktopPalette();
   }
 
   function createGeometryComputerMenuOptions(computerId: string): Parameters<typeof showRuntimeMenuGeometryComputerActions>[1] {
@@ -5176,12 +5219,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         helpLensRenderer.update({ visible: definition !== undefined, xrActive, camera, definition });
         return;
       }
-    }
-
-    if (focused?.object.class === "question-cube") {
-      const focusedDefinition = createHelpDefinitionForObject(focused.object, xrActive);
-      helpLensRenderer.update({ visible: focusedDefinition !== undefined, xrActive, camera, definition: focusedDefinition });
-      return;
     }
 
     const automaticObject = findAutomaticHelpObject();

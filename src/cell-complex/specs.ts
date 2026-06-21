@@ -70,12 +70,20 @@ export interface PositionedCellObjectSpec {
   readonly do_not_collide_with?: readonly string[];
   readonly displayHelpMessage?: string;
   readonly autoDisplayHelpRangeMeters?: number;
+  readonly tutorialPages?: readonly TutorialPageSpec[];
 }
 
 export interface AssetObjectSpec extends PositionedCellObjectSpec {
   readonly kind: "asset";
   readonly assetPath: string;
   readonly collision?: SimpleCollisionCylinderSpec;
+}
+
+export interface TutorialPageSpec {
+  readonly title: string;
+  readonly body: string;
+  readonly desktopBody?: string;
+  readonly xrBody?: string;
 }
 
 export interface SimpleCollisionCylinderSpec {
