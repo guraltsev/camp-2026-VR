@@ -5,6 +5,7 @@ import { resolveVrPalettePlacement } from "./vrPalettePlacement";
 import { createXrDebugPanel } from "./xrDebugPanel";
 import type { XrDebugRenderState } from "./renderState";
 import { createXrControllerHandModels } from "./xrControllerHandModels";
+import { isInteractPressed, isPrimaryActionPressed } from "./xrControls";
 import { xrRigidTransformLocalMatrix } from "./xrPlayerRig";
 import { chooseActiveXrPointer, createXrPointers } from "./xrPointers";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
@@ -298,12 +299,11 @@ function applyXrPoseToObject(
 }
 
 function isSelectPressed(gamepad: XRInputSource["gamepad"] | undefined): boolean {
-  return gamepad?.buttons?.[0]?.pressed === true;
+  return isPrimaryActionPressed(gamepad);
 }
 
 function isMenuTogglePressed(gamepad: XRInputSource["gamepad"] | undefined): boolean {
-  return gamepad?.buttons?.[1]?.pressed === true
-    || gamepad?.buttons?.[3]?.pressed === true;
+  return isInteractPressed(gamepad);
 }
 
 export function describeVrInputMode(

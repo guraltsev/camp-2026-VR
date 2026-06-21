@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { isInteractPressed, isPrimaryActionPressed } from "./xrControls";
 import { xrRigidTransformLocalMatrix } from "./xrPlayerRig";
 import type { ScenePaletteInputFrame, ScenePalettePointerSource } from "./scenePaletteInput";
 
@@ -16,8 +17,6 @@ export interface XrScenePaletteInput {
 const controllerObjects = new Map<string, THREE.Object3D>();
 
 export function createXrScenePaletteInput(): XrScenePaletteInput {
-  let previousMenuTogglePressed = false;
-
   return {
     update(options) {
       const sources = createControllerSources(
@@ -26,17 +25,16 @@ export function createXrScenePaletteInput(): XrScenePaletteInput {
         options.referenceSpace,
         options.referenceSpaceToWorldMatrix,
       );
-      const menuTogglePressed = sources.menuTogglePressed && !previousMenuTogglePressed;
-      previousMenuTogglePressed = sources.menuTogglePressed;
 
       return {
         deltaSeconds: options.deltaSeconds,
-        menuTogglePressed,
+        // XR side-trigger menu actions are handled by the main runtime input
+        // path so object menus and the global tool palette share one flow.
+        menuTogglePressed: false,
         pointers: sources.pointerSources,
       };
     },
     reset() {
-      previousMenuTogglePressed = false;
       controllerObjects.clear();
     },
   };
@@ -99,10 +97,9 @@ function applyXrPoseToObject(
 }
 
 export function isSelectPressed(gamepad: XRInputSource["gamepad"] | undefined): boolean {
-  return gamepad?.buttons?.[0]?.pressed === true;
+  return isPrimaryActionPressed(gamepad);
 }
 
 export function isMenuTogglePressed(gamepad: XRInputSource["gamepad"] | undefined): boolean {
-  return gamepad?.buttons?.[4]?.pressed === true
-    || gamepad?.buttons?.[5]?.pressed === true;
+  return isInteractPressed(gamepad);
 }

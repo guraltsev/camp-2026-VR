@@ -18,6 +18,11 @@ export interface XrControls {
   consumeFrame(inputSources: Iterable<XrInputSourceLike>, deltaSeconds: number): RuntimeInputFrame;
 }
 
+const primaryTriggerButtonIndex = 0;
+const sideTriggerButtonIndex = 1;
+const thumbstickButtonIndex = 3;
+const helpFaceButtonIndex = 5;
+
 export function createXrControls(options: Partial<VrComfortOptions> = {}): XrControls {
   const comfort = { ...defaultVrComfortOptions, ...options };
   let previousPrimaryActionPressed = false;
@@ -112,15 +117,15 @@ export function isResetPressed(gamepad: GamepadLike | undefined): boolean {
     return false;
   }
 
-  return buttons[3]?.pressed === true;
+  return buttons[thumbstickButtonIndex]?.pressed === true;
 }
 
 export function isPrimaryActionPressed(gamepad: GamepadLike | undefined): boolean {
-  return gamepad?.buttons?.[0]?.pressed === true;
+  return gamepad?.buttons?.[primaryTriggerButtonIndex]?.pressed === true;
 }
 
 export function isInteractPressed(gamepad: GamepadLike | undefined): boolean {
-  return gamepad?.buttons?.[4]?.pressed === true || gamepad?.buttons?.[5]?.pressed === true;
+  return gamepad?.buttons?.[sideTriggerButtonIndex]?.pressed === true;
 }
 
 export function isCarryActionPressed(source: XrInputSourceLike): boolean {
@@ -129,7 +134,7 @@ export function isCarryActionPressed(source: XrInputSourceLike): boolean {
 }
 
 export function isHelpPressed(gamepad: GamepadLike | undefined): boolean {
-  return gamepad?.buttons?.[1]?.pressed === true;
+  return gamepad?.buttons?.[helpFaceButtonIndex]?.pressed === true;
 }
 
 export function emptyXrInputFrame(): RuntimeInputFrame {

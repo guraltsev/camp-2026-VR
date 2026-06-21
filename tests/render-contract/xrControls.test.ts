@@ -86,10 +86,10 @@ describe("XR controls", () => {
       gamepad: {
         buttons: [
           { pressed: false },
-          { pressed: false },
-          { pressed: false },
-          { pressed: false },
           { pressed: true },
+          { pressed: false },
+          { pressed: false },
+          { pressed: false },
           { pressed: false },
         ],
       },
@@ -101,6 +101,32 @@ describe("XR controls", () => {
     expect(controls.consumeFrame([pressed], 1).interactRequested).toBe(true);
     expect(controls.consumeFrame([pressed], 1).interactRequested).toBe(false);
     expect(controls.consumeFrame([released], 1).interactRequested).toBe(false);
+  });
+
+  it("does not treat A or B face buttons as object context interaction", () => {
+    const aPressed = {
+      buttons: [
+        { pressed: false },
+        { pressed: false },
+        { pressed: false },
+        { pressed: false },
+        { pressed: true },
+        { pressed: false },
+      ],
+    };
+    const bPressed = {
+      buttons: [
+        { pressed: false },
+        { pressed: false },
+        { pressed: false },
+        { pressed: false },
+        { pressed: false },
+        { pressed: true },
+      ],
+    };
+
+    expect(isInteractPressed(aPressed)).toBe(false);
+    expect(isInteractPressed(bPressed)).toBe(false);
   });
 
   it("does not map face buttons to carry shortcuts", () => {
@@ -120,8 +146,8 @@ describe("XR controls", () => {
 
   it("maps the help face button to help edges", () => {
     const controls = createXrControls();
-    const released = { gamepad: { buttons: [{ pressed: false }, { pressed: false }] } };
-    const pressed = { gamepad: { buttons: [{ pressed: false }, { pressed: true }] } };
+    const released = { gamepad: { buttons: [{ pressed: false }, { pressed: false }, { pressed: false }, { pressed: false }, { pressed: false }, { pressed: false }] } };
+    const pressed = { gamepad: { buttons: [{ pressed: false }, { pressed: false }, { pressed: false }, { pressed: false }, { pressed: false }, { pressed: true }] } };
 
     expect(isHelpPressed(pressed.gamepad)).toBe(true);
     expect(createXrInputFrame([pressed], 1).helpRequested).toBe(true);
