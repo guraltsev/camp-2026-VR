@@ -28,8 +28,20 @@ npm run dev
 npm run typecheck
 npm test
 npm run build
+npm run build:pages
 ```
 
 The current implementation intentionally begins small: a single static Vite app,
 Three.js rendering, Vitest tests, and visible domain modules for cell complexes,
 movement, tools, and classroom glue.
+
+## GitHub deployment
+
+The default deployment path is GitHub Pages through GitHub Actions.
+
+1. Push the repository to GitHub.
+2. In GitHub, open Settings -> Pages and set Source to `GitHub Actions`.
+3. Push to `main` to trigger [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
+
+The workflow installs dependencies, runs the test suite, builds the Vite app
+with the correct Pages base path, publishes `.nojekyll`, and deploys `dist/`.

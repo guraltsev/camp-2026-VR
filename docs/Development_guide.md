@@ -76,9 +76,15 @@ For local classroom serving:
 npm run dev -- --host 0.0.0.0
 ```
 
-For GitHub Pages, `scripts/deploy-pages.sh` builds locally and pushes the built
-`dist/` contents to the `gh-pages` branch root. Configure GitHub Pages manually
-to serve that branch.
+For GitHub Pages, use [`.github/workflows/deploy-pages.yml`](../.github/workflows/deploy-pages.yml)
+and set the repository Pages source to `GitHub Actions`. The workflow runs the
+test suite, builds the site with the correct Pages base path, publishes
+`.nojekyll` so underscore-prefixed asset folders survive deployment, and
+deploys the built `dist/` output.
+
+`npm run build:pages` is the local verification build for that deployment path.
+It defaults to the repository package name as the Pages base and lets the
+workflow override the base automatically from GitHub Pages metadata.
 
 ## Repository Map
 

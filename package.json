@@ -9,7 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "tsc --noEmit && vite build",
-    "build:pages": "tsc --noEmit && vite build --base /noneuclid-fpv/",
+    "build:pages": "node scripts/build-pages.mjs",
     "preview": "vite preview",
     "deploy:pages": "bash scripts/deploy-pages.sh",
     "textures:floor:inventory": "node scripts/texture-build/inventory-floor-textures.mjs",
