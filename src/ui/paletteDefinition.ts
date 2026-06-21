@@ -1,4 +1,5 @@
 import { worldCatalog } from "../authoring/worldCatalog";
+import { defaultAppConfig, getEnabledMainTools, type AppConfig, type ConfigurableToolId } from "../glue/appConfig";
 import { portalPanelModeDefinitions } from "../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -25,12 +26,18 @@ export interface MainPaletteContent {
   readonly kind: "main";
   readonly selectedTool: RuntimeToolId;
   readonly placeFlagType: PlacedFlagType;
+  readonly toolOptions: readonly {
+    readonly id: ConfigurableToolId;
+    readonly label: string;
+  }[];
 }
 
 export interface SettingsPaletteContent {
   readonly kind: "settings";
   readonly selectedWorldId: string;
   readonly worldOptions: readonly PaletteSelectOption[];
+  readonly worldSelectionSectionEnabled: boolean;
+  readonly debugSectionEnabled: boolean;
   readonly debugEnabled: boolean;
   readonly reloadConfirmationActive: boolean;
 }
@@ -121,10 +128,10 @@ export interface PaletteDefinition {
     | GeometryComputerActionsPaletteContent;
 }
 
-export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinition {
+export function createPaletteDefinition(state: RuntimeMenuState, appConfig: AppConfig = defaultAppConfig): PaletteDefinition {
   const reloadConfirmationActive = (state.reloadConfirmUntilMs ?? 0) > Date.now();
 
-  if (state.page === "debug-settings") {
+  if (state.page === "debug-settings" && appConfig.menu.debugSectionEnabled) {
     return {
       pageId: "debug-settings",
       leftAction: createHeaderAction("none"),
@@ -172,6 +179,8 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
           id: entry.id,
           label: entry.label,
         })),
+        worldSelectionSectionEnabled: appConfig.menu.worldSelectionSectionEnabled,
+        debugSectionEnabled: appConfig.menu.debugSectionEnabled,
         debugEnabled: state.debugEnabled,
         reloadConfirmationActive,
       },
@@ -250,9 +259,24 @@ export function createPaletteDefinition(state: RuntimeMenuState): PaletteDefinit
       kind: "main",
       selectedTool: state.selectedTool,
       placeFlagType: state.placeFlagOptions.flagType,
+      toolOptions: createToolOptions(appConfig),
     },
   };
 }
+
+function createToolOptions(appConfig: AppConfig): MainPaletteContent["toolOptions"] {
+  return getEnabledMainTools(appConfig).map((id) => ({
+    id,
+    label: toolLabels[id],
+  }));
+}
+
+const toolLabels = {
+  "place-flag": "Sign",
+  "geodesic-cannon": "Geodesic emitter",
+  "measure-length": "Length",
+  protractor: "Protractor",
+} as const satisfies Record<ConfigurableToolId, string>;
 
 function createGeometryComputerActionsContent(
   options: NonNullable<RuntimeMenuState["geometryComputerOptions"]>,

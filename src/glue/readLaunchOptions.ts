@@ -7,6 +7,7 @@ import {
   parseRuntimeDebugOverlayItems,
   type RuntimeDebugOverlayItemId,
 } from "../runtime/runtimeMenuState";
+import { defaultAppConfig, defaultAppConfigName, type AppConfig } from "./appConfig";
 
 export interface LaunchOptions {
   readonly selectedWorldId: string;
@@ -19,27 +20,41 @@ export interface LaunchOptions {
   readonly debugOverlayEnabled: boolean;
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly renderQualityEnabled: boolean;
+  readonly appConfig: AppConfig;
+  readonly appConfigName: string;
 }
 
-export function readLaunchOptions(location: Location): LaunchOptions {
+export function readLaunchOptions(
+  location: Location,
+  appConfig: AppConfig = defaultAppConfig,
+  appConfigName = defaultAppConfigName,
+): LaunchOptions {
   const params = new URLSearchParams(location.search);
-  const requestedWorldId = normalizeWorldId(params.get("world")) ?? defaultWorldId;
+  const requestedWorldId = normalizeWorldId(params.get("world")) ?? appConfig.startingWorldId ?? defaultWorldId;
   const selectedWorldId = findWorldCatalogEntry(requestedWorldId)?.id ?? defaultWorldId;
   const requestedUiOptions = parseUiOptions(params.get("ui"));
   const hasExplicitUiOptions = params.has("ui");
   const renderWorldPicker = hasExplicitUiOptions
     ? requestedUiOptions.includes("WorldSelector")
-    : true;
+    : appConfig.menu.worldSelectionSectionEnabled;
   const legacyDebugEnabled = isEnabled(params.get("debug"));
   const renderDebugButton = hasExplicitUiOptions
     ? requestedUiOptions.includes("DebugButton")
-    : true;
-  const debugOptions = parseDebugOptions(params.get("debugOptions"));
+    : appConfig.menu.debugSectionEnabled;
+  const debugOptions = params.has("debugOptions")
+    ? parseDebugOptions(params.get("debugOptions"))
+    : appConfig.debug.options;
   const legacyPortalPanelsEnabled = params
     .get("debugOptions")
     ?.split(",")
     .map((value) => value.trim())
     .includes("portal-panels");
+  const debugLevel = params.has("debugLevel") || params.has("debug")
+    ? parseDebugLevel(params.get("debugLevel")) ?? (legacyDebugEnabled ? "basic" : "off")
+    : appConfig.debug.level;
+  const portalPanelMode = params.has("portalPanels") || legacyPortalPanelsEnabled
+    ? parsePortalPanelMode(params.get("portalPanels")) ?? (legacyPortalPanelsEnabled ? "panel-with-text" : "none")
+    : appConfig.debug.portalPanelMode;
 
   return {
     selectedWorldId,
@@ -49,12 +64,20 @@ export function readLaunchOptions(location: Location): LaunchOptions {
     ],
     renderWorldPicker,
     renderDebugButton,
-    debugLevel: parseDebugLevel(params.get("debugLevel")) ?? (legacyDebugEnabled ? "basic" : "off"),
-    portalPanelMode: parsePortalPanelMode(params.get("portalPanels")) ?? (legacyPortalPanelsEnabled ? "panel-with-text" : "none"),
+    debugLevel,
+    portalPanelMode,
     debugOptions,
-    debugOverlayEnabled: !isExplicitlyDisabled(params.get("debugOverlay")),
-    debugOverlayItems: parseRuntimeDebugOverlayItems(params.get("debugOverlayItems")),
-    renderQualityEnabled: isRenderQualityEnabled(params.get("renderQuality")),
+    debugOverlayEnabled: params.has("debugOverlay")
+      ? !isExplicitlyDisabled(params.get("debugOverlay"))
+      : appConfig.debug.overlayEnabled,
+    debugOverlayItems: params.has("debugOverlayItems")
+      ? parseRuntimeDebugOverlayItems(params.get("debugOverlayItems"))
+      : appConfig.debug.overlayItems,
+    renderQualityEnabled: params.has("renderQuality")
+      ? isRenderQualityEnabled(params.get("renderQuality"))
+      : appConfig.debug.renderQualityEnabled,
+    appConfig,
+    appConfigName,
   };
 }
 

@@ -3,13 +3,14 @@ import {
   buildUrlWithLaunchOptions,
   removeLaunchOptionsFromUrl,
 } from "../src/glue/launchOptionsUrl";
+import { defaultAppConfig, defaultAppConfigName } from "../src/glue/appConfig";
 import type { LaunchOptions } from "../src/glue/readLaunchOptions";
 
 describe("launchOptionsUrl", () => {
   it("removes recognized launch options from the visible URL", () => {
     expect(
       removeLaunchOptionsFromUrl(
-        "https://example.test/play?world=cube&ui=DebugButton&debugLevel=verbose&keep=1#here",
+        "https://example.test/play?config=classroom&world=cube&ui=DebugButton&debugLevel=verbose&keep=1#here",
       ),
     ).toBe("https://example.test/play?keep=1#here");
   });
@@ -19,6 +20,13 @@ describe("launchOptionsUrl", () => {
       .toBe(
         "https://example.test/play?keep=1&world=cube&ui=DebugButton&debugLevel=verbose&portalPanels=panel-with-text&debugOptions=runtime-diagnostics%2Cportal-path-debug&debugOverlay=false&debugOverlayItems=location&renderQuality=true",
       );
+  });
+
+  it("keeps non-default config names in copied launch URLs", () => {
+    expect(buildUrlWithLaunchOptions("https://example.test/play?keep=1", {
+      ...exampleLaunchOptions(),
+      appConfigName: "classroom",
+    })).toContain("?keep=1&config=classroom&world=cube");
   });
 });
 
@@ -34,5 +42,7 @@ function exampleLaunchOptions(): LaunchOptions {
     debugOverlayEnabled: false,
     debugOverlayItems: ["location"],
     renderQualityEnabled: true,
+    appConfig: defaultAppConfig,
+    appConfigName: defaultAppConfigName,
   };
 }

@@ -1,9 +1,11 @@
 import type { LaunchOptions } from "./readLaunchOptions";
 import { serializeDebugOptions } from "./debugOptions";
 import { serializeUiOptions } from "./uiOptions";
+import { defaultAppConfigName } from "./appConfig";
 import { serializeRuntimeDebugOverlayItems } from "../runtime/runtimeMenuState";
 
 const launchOptionSearchParams = [
+  "config",
   "world",
   "ui",
   "debug",
@@ -36,6 +38,10 @@ export function replaceVisibleUrlWithoutLaunchOptions(window: Window): void {
 
 export function buildUrlWithLaunchOptions(href: string, options: LaunchOptions): string {
   const url = new URL(removeLaunchOptionsFromUrl(href));
+
+  if (options.appConfigName !== defaultAppConfigName) {
+    url.searchParams.set("config", options.appConfigName);
+  }
 
   url.searchParams.set("world", options.selectedWorldId);
   url.searchParams.set("ui", serializeUiOptions(options.uiOptions));

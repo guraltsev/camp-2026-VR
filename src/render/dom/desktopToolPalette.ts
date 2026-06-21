@@ -1,5 +1,6 @@
 import type { PaletteDefinition, PaletteHeaderAction } from "../../ui/paletteDefinition";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
+import type { ConfigurableToolId } from "../../glue/appConfig";
 import type {
   RuntimeDesktopToolId,
   RuntimeDebugOverlayItemId,
@@ -24,6 +25,7 @@ export interface DesktopPaletteView {
       readonly kind: "main";
       readonly selectedTool: RuntimeDesktopToolId;
       readonly placeFlagType: PlacedFlagType;
+      readonly toolLabels: readonly string[];
     }
     | {
       readonly kind: "settings";
@@ -319,6 +321,7 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
       kind: "main",
       selectedTool: definition.content.kind === "main" ? definition.content.selectedTool : "none",
       placeFlagType: definition.content.kind === "main" ? definition.content.placeFlagType : "WoodenSign1",
+      toolLabels: definition.content.kind === "main" ? definition.content.toolOptions.map((option) => option.label) : [],
     },
   };
 }
@@ -338,83 +341,11 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     const tools = document.createElement("div");
     tools.className = "desktop-tool-palette-tool-grid";
 
-    const flagTile = document.createElement("div");
-    flagTile.className = "desktop-tool-tile-wrap";
-
-    const flagButton = document.createElement("button");
-    flagButton.type = "button";
-    flagButton.className = "desktop-tool-tile";
-    flagButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "place-flag");
-    flagButton.ariaLabel = "Place flags";
-    flagButton.ariaPressed = String(mainContent.selectedTool === "place-flag");
-    flagButton.addEventListener("click", () => {
-      options.onToolSelected("place-flag");
-    });
-
-    const icon = createFlagTileIcon(mainContent.placeFlagType);
-    const label = document.createElement("span");
-    label.className = "desktop-tool-tile-label";
-    label.textContent = "flags";
-    flagButton.append(icon, label);
-
-    const optionsButton = document.createElement("button");
-    optionsButton.type = "button";
-    optionsButton.className = "desktop-tool-tile-options";
-    optionsButton.textContent = "\u2699";
-    optionsButton.ariaLabel = "Choose flag type";
-    optionsButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      options.onPlaceFlagOptionsRequested();
-    });
-
-    flagTile.append(flagButton, optionsButton);
-
-    const cannonButton = document.createElement("button");
-    cannonButton.type = "button";
-    cannonButton.className = "desktop-tool-tile";
-    cannonButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "geodesic-cannon");
-    cannonButton.ariaLabel = "Geodesic emitter";
-    cannonButton.ariaPressed = String(mainContent.selectedTool === "geodesic-cannon");
-    cannonButton.addEventListener("click", () => {
-      options.onToolSelected("geodesic-cannon");
-    });
-
-    const cannonLabel = document.createElement("span");
-    cannonLabel.className = "desktop-tool-tile-label";
-    cannonLabel.textContent = "geodesic emitter";
-    cannonButton.append(createCannonTileIcon(), cannonLabel);
-
-    const protractorButton = document.createElement("button");
-    protractorButton.type = "button";
-    protractorButton.className = "desktop-tool-tile";
-    protractorButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "protractor");
-    protractorButton.ariaLabel = "Protractor";
-    protractorButton.ariaPressed = String(mainContent.selectedTool === "protractor");
-    protractorButton.addEventListener("click", () => {
-      options.onToolSelected("protractor");
-    });
-
-    const protractorLabel = document.createElement("span");
-    protractorLabel.className = "desktop-tool-tile-label";
-    protractorLabel.textContent = "protractor";
-    protractorButton.append(createProtractorTileIcon(), protractorLabel);
-
-    const measureButton = document.createElement("button");
-    measureButton.type = "button";
-    measureButton.className = "desktop-tool-tile";
-    measureButton.classList.toggle("desktop-tool-tile-selected", mainContent.selectedTool === "measure-length");
-    measureButton.ariaLabel = "Measure length";
-    measureButton.ariaPressed = String(mainContent.selectedTool === "measure-length");
-    measureButton.addEventListener("click", () => {
-      options.onToolSelected("measure-length");
-    });
-
-    const measureLabel = document.createElement("span");
-    measureLabel.className = "desktop-tool-tile-label";
-    measureLabel.textContent = "length";
-    measureButton.append(createMeasureLengthTileIcon(), measureLabel);
-
-    tools.append(flagTile, cannonButton, measureButton, protractorButton);
+    for (const tool of mainContent.toolOptions) {
+      tools.append(tool.id === "place-flag"
+        ? createFlagToolTile(mainContent, options)
+        : createSimpleToolTile(tool.id, tool.label, mainContent.selectedTool, options));
+    }
     return tools;
   }
 
@@ -651,7 +582,14 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
       debugSection.append(debugDetailsButton);
     }
 
-    settings.append(worldField, debugSection);
+    if (definition.content.worldSelectionSectionEnabled) {
+      settings.append(worldField);
+    }
+
+    if (definition.content.debugSectionEnabled) {
+      settings.append(debugSection);
+    }
+
     return settings;
   }
 
@@ -832,6 +770,90 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
   empty.className = "desktop-tool-palette-empty";
   empty.ariaLabel = "Tool area placeholder";
   return empty;
+}
+
+function createFlagToolTile(
+  mainContent: Extract<PaletteDefinition["content"], { readonly kind: "main" }>,
+  options: DesktopToolPaletteOptions,
+): HTMLElement {
+  const flagTile = document.createElement("div");
+  flagTile.className = "desktop-tool-tile-wrap";
+
+  const flagButton = createToolButton("place-flag", "Place flags", "flags", mainContent.selectedTool, options);
+  flagButton.prepend(createFlagTileIcon(mainContent.placeFlagType));
+
+  const optionsButton = document.createElement("button");
+  optionsButton.type = "button";
+  optionsButton.className = "desktop-tool-tile-options";
+  optionsButton.textContent = "\u2699";
+  optionsButton.ariaLabel = "Choose flag type";
+  optionsButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    options.onPlaceFlagOptionsRequested();
+  });
+
+  flagTile.append(flagButton, optionsButton);
+  return flagTile;
+}
+
+function createSimpleToolTile(
+  toolId: Exclude<ConfigurableToolId, "place-flag">,
+  label: string,
+  selectedTool: RuntimeDesktopToolId,
+  options: DesktopToolPaletteOptions,
+): HTMLElement {
+  const button = createToolButton(toolId, getToolAriaLabel(toolId), label.toLowerCase(), selectedTool, options);
+
+  switch (toolId) {
+    case "geodesic-cannon":
+      button.prepend(createCannonTileIcon());
+      break;
+    case "measure-length":
+      button.prepend(createMeasureLengthTileIcon());
+      break;
+    case "protractor":
+      button.prepend(createProtractorTileIcon());
+      break;
+  }
+
+  return button;
+}
+
+function createToolButton(
+  toolId: ConfigurableToolId,
+  ariaLabel: string,
+  labelText: string,
+  selectedTool: RuntimeDesktopToolId,
+  options: DesktopToolPaletteOptions,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "desktop-tool-tile";
+  button.classList.toggle("desktop-tool-tile-selected", selectedTool === toolId);
+  button.ariaLabel = ariaLabel;
+  button.ariaPressed = String(selectedTool === toolId);
+  button.addEventListener("click", () => {
+    options.onToolSelected(toolId);
+  });
+
+  const label = document.createElement("span");
+  label.className = "desktop-tool-tile-label";
+  label.textContent = labelText;
+  button.append(label);
+  return button;
+}
+
+function getToolAriaLabel(toolId: ConfigurableToolId): string {
+  switch (toolId) {
+    case "place-flag":
+      return "Place flags";
+    case "geodesic-cannon":
+      return "Geodesic emitter";
+    case "measure-length":
+      return "Measure length";
+    case "protractor":
+      return "Protractor";
+  }
 }
 
 function createFlagTileIcon(flagType: PlacedFlagType): HTMLElement {

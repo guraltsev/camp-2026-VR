@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizeAppConfig, normalizeAppConfigName, readAppConfigName } from "../src/glue/appConfig";
 import { readLaunchOptions } from "../src/glue/readLaunchOptions";
 
 describe("readLaunchOptions", () => {
@@ -25,6 +26,82 @@ describe("readLaunchOptions", () => {
       "location",
       "portal-quantities",
     ]);
+  });
+
+  it("uses app config values as launch defaults", () => {
+    const options = readLaunchOptions(locationWithSearch(""), normalizeAppConfig({
+      startingWorld: "torus",
+      optionsMenu: {
+        worldSelectionSection: false,
+        debugSection: false,
+      },
+      debug: {
+        level: "basic",
+        portalPanels: "text-only",
+        renderQuality: true,
+        overlay: {
+          enabled: false,
+          items: {
+            fps: false,
+            location: true,
+            "portal-quantities": false,
+          },
+        },
+        options: {
+          "runtime-diagnostics": true,
+          "portal-path-debug": true,
+        },
+      },
+    }));
+
+    expect(options).toMatchObject({
+      selectedWorldId: "torus",
+      uiOptions: [],
+      renderWorldPicker: false,
+      renderDebugButton: false,
+      debugLevel: "basic",
+      portalPanelMode: "text-only",
+      debugOptions: ["runtime-diagnostics", "portal-path-debug"],
+      debugOverlayEnabled: false,
+      debugOverlayItems: ["location"],
+      renderQualityEnabled: true,
+    });
+  });
+
+  it("lets URL params override app config defaults", () => {
+    const config = normalizeAppConfig({
+      startingWorld: "torus",
+      optionsMenu: {
+        worldSelectionSection: false,
+        debugSection: false,
+      },
+      debug: {
+        level: "basic",
+        renderQuality: true,
+        options: {
+          "runtime-diagnostics": true,
+        },
+      },
+    });
+
+    expect(readLaunchOptions(
+      locationWithSearch("?world=cube&ui=DebugButton&debugLevel=off&debugOptions=&renderQuality=false"),
+      config,
+    )).toMatchObject({
+      selectedWorldId: "cube",
+      uiOptions: ["DebugButton"],
+      renderDebugButton: true,
+      debugLevel: "off",
+      debugOptions: [],
+      renderQualityEnabled: false,
+    });
+  });
+
+  it("normalizes launch config names safely", () => {
+    expect(readAppConfigName(locationWithSearch("?config=classroom"))).toBe("classroom");
+    expect(normalizeAppConfigName("classroom.config.js")).toBe("classroom");
+    expect(normalizeAppConfigName("../secret")).toBe("default");
+    expect(normalizeAppConfigName("")).toBe("default");
   });
 });
 

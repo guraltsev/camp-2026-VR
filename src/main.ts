@@ -8,6 +8,7 @@ import {
   buildUrlWithLaunchOptions,
   replaceVisibleUrlWithoutLaunchOptions,
 } from "./glue/launchOptionsUrl";
+import { loadAppConfig, readAppConfigName } from "./glue/appConfig";
 import { createLoadingStatus } from "./glue/loadingStatus";
 import { readLaunchOptions, type LaunchOptions } from "./glue/readLaunchOptions";
 import { createThreeApp, type ThreeApp } from "./render/three/createThreeApp";
@@ -21,12 +22,27 @@ if (!appElement) {
   throw new Error("Missing #app element.");
 }
 
-let launchOptions = readLaunchOptions(window.location);
+const initialLaunchLocation = new URL(window.location.href) as unknown as Location;
+const initialAppConfigName = readAppConfigName(initialLaunchLocation);
+let launchOptions = readLaunchOptions(initialLaunchLocation, undefined, initialAppConfigName);
 replaceVisibleUrlWithoutLaunchOptions(window);
 let activeApp: ThreeApp | undefined;
 let activeRunId = 0;
 
-void restartApp(appElement, launchOptions);
+void startApp(appElement, initialLaunchLocation);
+
+async function startApp(container: HTMLDivElement, initialLocation: Location): Promise<void> {
+  const loadingStatus = createLoadingStatus(container);
+  try {
+    loadingStatus.setPhase("Loading app config");
+    const appConfig = await loadAppConfig(initialAppConfigName);
+    loadingStatus.dispose();
+    void restartApp(container, readLaunchOptions(initialLocation, appConfig, initialAppConfigName));
+  } catch (error) {
+    console.error(error);
+    loadingStatus.showError(error instanceof Error ? error.message : "Unable to load app config.");
+  }
+}
 
 async function restartApp(container: HTMLDivElement, nextLaunchOptions: LaunchOptions): Promise<void> {
   launchOptions = nextLaunchOptions;
@@ -62,6 +78,7 @@ async function restartApp(container: HTMLDivElement, nextLaunchOptions: LaunchOp
         debugOverlayEnabled: launchOptions.debugOverlayEnabled,
         debugOverlayItems: launchOptions.debugOverlayItems,
         renderQualityEnabled: launchOptions.renderQualityEnabled,
+        appConfig: launchOptions.appConfig,
         assets,
         onWorldChangeRequested(worldId) {
           void restartApp(container, {

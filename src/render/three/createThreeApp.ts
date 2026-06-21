@@ -14,6 +14,7 @@ import type { DebugSettings } from "../../glue/debugSettings";
 import { hasActiveDebugOption, type DebugOptionId } from "../../glue/debugOptions";
 import type { DebugLevelId } from "../../glue/debugLevels";
 import type { LaunchOptions } from "../../glue/readLaunchOptions";
+import { defaultAppConfig, isRuntimeToolEnabled, type AppConfig } from "../../glue/appConfig";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import { normalizeVec3, vec3, type Vec3 } from "../../math/vec3";
 import { movePlayer } from "../../movement/movePlayer";
@@ -295,6 +296,7 @@ export interface ThreeAppOptions {
   readonly debugOverlayEnabled: boolean;
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly renderQualityEnabled: boolean;
+  readonly appConfig?: AppConfig;
   readonly assets: PreparedWorldAssets;
   readonly onWorldChangeRequested?: (worldId: string) => void;
   readonly onReloadRequested?: () => void;
@@ -344,6 +346,7 @@ const geodesicCreatureDebugCheckIntervalSeconds = 0.1;
 const geodesicCreatureHealthyLogIntervalSeconds = 5;
 
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
+  const appConfig = options.appConfig ?? defaultAppConfig;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SCENE_BACKGROUND_COLOR);
   scene.environment = null;
@@ -496,6 +499,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       syncDesktopPalette();
     },
     onWorldSelected(worldId) {
+      if (!appConfig.menu.worldSelectionSectionEnabled) {
+        return;
+      }
       menuState = setRuntimeMenuSelectedWorldId(menuState, worldId);
       syncDesktopPalette();
       dispatchRuntimeCommand({ kind: "change-world", worldId });
@@ -507,9 +513,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       dispatchRuntimeCommand({ kind: "go-home" });
     },
     onDebugEnabledChanged(enabled) {
+      if (!appConfig.menu.debugSectionEnabled) {
+        return;
+      }
       applyMenuDebugState(setRuntimeMenuDebugEnabled(menuState, enabled));
     },
     onDebugSettingsRequested() {
+      if (!appConfig.menu.debugSectionEnabled) {
+        return;
+      }
       menuState = showRuntimeMenuDebugSettings(menuState);
       syncDesktopPalette();
     },
@@ -538,6 +550,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       options.onCopyUrlWithOptionsRequested?.();
     },
     onToolSelected(toolId) {
+      if (!isRuntimeToolEnabled(appConfig, toolId)) {
+        return;
+      }
       if (toolId !== "protractor") {
         activeProtractorToolState = {};
         clearProtractorToolFeedback();
@@ -554,26 +569,47 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       syncDesktopPalette();
     },
     onPlaceFlagOptionsRequested() {
+      if (!isRuntimeToolEnabled(appConfig, "place-flag")) {
+        return;
+      }
       menuState = showRuntimeMenuPlaceFlagOptions(menuState);
       syncDesktopPalette();
     },
     onPlaceFlagTypeSelected(flagType) {
+      if (!isRuntimeToolEnabled(appConfig, "place-flag")) {
+        return;
+      }
       menuState = closeRuntimeMenu(selectRuntimeMenuPlaceFlagToolType(menuState, flagType));
       syncDesktopPalette();
     },
     onGeodesicCannonAddRequested(cannonId) {
+      if (!isRuntimeToolEnabled(appConfig, "geodesic-cannon")) {
+        return;
+      }
       addGeodesicToCannon(cannonId);
     },
     onGeodesicCannonCarryRequested(cannonId) {
+      if (!isRuntimeToolEnabled(appConfig, "geodesic-cannon-carry")) {
+        return;
+      }
       startGeodesicCannonCarry(cannonId);
     },
     onGeodesicCannonTieAndDetachRequested(cannonId) {
+      if (!isRuntimeToolEnabled(appConfig, "geodesic-cannon-tie-detach")) {
+        return;
+      }
       startGeodesicCannonTieAndDetach(cannonId);
     },
     onGeodesicCannonRotateRequested(cannonId, geodesicId) {
+      if (!isRuntimeToolEnabled(appConfig, "geodesic-cannon-rotate")) {
+        return;
+      }
       startGeodesicCannonRotation(cannonId, geodesicId);
     },
     onGeodesicCannonAimRequested(cannonId, geodesicId) {
+      if (!isRuntimeToolEnabled(appConfig, "geodesic-cannon-aim")) {
+        return;
+      }
       startGeodesicCannonAim(cannonId, geodesicId);
     },
     onGeodesicCannonDeleteRequested(cannonId, geodesicId) {
@@ -1680,7 +1716,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           referenceSpaceToWorldMatrix: xrRig.root.matrixWorld,
           inputSources,
         }),
-        definition: createPaletteDefinition(menuState),
+        definition: createPaletteDefinition(menuState, appConfig),
         placement,
       });
       xrControllerHandModels.update({
@@ -1713,7 +1749,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         isOpen: menuState.isOpen,
         placement,
       }),
-      definition: createPaletteDefinition(menuState),
+      definition: createPaletteDefinition(menuState, appConfig),
       placement,
     });
   }
@@ -3634,7 +3670,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return false;
     }
 
-    if (focused.object.kind === "placed-flag" && focused.object.interactable?.action === "edit-flag") {
+    if (
+      focused.object.kind === "placed-flag" &&
+      focused.object.interactable?.action === "edit-flag" &&
+      isRuntimeToolEnabled(appConfig, "place-flag")
+    ) {
       menuState = showRuntimeMenuEditSign(menuState, {
         flagId: focused.object.id,
         message: focused.object.message,
@@ -3643,7 +3683,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return true;
     }
 
-    if (focused.object.kind === "geodesic-cannon") {
+    if (focused.object.kind === "geodesic-cannon" && isRuntimeToolEnabled(appConfig, "geodesic-cannon")) {
       activeGeodesicCannonToolState = {
         selectedCannonId: focused.object.id,
         activeGeodesicId: focused.object.activeGeodesicId,

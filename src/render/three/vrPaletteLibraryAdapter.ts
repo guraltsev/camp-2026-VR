@@ -371,7 +371,14 @@ function buildContent(
   debugSection.add(createSectionLabel("Debug"));
   debugSection.add(createDebugToolsRow(definition.content.debugEnabled, options));
 
-  settings.add(worldSection, debugSection);
+  if (definition.content.worldSelectionSectionEnabled) {
+    settings.add(worldSection);
+  }
+
+  if (definition.content.debugSectionEnabled) {
+    settings.add(debugSection);
+  }
+
   return settings;
 }
 
@@ -397,12 +404,15 @@ function buildMainContent(
     justifyContent: "space-between",
     gap: 12,
   });
-  row.add(
-    createToolTile("place-flag", "Sign", content.selectedTool, options, content.placeFlagType),
-    createToolTile("geodesic-cannon", "Geodesic emitter", content.selectedTool, options),
-    createToolTile("measure-length", "Length", content.selectedTool, options),
-    createToolTile("protractor", "Protractor", content.selectedTool, options),
-  );
+  for (const tool of content.toolOptions) {
+    row.add(createToolTile(
+      tool.id,
+      tool.label,
+      content.selectedTool,
+      options,
+      tool.id === "place-flag" ? content.placeFlagType : undefined,
+    ));
+  }
 
   panel.add(row);
   return panel;
