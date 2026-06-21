@@ -14,6 +14,7 @@ export function compileWorldScript(sourceText: string, options: CompileWorldScri
     Portal: builder.Portal,
     OnFace: builder.OnFace,
     startingHouse: builder.startingHouse,
+    startingQuestionCube: builder.startingQuestionCube,
     startingPosition: builder.startingPosition,
     ...worldFloorTextureLibrary,
     ...worldObjectLibrary,

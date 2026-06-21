@@ -53,7 +53,7 @@ export interface VrPaletteLibraryAdapter {
 export type ScenePaletteLibraryAdapterOptions = VrPaletteLibraryAdapterOptions;
 export type ScenePaletteLibraryAdapter = VrPaletteLibraryAdapter;
 
-const panelPixelSize = 0.0012;
+const panelPixelSize = 0.00144;
 const panelWidth = 780;
 const panelHeight = 560;
 const surfaceColor = "#0f172a";
@@ -74,6 +74,7 @@ const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
 const aimIconSource = "/assets/icons/aim-inverted.png";
 const carryIconSource = "/assets/icons/carry-icon-white.png";
 const lockIconSource = "/assets/icons/lock.png";
+const unlinkIconSource = "/assets/icons/unlink-inverted.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const protractorToolIconSource = "/assets/icons/protractor.png";
 const measureLengthToolIconSource = "/assets/icons/Ruler.png";
@@ -147,6 +148,7 @@ function buildHeader(
   options: VrPaletteLibraryAdapterOptions,
 ): Container {
   const headerActions = resolveVrPaletteHeaderActions(definition);
+  const showUtilityActions = definition.pageId === "main";
   const header = new Container({
     width: "100%",
     height: 48,
@@ -166,13 +168,36 @@ function buildHeader(
     createHeaderButton(headerActions.leftAction, () => {
       dispatchHeaderAction(headerActions.leftAction.id, options);
     }),
-    createHeaderUtilityButton("home", false, options.onHomeRequested),
-    createHeaderUtilityButton("reload", definition.reloadConfirmationActive, options.onReloadRequested),
   );
-  if (definition.reloadConfirmationActive) {
+  if (showUtilityActions) {
+    leftActions.add(
+      createHeaderUtilityButton("home", false, options.onHomeRequested),
+      createHeaderUtilityButton("reload", definition.reloadConfirmationActive, options.onReloadRequested),
+    );
+  }
+  if (showUtilityActions && definition.reloadConfirmationActive) {
     leftActions.add(createReloadConfirmTooltip());
   }
   header.add(leftActions);
+
+  const contextualActions = createContextualHeaderActions(definition, options);
+  if (contextualActions.length > 0) {
+    const contextualActionRow = new Container({
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      flexShrink: 0,
+    });
+    contextualActionRow.add(...contextualActions);
+    header.add(contextualActionRow);
+  } else {
+    header.add(new Text({
+      text: "",
+      fontSize: 1,
+      opacity: 0,
+    }));
+  }
+
   header.add(new Text({
     text: "",
     fontSize: 28,
@@ -185,6 +210,48 @@ function buildHeader(
   }));
 
   return header;
+}
+
+function createContextualHeaderActions(
+  definition: PaletteDefinition,
+  options: VrPaletteLibraryAdapterOptions,
+): Container[] {
+  if (definition.content.kind === "geodesic-cannon-actions") {
+    const content = definition.content;
+    return [
+      createHeaderActionButton(
+        "geodesic-cannon-action:add-geodesic",
+        "",
+        () => options.onGeodesicCannonAddRequested?.(content.cannonId),
+        { icon: "add-geodesic", disabled: content.addAction.disabled, width: 52 },
+      ),
+      createHeaderActionButton(
+        "geodesic-cannon-action:carry",
+        "",
+        () => options.onGeodesicCannonCarryRequested?.(content.cannonId),
+        { icon: "carry", disabled: content.carryAction.disabled, width: 52 },
+      ),
+      createHeaderActionButton(
+        "geodesic-cannon-action:tie-and-detach",
+        "",
+        () => options.onGeodesicCannonTieAndDetachRequested?.(content.cannonId),
+        { icon: "tie-and-detach", disabled: content.tieAndDetachAction.disabled, backgroundColor: "#b45309", width: 52 },
+      ),
+    ];
+  }
+
+  if (definition.content.kind === "edit-sign") {
+    return [
+      createHeaderActionButton(
+        "sign-action:trash",
+        "",
+        () => options.onSignDeleteRequested?.(),
+        { icon: "trash", backgroundColor: "#7f1d1d", width: 52 },
+      ),
+    ];
+  }
+
+  return [];
 }
 
 function createHeaderUtilityButton(
@@ -532,50 +599,6 @@ function buildGeodesicCannonActionsContent(
     list.add(row);
   }
 
-  const addButton = createInteractiveSurface({
-    width: "100%",
-    height: 50,
-    label: content.addAction.label,
-    labelFontSize: 17,
-    justifyContent: "flex-start",
-    paddingLeft: 18,
-    disabled: content.addAction.disabled,
-    backgroundColor: content.addAction.disabled ? "#334155" : "#2563eb",
-    onClick: () => options.onGeodesicCannonAddRequested?.(content.cannonId),
-  });
-  addButton.userData.xrPaletteItemId = "geodesic-cannon-action:add-geodesic";
-  addButton.userData.scenePaletteItemId = "geodesic-cannon-action:add-geodesic";
-  addButton.add(createButtonText("+", 24));
-
-  const carryButton = createInteractiveSurface({
-    width: "100%",
-    height: 50,
-    label: content.carryAction.label,
-    labelFontSize: 17,
-    justifyContent: "flex-start",
-    paddingLeft: 18,
-    disabled: content.carryAction.disabled,
-    backgroundColor: content.carryAction.disabled ? "#334155" : "#2563eb",
-    onClick: () => options.onGeodesicCannonCarryRequested?.(content.cannonId),
-  });
-  carryButton.userData.xrPaletteItemId = "geodesic-cannon-action:carry";
-  carryButton.userData.scenePaletteItemId = "geodesic-cannon-action:carry";
-  carryButton.add(createGeodesicCannonActionIcon("carry"));
-  const tieAndDetachButton = createInteractiveSurface({
-    width: "100%",
-    height: 50,
-    label: content.tieAndDetachAction.label,
-    labelFontSize: 17,
-    justifyContent: "flex-start",
-    paddingLeft: 18,
-    disabled: content.tieAndDetachAction.disabled,
-    backgroundColor: content.tieAndDetachAction.disabled ? "#334155" : "#b45309",
-    onClick: () => options.onGeodesicCannonTieAndDetachRequested?.(content.cannonId),
-  });
-  tieAndDetachButton.userData.xrPaletteItemId = "geodesic-cannon-action:tie-and-detach";
-  tieAndDetachButton.userData.scenePaletteItemId = "geodesic-cannon-action:tie-and-detach";
-  list.add(addButton, carryButton, tieAndDetachButton);
-
   panel.add(list);
   return panel;
 }
@@ -768,22 +791,6 @@ function buildEditSignContent(
   });
   space.userData.xrPaletteItemId = "sign-key:Space";
   space.userData.scenePaletteItemId = "sign-key:Space";
-  const trash = createInteractiveSurface({
-    width: 132,
-    height: 42,
-    label: "",
-    labelFontSize: 15,
-    backgroundColor: "#7f1d1d",
-    onClick: () => options.onSignDeleteRequested?.(),
-  });
-  trash.userData.xrPaletteItemId = "sign-action:trash";
-  trash.userData.scenePaletteItemId = "sign-action:trash";
-  trash.add(new Trash2({
-    width: 24,
-    height: 24,
-    color: textColor,
-    fill: textColor,
-  }));
   const backspace = createInteractiveSurface({
     width: 156,
     height: 42,
@@ -794,7 +801,7 @@ function buildEditSignContent(
   });
   backspace.userData.xrPaletteItemId = "sign-key:Backspace";
   backspace.userData.scenePaletteItemId = "sign-key:Backspace";
-  backspaceRow.add(enter, space, backspace, trash);
+  backspaceRow.add(enter, space, backspace);
   panel.add(backspaceRow);
 
   return panel;
@@ -963,9 +970,13 @@ function createProtractorIcon(): Component<any> {
 }
 
 function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim" | "carry"): Component<any> {
+  if (actionId === "add-geodesic") {
+    return createPlusIcon();
+  }
+
   const source = actionId === "carry"
     ? carryIconSource
-    : actionId === "rotate" || actionId === "add-geodesic" ? rotateIconSource : aimIconSource;
+    : actionId === "rotate" ? rotateIconSource : aimIconSource;
   const image = new Image({
     src: source,
     width: 28,
@@ -977,6 +988,33 @@ function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "a
     renderOrder: 1002,
   });
   image.userData.scenePaletteIconSrc = source;
+  return image;
+}
+
+function createPlusIcon(): Component<any> {
+  const text = new Text({
+    text: "+",
+    fontSize: 34,
+    fontWeight: "bold",
+    color: textColor,
+    fill: textColor,
+  });
+  text.userData.scenePaletteIconSrc = "plus";
+  return text;
+}
+
+function createUnlinkIcon(): Component<any> {
+  const image = new Image({
+    src: unlinkIconSource,
+    width: 24,
+    height: 24,
+    objectFit: "fill",
+    keepAspectRatio: true,
+    depthTest: false,
+    depthWrite: false,
+    renderOrder: 1002,
+  });
+  image.userData.scenePaletteIconSrc = unlinkIconSource;
   return image;
 }
 
@@ -1342,6 +1380,43 @@ function createActionButton(
       color: textColor,
       fill: textColor,
     }));
+  }
+  return button;
+}
+
+function createHeaderActionButton(
+  itemId: string,
+  label: string,
+  onClick: () => void,
+  options: {
+    readonly icon: "add-geodesic" | "carry" | "tie-and-detach" | "trash";
+    readonly disabled?: boolean;
+    readonly width?: number;
+    readonly backgroundColor?: string;
+  },
+): Container {
+  const button = createInteractiveSurface({
+    width: options.width ?? 52,
+    height: 44,
+    label,
+    labelFontSize: 13,
+    onClick,
+    disabled: options.disabled,
+    backgroundColor: options.disabled ? "#334155" : (options.backgroundColor ?? actionColor),
+  });
+  button.userData.xrPaletteItemId = itemId;
+  button.userData.scenePaletteItemId = itemId;
+  if (options.icon === "trash") {
+    button.add(new Trash2({
+      width: 22,
+      height: 22,
+      color: textColor,
+      fill: textColor,
+    }));
+  } else if (options.icon === "tie-and-detach") {
+    button.add(createUnlinkIcon());
+  } else {
+    button.add(createGeodesicCannonActionIcon(options.icon));
   }
   return button;
 }

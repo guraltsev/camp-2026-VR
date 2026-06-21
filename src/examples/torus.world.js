@@ -10,9 +10,16 @@ PolygonFace("torus-room", floorTexture("river_pebbles"), square);
 Portal("torus-room", 0, "torus-room", 2);
 Portal("torus-room", 1, "torus-room", 3);
 
-torus_house = small_house("torus-center-house", {
-  position: [2.8, 0, 0],
-  scale: 0.9,
+startingHouse("torus-room", {
+  position: [-3.0, 0, 0.6],
+  scale: 1,
+  turn: 12,
+});
+
+startingQuestionCube("torus-room", {
+  position: [-2.45, 0.05, 3.25],
+  scale: 1,
+  turn: -18,
 });
 
 torus_mouse = geo_mouse("torus-geo-mouse", {
@@ -48,7 +55,6 @@ torus_geometry_computer = computer_large("torus-geometry-computer", {
 });
 
 OnFace("torus-room", [
-  torus_house,
   torus_mouse,
   torus_bench,
   torus_traffic_cone,

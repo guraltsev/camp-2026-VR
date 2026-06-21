@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createWorldBuilder, authorSideToSideIndex } from "../../src/authoring/worldBuilder";
+import {
+  authorSideToSideIndex,
+  createWorldBuilder,
+  defaultStartingQuestionCubeMessage,
+} from "../../src/authoring/worldBuilder";
 import { createConvexPrismBaseVertices } from "../../src/cell-complex/prismBase";
 import { worldObjectLibrary } from "../../src/world-objects/library";
 import { worldFloorTextureLibrary } from "../../src/world-assets/floorTextures";
@@ -171,6 +175,45 @@ describe("worldBuilder", () => {
     expect(spec.startingPosition?.position.x).toBeCloseTo(-1.85);
     expect(spec.startingPosition?.position.y).toBeCloseTo(2.5882685902179845);
     expect(spec.startingPosition?.position.z).toBe(0);
+  });
+
+  it("adds a starting question cube with a customizable message", () => {
+    const builder = createWorldBuilder();
+
+    builder.PolygonFace("front", "#f00", squareBase);
+    builder.startingQuestionCube("front", {
+      position: [-0.25, 0.05, 0.8],
+      scale: 1,
+      turn: -18,
+      message: "Try the movement controls.",
+    });
+
+    const spec = builder.build();
+
+    expect(spec.cells[0]?.visuals?.objects).toMatchObject([
+      {
+        id: "startingQuestionCube",
+        kind: "asset",
+        assetPath: "questionblock/questionBlock.glb",
+        displayHelpMessage: "Try the movement controls.",
+      },
+    ]);
+  });
+
+  it("uses the shared starting question cube message by default", () => {
+    const builder = createWorldBuilder();
+
+    builder.PolygonFace("front", "#f00", squareBase);
+    builder.startingQuestionCube("front", {
+      position: [-0.25, 0.05, 0.8],
+    });
+
+    const spec = builder.build();
+
+    expect(spec.cells[0]?.visuals?.objects?.[0]).toMatchObject({
+      id: "startingQuestionCube",
+      displayHelpMessage: defaultStartingQuestionCubeMessage,
+    });
   });
 
   it("accepts an explicit starting position without adding a house", () => {

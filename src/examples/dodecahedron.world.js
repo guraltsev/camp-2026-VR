@@ -62,9 +62,16 @@ Portal("bottom", 2, "lower-2", 2);
 Portal("bottom", 3, "lower-3", 2);
 Portal("bottom", 4, "lower-4", 2);
 
-top_house = small_house("top-house", {
-  position: [2.8, 0, 0],
-  scale: 0.9,
+startingHouse("top", {
+  position: [-3.0, 0, 0.6],
+  scale: 1,
+  turn: 12,
+});
+
+startingQuestionCube("top", {
+  position: [-2.45, 0.05, 3.25],
+  scale: 1,
+  turn: -18,
 });
 
 top_mouse = geo_mouse("top-geo-mouse", {
@@ -136,7 +143,7 @@ bottom_stop_sign = stop_sign("bottom-stop-sign", {
   turn: 12,
 });
 
-OnFace("top", [top_house, top_mouse]);
+OnFace("top", [top_mouse]);
 OnFace("upper-0", [upper_0_flower_pot]);
 OnFace("upper-1", [upper_1_tree]);
 OnFace("upper-2", [upper_2_butterfly]);

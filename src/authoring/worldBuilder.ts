@@ -14,6 +14,8 @@ import { degreesToRadians, type StaticObjectAuthoringParams } from "../world-obj
 
 const defaultHeightMeters = 15;
 const startingHouseLookOffsetDegrees = 12;
+export const defaultStartingQuestionCubeMessage =
+  "Move with Arrow keys or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.";
 
 interface MutableCell {
   readonly id: string;
@@ -32,8 +34,13 @@ export interface WorldBuilder {
   Portal(face1: string, side1: number, face2: string, side2: number): void;
   OnFace(faceName: string, objects: readonly WorldLibraryObjectSpec[]): void;
   startingHouse(faceName: string, params: StaticObjectAuthoringParams): void;
+  startingQuestionCube(faceName: string, params: StartingQuestionCubeAuthoringParams): void;
   startingPosition(faceName: string, params: StartingPositionAuthoringParams): void;
   build(): CellComplexSpec;
+}
+
+export interface StartingQuestionCubeAuthoringParams extends StaticObjectAuthoringParams {
+  readonly message?: string;
 }
 
 export interface StartingPositionAuthoringParams {
@@ -153,6 +160,21 @@ export function createWorldBuilder(): WorldBuilder {
       objectIds.add(house.id);
       cell.visuals.objects.push(stripLibraryBrand(house));
       startingPosition = createStartingPositionInFrontOfHouse(faceName, params);
+    },
+
+    startingQuestionCube(faceName, params) {
+      const cell = requireCell(cells, faceName, "startingQuestionCube");
+
+      if (objectIds.has("startingQuestionCube")) {
+        throw new Error('Duplicate object id "startingQuestionCube".');
+      }
+
+      const questionCube = worldObjectLibrary.question_cube("startingQuestionCube", {
+        ...params,
+        displayHelpMessage: params.message ?? params.displayHelpMessage ?? defaultStartingQuestionCubeMessage,
+      });
+      objectIds.add(questionCube.id);
+      cell.visuals.objects.push(stripLibraryBrand(questionCube));
     },
 
     startingPosition(faceName, params) {

@@ -12,6 +12,7 @@ const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
 const aimIconSource = "/assets/icons/aim-inverted.png";
 const lockIconSource = "/assets/icons/lock.png";
 const carryIconSource = "/assets/icons/carry-icon-white.png";
+const unlinkIconSource = "/assets/icons/unlink-inverted.png";
 const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
 const protractorToolIconSource = "/assets/icons/protractor.png";
 const measureLengthToolIconSource = "/assets/icons/Ruler.png";
@@ -89,6 +90,7 @@ export interface DesktopToolPaletteOptions {
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
   readonly onGeometryComputerSetSkewRequested?: (computerId: string, skewXMeters: number) => void;
   readonly onGeometryComputerStepSkewRequested?: (computerId: string, deltaXMeters: number) => void;
+  readonly onSignDeleteRequested?: () => void;
   readonly onResumeRequested: () => void;
 }
 
@@ -151,6 +153,9 @@ export function createDesktopToolPalette(
   reloadTooltip.textContent = "Click again to confirm";
   reloadTooltip.hidden = true;
 
+  const contextualHeaderActions = document.createElement("div");
+  contextualHeaderActions.className = "desktop-tool-palette-header-actions";
+
   leftActions.append(leftButton, homeButton, reloadButton, reloadTooltip);
 
   const title = document.createElement("div");
@@ -168,7 +173,7 @@ export function createDesktopToolPalette(
     }
   });
 
-  header.append(leftActions, title, rightButton);
+  header.append(leftActions, contextualHeaderActions, title, rightButton);
 
   const content = document.createElement("div");
   content.className = "desktop-tool-palette-content";
@@ -200,16 +205,23 @@ export function createDesktopToolPalette(
     root,
     setDefinition(definition) {
       const view = describeDesktopPaletteView(definition);
+      const showUtilityActions = definition.pageId === "main";
       title.textContent = "";
       syncActionButton(leftButton, view.leftAction);
-      reloadButton.classList.toggle("desktop-tool-palette-action-danger", definition.reloadConfirmationActive);
-      reloadTooltip.hidden = !definition.reloadConfirmationActive;
+      homeButton.hidden = !showUtilityActions;
+      reloadButton.hidden = !showUtilityActions;
+      reloadButton.classList.toggle(
+        "desktop-tool-palette-action-danger",
+        showUtilityActions && definition.reloadConfirmationActive,
+      );
+      reloadTooltip.hidden = !showUtilityActions || !definition.reloadConfirmationActive;
       reloadButton.ariaLabel = definition.reloadConfirmationActive
         ? "Confirm reload world"
         : "Reload world";
       reloadButton.title = definition.reloadConfirmationActive
         ? "Click again to confirm."
         : "Click once to arm reload, then again within 2 seconds.";
+      contextualHeaderActions.replaceChildren(...createContextualHeaderActions(definition, options));
       syncActionButton(rightButton, view.rightAction);
       content.replaceChildren(renderContent(definition, options));
     },
@@ -378,37 +390,6 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     const geodesicCannonContent = definition.content;
     const actions = document.createElement("div");
     actions.className = "desktop-tool-palette-settings";
-
-    const addButton = document.createElement("button");
-    addButton.type = "button";
-    addButton.className = "desktop-tool-palette-button";
-    addButton.disabled = geodesicCannonContent.addAction.disabled;
-    addButton.ariaDisabled = String(geodesicCannonContent.addAction.disabled);
-    addButton.append(createGeodesicCannonActionIcon("add-geodesic"), document.createTextNode(geodesicCannonContent.addAction.label));
-    addButton.addEventListener("click", () => {
-      options.onGeodesicCannonAddRequested?.(geodesicCannonContent.cannonId);
-    });
-
-    const carryButton = document.createElement("button");
-    carryButton.type = "button";
-    carryButton.className = "desktop-tool-palette-button";
-    carryButton.disabled = geodesicCannonContent.carryAction.disabled;
-    carryButton.ariaDisabled = String(geodesicCannonContent.carryAction.disabled);
-    carryButton.append(createGeodesicCannonActionIcon("carry"), document.createTextNode(geodesicCannonContent.carryAction.label));
-    carryButton.addEventListener("click", () => {
-      options.onGeodesicCannonCarryRequested?.(geodesicCannonContent.cannonId);
-    });
-
-    const tieAndDetachButton = document.createElement("button");
-    tieAndDetachButton.type = "button";
-    tieAndDetachButton.className = "desktop-tool-palette-button";
-    tieAndDetachButton.disabled = geodesicCannonContent.tieAndDetachAction.disabled;
-    tieAndDetachButton.ariaDisabled = String(geodesicCannonContent.tieAndDetachAction.disabled);
-    tieAndDetachButton.textContent = geodesicCannonContent.tieAndDetachAction.label;
-    tieAndDetachButton.addEventListener("click", () => {
-      options.onGeodesicCannonTieAndDetachRequested?.(geodesicCannonContent.cannonId);
-    });
-    actions.append(addButton, carryButton, tieAndDetachButton);
 
     const geodesicList = document.createElement("div");
     geodesicList.className = "desktop-tool-palette-geodesic-list";
@@ -772,6 +753,57 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
   return empty;
 }
 
+function createContextualHeaderActions(
+  definition: PaletteDefinition,
+  options: DesktopToolPaletteOptions,
+): HTMLElement[] {
+  if (definition.content.kind === "geodesic-cannon-actions") {
+    const content = definition.content;
+    return [
+      createHeaderIconButton("Add geodesic", createGeodesicCannonActionIcon("add-geodesic"), () => {
+        options.onGeodesicCannonAddRequested?.(content.cannonId);
+      }, content.addAction.disabled),
+      createHeaderIconButton("Carry", createGeodesicCannonActionIcon("carry"), () => {
+        options.onGeodesicCannonCarryRequested?.(content.cannonId);
+      }, content.carryAction.disabled),
+      createHeaderIconButton("Tie and detach", createUnlinkIcon(), () => {
+        options.onGeodesicCannonTieAndDetachRequested?.(content.cannonId);
+      }, content.tieAndDetachAction.disabled),
+    ];
+  }
+
+  if (definition.content.kind === "edit-sign") {
+    return [
+      createHeaderIconButton("Delete sign", createTrashHeaderIcon(), () => {
+        options.onSignDeleteRequested?.();
+      }),
+    ];
+  }
+
+  return [];
+}
+
+function createHeaderIconButton(
+  ariaLabel: string,
+  icon: HTMLElement,
+  onClick: () => void,
+  disabled = false,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "desktop-tool-palette-action";
+  button.ariaLabel = ariaLabel;
+  button.disabled = disabled;
+  button.ariaDisabled = String(disabled);
+  button.append(icon);
+  button.addEventListener("click", () => {
+    if (!disabled) {
+      onClick();
+    }
+  });
+  return button;
+}
+
 function createFlagToolTile(
   mainContent: Extract<PaletteDefinition["content"], { readonly kind: "main" }>,
   options: DesktopToolPaletteOptions,
@@ -898,15 +930,44 @@ function createMeasureLengthTileIcon(): HTMLElement {
 }
 
 function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim" | "lock" | "carry"): HTMLElement {
+  if (actionId === "add-geodesic") {
+    return createPlusHeaderIcon();
+  }
+
   const icon = document.createElement("img");
   icon.className = "desktop-tool-palette-button-icon";
   icon.src = actionId === "carry"
     ? carryIconSource
     : actionId === "lock"
-    ? lockIconSource
-    : actionId === "rotate" || actionId === "add-geodesic" ? rotateIconSource : aimIconSource;
+      ? lockIconSource
+    : actionId === "rotate" ? rotateIconSource : aimIconSource;
   icon.alt = "";
   icon.decoding = "async";
+  return icon;
+}
+
+function createPlusHeaderIcon(): HTMLElement {
+  const icon = document.createElement("span");
+  icon.className = "desktop-tool-palette-button-icon";
+  icon.textContent = "+";
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
+function createUnlinkIcon(): HTMLElement {
+  const icon = document.createElement("img");
+  icon.className = "desktop-tool-palette-button-icon";
+  icon.src = unlinkIconSource;
+  icon.alt = "";
+  icon.decoding = "async";
+  return icon;
+}
+
+function createTrashHeaderIcon(): HTMLElement {
+  const icon = document.createElement("span");
+  icon.className = "desktop-tool-palette-button-icon";
+  icon.textContent = "🗑";
+  icon.setAttribute("aria-hidden", "true");
   return icon;
 }
 

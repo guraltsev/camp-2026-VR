@@ -7,3 +7,4 @@ add.png - <a href="https://www.flaticon.com/free-icons/plus" title="plus icons">
 lock.png - <a href="https://www.flaticon.com/free-icons/privacy" title="privacy icons">Privacy icons created by meaicon - Flaticon</a>
 protractor.png - <a href="https://www.flaticon.com/free-icons/protractor" title="protractor icons">Protractor icons created by Freepik - Flaticon</a>
 arrow-keyw.png - <a href="https://www.flaticon.com/free-icons/arrow-key" title="arrow key icons">Arrow key icons created by Freepik - Flaticon</a>
+unlink.png - <a href="https://www.flaticon.com/free-icons/unlink" title="unlink icons">Unlink icons created by Maniprasanth - Flaticon</a>

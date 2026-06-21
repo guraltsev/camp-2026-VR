@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { worldCatalog } from "../../src/authoring/worldCatalog";
 import { cube, dodecahedron, icosahedron, octahedron, tetrahedron, torus } from "../../src/authoring/exampleWorlds";
+import { defaultStartingQuestionCubeMessage } from "../../src/authoring/worldBuilder";
 import type { CellComplexSpec } from "../../src/cell-complex/specs";
 import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder } from "../../src/movement/collision";
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
@@ -48,6 +49,30 @@ describe("example worlds", () => {
     });
   });
 
+  it.each(exampleWorlds)("places the starter house and question cube in %s", (_name, world) => {
+    const startCell = world.cells.find((cell) => cell.id === world.startingPosition?.cellId);
+    const house = startCell?.visuals?.objects?.find((object) => object.id === "startingHouse");
+    const questionCube = startCell?.visuals?.objects?.find((object) => object.id === "startingQuestionCube");
+
+    expect(world.startingPosition).toMatchObject({
+      position: {
+        x: expect.any(Number),
+        y: expect.any(Number),
+        z: 0,
+      },
+      pitchRadians: 0,
+    });
+    expect(house).toMatchObject({
+      kind: "asset",
+      assetPath: "small_house/small_house.glb",
+    });
+    expect(questionCube).toMatchObject({
+      kind: "asset",
+      assetPath: "questionblock/questionBlock.glb",
+      displayHelpMessage: defaultStartingQuestionCubeMessage,
+    });
+  });
+
   it("keeps tetrahedron faces equilateral so portal-glued corners align", () => {
     for (const cell of tetrahedron.cells) {
       const sideLengths = cell.baseVertices.map((start, index) => {
@@ -92,17 +117,11 @@ describe("example worlds", () => {
     expect(collidingHouses).toEqual([]);
   });
 
-  it("keeps tetrahedron decorative collisions away from the starting player", () => {
+  it("keeps tetrahedron starter-neighborhood collisions away from the starting player", () => {
     const faceA = tetrahedron.cells.find((cell) => cell.id === "face-a");
-    const house = faceA?.visuals?.objects?.find((object) => object.id === "face-a-centerpiece");
     const mouse = faceA?.visuals?.objects?.find((object) => object.id === "face-a-geo-mouse");
-    const playerBounds = getPlayerBounds(createDefaultPlayerPose("face-a"));
+    const playerBounds = getPlayerBounds(getStartPose(tetrahedron, "face-a"));
 
-    expect(house?.kind).toBe("asset");
-    expect(house?.collision).toMatchObject({
-      radius: 1.09,
-      height: 1.8900000000000001,
-    });
     expect(mouse?.kind).toBe("geo-mouse");
     expect(mouse?.collision).toEqual({
       radius: 0.42,
@@ -110,24 +129,17 @@ describe("example worlds", () => {
       offset: { x: 0, y: 0.75, z: 0.31 },
     });
 
-    if (!house?.collision || !mouse?.collision) {
-      throw new Error("Expected house, mouse, and player collision bounds.");
+    if (!mouse?.collision) {
+      throw new Error("Expected mouse and player collision bounds.");
     }
 
-    const houseBounds = getDynamicObjectCollisionBounds({
-      cellId: "face-a",
-      localPose: yawRigidTransform3(house.yawRadians ?? 0, house.position),
-      collision: house.collision,
-    });
     const mouseBounds = getDynamicObjectCollisionBounds({
       cellId: "face-a",
       localPose: yawRigidTransform3(mouse.yawRadians ?? 0, { x: 0, y: 0, z: 0 }),
       collision: mouse.collision,
     });
 
-    expect(houseBounds).toBeDefined();
     expect(mouseBounds).toBeDefined();
-    expect(simpleCylinderIntersectsSimpleCylinder(playerBounds, houseBounds!)).toBe(false);
     expect(simpleCylinderIntersectsSimpleCylinder(playerBounds, mouseBounds!)).toBe(false);
   });
 

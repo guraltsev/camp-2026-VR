@@ -49,6 +49,18 @@ for (let faceIndex = 0; faceIndex < faces.length; faceIndex += 1) {
   }
 }
 
+startingHouse("face-0", {
+  position: [-3.0, 0, 0.6],
+  scale: 1,
+  turn: 12,
+});
+
+startingQuestionCube("face-0", {
+  position: [-2.45, 0.05, 3.25],
+  scale: 1,
+  turn: -18,
+});
+
 centerpiece = geo_butterfly("octahedron-butterfly", {
   position: [0, 1.5, 0],
   turn: 24,

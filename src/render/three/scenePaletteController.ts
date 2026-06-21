@@ -450,32 +450,32 @@ function updatePaletteTooltip(
 function createPaletteTooltipMesh(label: string): THREE.Object3D {
   const lines = wrapPaletteTooltipLabel(label);
   const canvas = document.createElement("canvas");
-  canvas.width = 448;
-  canvas.height = 96 + Math.max(0, lines.length - 1) * 34;
+  canvas.width = 560;
+  canvas.height = 120 + Math.max(0, lines.length - 1) * 46;
   const context = canvas.getContext("2d");
   if (!context) {
     return new THREE.Object3D();
   }
 
   context.clearRect(0, 0, canvas.width, canvas.height);
-  drawRoundedRect(context, 22, 18, 404, canvas.height - 36, 14);
+  drawRoundedRect(context, 28, 22, 504, canvas.height - 44, 18);
   context.fillStyle = "rgba(15, 23, 42, 0.95)";
   context.fill();
-  context.lineWidth = 4;
+  context.lineWidth = 5;
   context.strokeStyle = "rgba(186, 230, 253, 0.9)";
   context.stroke();
   context.fillStyle = "#f8fafc";
-  context.font = "bold 24px sans-serif";
+  context.font = "bold 32px sans-serif";
   context.textAlign = "center";
   context.textBaseline = "middle";
-  const firstLineY = canvas.height / 2 - ((lines.length - 1) * 17);
+  const firstLineY = canvas.height / 2 - ((lines.length - 1) * 23);
   for (let index = 0; index < lines.length; index += 1) {
-    context.fillText(lines[index] ?? "", canvas.width / 2, firstLineY + index * 34, 364);
+    context.fillText(lines[index] ?? "", canvas.width / 2, firstLineY + index * 46, 452);
   }
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const planeWidth = 0.32;
+  const planeWidth = 0.4;
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(planeWidth, planeWidth * (canvas.height / canvas.width)),
     new THREE.MeshBasicMaterial({

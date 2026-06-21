@@ -61,10 +61,16 @@ for (let faceIndex = 0; faceIndex < faces.length; faceIndex += 1) {
   }
 }
 
-centerpiece = small_house("icosahedron-house", {
-  position: [1.8, 0, 0],
-  scale: 0.85,
-  turn: 18,
+startingHouse("face-00", {
+  position: [-3.0, 0, 0.6],
+  scale: 1,
+  turn: 12,
+});
+
+startingQuestionCube("face-00", {
+  position: [-2.45, 0.05, 3.25],
+  scale: 1,
+  turn: -18,
 });
 
 runner = geo_mouse("icosahedron-runner", {
@@ -75,4 +81,4 @@ runner = geo_mouse("icosahedron-runner", {
   oscillationMagnitude: 0.16,
 });
 
-OnFace("face-00", [centerpiece, runner]);
+OnFace("face-00", [runner]);

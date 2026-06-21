@@ -21,9 +21,16 @@ Portal("face-b", 0, "face-c", 2);
 Portal("face-b", 2, "face-d", 0);
 Portal("face-c", 0, "face-d", 2);
 
-face_a_house = small_house("face-a-centerpiece", {
-  position: [2.4, 0, 0],
-  scale: 0.9,
+startingHouse("face-a", {
+  position: [-3.0, 0, 0.6],
+  scale: 1,
+  turn: 12,
+});
+
+startingQuestionCube("face-a", {
+  position: [-2.45, 0.05, 3.25],
+  scale: 1,
+  turn: -18,
 });
 
 face_a_mouse = geo_mouse("face-a-geo-mouse", {
@@ -68,7 +75,7 @@ face_d_stop_sign = stop_sign("face-d-stop-sign", {
   turn: -25,
 });
 
-OnFace("face-a", [face_a_house, face_a_mouse]);
+OnFace("face-a", [face_a_mouse]);
 OnFace("face-b", [face_b_butterfly]);
 OnFace("face-c", [face_c_tree, face_c_flower_pot]);
 OnFace("face-d", [face_d_grass, face_d_stop_sign]);

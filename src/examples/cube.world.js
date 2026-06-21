@@ -38,19 +38,23 @@ startingHouse("front", {
   turn: 12,
 });
 
+startingQuestionCube("front", {
+  position: [-2.45, 0.05, 3.25],
+  scale: 1,
+  turn: -18,
+});
+
+startingPosition("front", {
+  position: [-3.769270715138527, 0, 4.219146347597855],
+  turn: 225,
+});
+
 front_mouse = geo_mouse("front-runner", {
   position: [-4.2, 0, -1.8],
   turn: 74,
   speed: 2.4,
   oscillationRate: 1.6,
   oscillationMagnitude: 0.18,
-});
-
-start_help_cube = question_cube("start-help-question-cube", {
-  position: [-2.45, 0.05, 3.25],
-  scale: 1,
-  turn: -18,
-  displayHelpMessage: "Move with Arrow keys or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.",
 });
 
 right_tree = tree("right-tree", {
@@ -84,7 +88,7 @@ bottom_bicycle = bicycle("bottom-bicycle", {
   turn: 29,
 });
 
-OnFace("front", [front_mouse, start_help_cube]);
+OnFace("front", [front_mouse]);
 OnFace("right", [right_tree]);
 OnFace("back", [back_butterfly]);
 OnFace("left", [left_bench]);

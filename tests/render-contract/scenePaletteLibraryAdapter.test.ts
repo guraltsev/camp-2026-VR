@@ -3,6 +3,7 @@ import {
   createRuntimeMenuState,
   showRuntimeMenuEditSign,
   showRuntimeMenuGeodesicCannonActions,
+  showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuPlaceFlagOptions,
 } from "../../src/runtime/runtimeMenuState";
 import { createScenePaletteLibraryAdapter } from "../../src/render/three/scenePaletteLibraryAdapter";
@@ -42,6 +43,8 @@ describe("scenePaletteLibraryAdapter", () => {
     const itemIds = collectPaletteItemIds(adapter.root);
     const imageSources = collectPaletteImageSources(adapter.root);
 
+    expect(itemIds).not.toContain("go-home");
+    expect(itemIds).not.toContain("reload-world");
     expect(itemIds).toContain("sign-type:WoodenSign1");
     expect(itemIds).toContain("sign-type:WoodenSign2");
     expect(imageSources).toContain("/assets/WoodenSign1/WoodenSign1.png");
@@ -54,23 +57,31 @@ describe("scenePaletteLibraryAdapter", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
     adapter.setDefinition(createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(
       createRuntimeMenuState({ selectedWorldId: "cube" }),
-      { cannonId: "cannon-a", geodesicIds: ["g-a"] },
+      { cannonId: "cannon-a", geodesicIds: ["g-a"], canTieAndDetach: true },
     )));
 
     const itemIds = collectPaletteItemIds(adapter.root);
     const actionIds = collectPaletteActionItemIds(adapter.root);
     const imageSources = collectPaletteImageSources(adapter.root);
 
+    expect(itemIds).not.toContain("go-home");
+    expect(itemIds).not.toContain("reload-world");
     expect(itemIds).toContain("geodesic-cannon-action:add-geodesic");
+    expect(itemIds).toContain("geodesic-cannon-action:carry");
+    expect(itemIds).toContain("geodesic-cannon-action:tie-and-detach");
     expect(itemIds).toContain("geodesic-cannon-action:rotate:g-a");
     expect(itemIds).toContain("geodesic-cannon-action:aim:g-a");
     expect(itemIds).toContain("geodesic-cannon-action:delete:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:add-geodesic");
+    expect(actionIds).toContain("geodesic-cannon-action:carry");
+    expect(actionIds).toContain("geodesic-cannon-action:tie-and-detach");
     expect(actionIds).toContain("geodesic-cannon-action:rotate:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:aim:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:delete:g-a");
     expect(imageSources).toContain("/assets/icons/arrow-circle-inverted.png");
     expect(imageSources).toContain("/assets/icons/aim-inverted.png");
+    expect(imageSources).toContain("/assets/icons/carry-icon-white.png");
+    expect(imageSources).toContain("/assets/icons/unlink-inverted.png");
 
     adapter.dispose();
   });
@@ -86,6 +97,8 @@ describe("scenePaletteLibraryAdapter", () => {
     const actionIds = collectPaletteActionItemIds(adapter.root);
     const imageSources = collectPaletteImageSources(adapter.root);
 
+    expect(itemIds).not.toContain("go-home");
+    expect(itemIds).not.toContain("reload-world");
     expect(itemIds).not.toContain("geodesic-cannon-action:rotate:g-a");
     expect(itemIds).not.toContain("geodesic-cannon-action:aim:g-a");
     expect(itemIds).toContain("geodesic-cannon-action:delete:g-a");
@@ -110,6 +123,8 @@ describe("scenePaletteLibraryAdapter", () => {
     const previewLines = collectSignPreviewLines(adapter.root);
 
     expect(definition.rightAction.id).toBe("close");
+    expect(itemIds).not.toContain("go-home");
+    expect(itemIds).not.toContain("reload-world");
     expect(previewLines).toEqual(["A", "B|", ""]);
     expect(itemIds).toContain("sign-key:1");
     expect(itemIds).toContain("sign-key:0");
@@ -126,6 +141,26 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).not.toContain("sign-key:Alt");
     expect(itemIds).not.toContain("sign-key:ArrowLeft");
     expect(itemIds).not.toContain("sign-key:ArrowRight");
+
+    adapter.dispose();
+  });
+
+  it("hides home and reload on geometry computer action menus", () => {
+    const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
+    adapter.setDefinition(createPaletteDefinition(showRuntimeMenuGeometryComputerActions(
+      createRuntimeMenuState({ selectedWorldId: "torus" }),
+      {
+        computerId: "torus-geometry-computer",
+        available: true,
+        currentSkewXMeters: 0,
+        targetSkewXMeters: 1,
+      },
+    )));
+
+    const itemIds = collectPaletteItemIds(adapter.root);
+
+    expect(itemIds).not.toContain("go-home");
+    expect(itemIds).not.toContain("reload-world");
 
     adapter.dispose();
   });
