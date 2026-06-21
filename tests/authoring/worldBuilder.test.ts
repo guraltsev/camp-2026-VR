@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   authorSideToSideIndex,
   createWorldBuilder,
+  defaultStartingQuestionCubeGoalPages,
   defaultStartingQuestionCubeMessage,
   defaultStartingQuestionCubeTutorialPages,
 } from "../../src/authoring/worldBuilder";
@@ -198,6 +199,7 @@ describe("worldBuilder", () => {
         assetPath: "questionblock/questionBlock.glb",
         displayHelpMessage: defaultStartingQuestionCubeMessage,
         tutorialPages: [{ title: "Tutorial", body: "Try the movement controls." }],
+        goalPages: defaultStartingQuestionCubeGoalPages,
       },
     ]);
   });
@@ -216,6 +218,7 @@ describe("worldBuilder", () => {
       id: "startingQuestionCube",
       displayHelpMessage: defaultStartingQuestionCubeMessage,
       tutorialPages: defaultStartingQuestionCubeTutorialPages,
+      goalPages: defaultStartingQuestionCubeGoalPages,
     });
   });
 

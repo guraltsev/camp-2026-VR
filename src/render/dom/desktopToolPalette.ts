@@ -67,6 +67,17 @@ export interface DesktopPaletteView {
       readonly pageLabel: string;
       readonly previousDisabled: boolean;
       readonly nextDisabled: boolean;
+    }
+    | {
+      readonly kind: "goal";
+      readonly title: string;
+      readonly pageLabel: string;
+      readonly previousDisabled: boolean;
+      readonly nextDisabled: boolean;
+    }
+    | {
+      readonly kind: "question-help";
+      readonly optionLabels: readonly string[];
     };
 }
 
@@ -97,8 +108,12 @@ export interface DesktopToolPaletteOptions {
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
   readonly onGeometryComputerSetSkewRequested?: (computerId: string, skewXMeters: number) => void;
   readonly onGeometryComputerStepSkewRequested?: (computerId: string, deltaXMeters: number) => void;
+  readonly onQuestionHelpTutorialRequested?: () => void;
+  readonly onQuestionHelpGoalRequested?: () => void;
   readonly onTutorialPreviousRequested?: () => void;
   readonly onTutorialNextRequested?: () => void;
+  readonly onGoalPreviousRequested?: () => void;
+  readonly onGoalNextRequested?: () => void;
   readonly onSignDeleteRequested?: () => void;
   readonly onResumeRequested: () => void;
 }
@@ -349,6 +364,33 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
     };
   }
 
+  if (definition.content.kind === "goal") {
+    return {
+      pageId: definition.pageId,
+      leftAction: definition.leftAction,
+      rightAction: definition.rightAction,
+      content: {
+        kind: "goal",
+        title: definition.content.title,
+        pageLabel: definition.content.pageLabel,
+        previousDisabled: definition.content.previousAction.disabled,
+        nextDisabled: definition.content.nextAction.disabled,
+      },
+    };
+  }
+
+  if (definition.content.kind === "question-help") {
+    return {
+      pageId: definition.pageId,
+      leftAction: definition.leftAction,
+      rightAction: definition.rightAction,
+      content: {
+        kind: "question-help",
+        optionLabels: definition.content.options.filter((entry) => !entry.disabled).map((entry) => entry.label),
+      },
+    };
+  }
+
   return {
     pageId: definition.pageId,
     leftAction: definition.leftAction,
@@ -524,7 +566,40 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     return actions;
   }
 
-  if (definition.content.kind === "tutorial") {
+  if (definition.content.kind === "question-help") {
+    const help = document.createElement("div");
+    help.className = "desktop-tool-palette-settings";
+
+    const section = document.createElement("section");
+    section.className = "desktop-tool-palette-section desktop-tool-palette-help-hub";
+
+    const heading = document.createElement("span");
+    heading.className = "desktop-tool-palette-tutorial-title";
+    heading.textContent = "Help hub";
+    section.append(heading);
+
+    for (const entry of definition.content.options) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "desktop-tool-palette-button";
+      button.textContent = entry.label;
+      button.disabled = entry.disabled;
+      button.ariaDisabled = String(entry.disabled);
+      button.addEventListener("click", () => {
+        if (entry.id === "tutorial") {
+          options.onQuestionHelpTutorialRequested?.();
+        } else {
+          options.onQuestionHelpGoalRequested?.();
+        }
+      });
+      section.append(button);
+    }
+
+    help.append(section);
+    return help;
+  }
+
+  if (definition.content.kind === "tutorial" || definition.content.kind === "goal") {
     const tutorial = document.createElement("div");
     tutorial.className = "desktop-tool-palette-settings";
 
@@ -550,7 +625,11 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     previousButton.ariaDisabled = String(definition.content.previousAction.disabled);
     previousButton.append(createTutorialChevronIcon("previous"));
     previousButton.addEventListener("click", () => {
-      options.onTutorialPreviousRequested?.();
+      if (definition.content.kind === "tutorial") {
+        options.onTutorialPreviousRequested?.();
+      } else {
+        options.onGoalPreviousRequested?.();
+      }
     });
 
     const pageLabel = document.createElement("span");
@@ -565,7 +644,11 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     nextButton.ariaDisabled = String(definition.content.nextAction.disabled);
     nextButton.append(createTutorialChevronIcon("next"));
     nextButton.addEventListener("click", () => {
-      options.onTutorialNextRequested?.();
+      if (definition.content.kind === "tutorial") {
+        options.onTutorialNextRequested?.();
+      } else {
+        options.onGoalNextRequested?.();
+      }
     });
 
     controls.append(previousButton, pageLabel, nextButton);

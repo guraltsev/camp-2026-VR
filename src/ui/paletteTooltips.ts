@@ -31,6 +31,18 @@ export function resolvePaletteTooltipLabel(itemId: string | undefined): string |
     return itemId.endsWith(":previous") ? "Previous page" : "Next page";
   }
 
+  if (itemId.startsWith("goal:")) {
+    return itemId.endsWith(":previous") ? "Previous page" : "Next page";
+  }
+
+  if (itemId === "question-help:tutorial") {
+    return "Tutorial";
+  }
+
+  if (itemId === "question-help:goal") {
+    return "Goal";
+  }
+
   if (itemId.startsWith("sign-type:")) {
     return "Choose sign type";
   }

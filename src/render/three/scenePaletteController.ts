@@ -48,8 +48,12 @@ export interface ScenePaletteControllerOptions {
   readonly onGeodesicCannonDeleteRequested: (cannonId: string, geodesicId: string) => void;
   readonly onGeometryComputerSetSkewRequested: (computerId: string, skewXMeters: number) => void;
   readonly onGeometryComputerStepSkewRequested: (computerId: string, deltaXMeters: number) => void;
+  readonly onQuestionHelpTutorialRequested: () => void;
+  readonly onQuestionHelpGoalRequested: () => void;
   readonly onTutorialPreviousRequested: () => void;
   readonly onTutorialNextRequested: () => void;
+  readonly onGoalPreviousRequested: () => void;
+  readonly onGoalNextRequested: () => void;
   readonly onSignKeyboardCharacter: (character: string) => void;
   readonly onSignKeyboardBackspace: () => void;
   readonly onSignDeleteRequested: () => void;
@@ -127,8 +131,12 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
     onGeodesicCannonDeleteRequested: options.onGeodesicCannonDeleteRequested,
     onGeometryComputerSetSkewRequested: options.onGeometryComputerSetSkewRequested,
     onGeometryComputerStepSkewRequested: options.onGeometryComputerStepSkewRequested,
+    onQuestionHelpTutorialRequested: options.onQuestionHelpTutorialRequested,
+    onQuestionHelpGoalRequested: options.onQuestionHelpGoalRequested,
     onTutorialPreviousRequested: options.onTutorialPreviousRequested,
     onTutorialNextRequested: options.onTutorialNextRequested,
+    onGoalPreviousRequested: options.onGoalPreviousRequested,
+    onGoalNextRequested: options.onGoalNextRequested,
     onSignKeyboardCharacter: options.onSignKeyboardCharacter,
     onSignKeyboardBackspace: options.onSignKeyboardBackspace,
     onSignDeleteRequested: options.onSignDeleteRequested,

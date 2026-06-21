@@ -72,6 +72,10 @@ startingQuestionCube("top", {
   position: [-2.45, 0.05, 3.25],
   scale: 1,
   turn: -18,
+  goalPages: [{
+    title: "Goal",
+    body: "Explore the dodecahedron's twelve pentagonal faces. Use objects and textures to build a mental map.",
+  }],
 });
 
 top_mouse = geo_mouse("top-geo-mouse", {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAppConfig, normalizeAppConfigName, readAppConfigName } from "../src/glue/appConfig";
+import {
+  normalizeAppConfig,
+  normalizeAppConfigName,
+  readAppConfigForwardName,
+  readAppConfigName,
+} from "../src/glue/appConfig";
 import { readLaunchOptions } from "../src/glue/readLaunchOptions";
 
 describe("readLaunchOptions", () => {
@@ -68,6 +73,62 @@ describe("readLaunchOptions", () => {
     });
   });
 
+  it.each([
+    ["001", "001-basic-cube"],
+    ["002", "002-basic-tetrahedron"],
+  ] as const)("supports the locked-down %s config shape", (configName, startingWorld) => {
+    const config = normalizeAppConfig({
+      startingWorld,
+      optionsMenu: {
+        worldSelectionSection: false,
+        debugSection: false,
+      },
+      tools: {
+        placeFlags: true,
+        geodesicEmitters: false,
+        distances: false,
+        angles: false,
+      },
+      debug: {
+        level: "off",
+        portalPanels: "none",
+        renderQuality: false,
+        overlay: {
+          enabled: false,
+          items: {
+            fps: false,
+            location: false,
+            "portal-quantities": false,
+          },
+        },
+        options: {
+          "runtime-diagnostics": false,
+          "portal-path-debug": false,
+        },
+      },
+    });
+
+    expect(readLaunchOptions(locationWithSearch(""), config, configName)).toMatchObject({
+      selectedWorldId: startingWorld,
+      uiOptions: [],
+      renderWorldPicker: false,
+      renderDebugButton: false,
+      debugLevel: "off",
+      portalPanelMode: "none",
+      debugOptions: [],
+      debugOverlayEnabled: false,
+      debugOverlayItems: [],
+      renderQualityEnabled: false,
+      appConfigName: configName,
+    });
+    expect(config.tools).toEqual({
+      placeFlags: true,
+      geodesicEmitters: false,
+      distances: false,
+      angles: false,
+    });
+  });
+
   it("lets URL params override app config defaults", () => {
     const config = normalizeAppConfig({
       startingWorld: "torus",
@@ -102,6 +163,12 @@ describe("readLaunchOptions", () => {
     expect(normalizeAppConfigName("classroom.config.js")).toBe("classroom");
     expect(normalizeAppConfigName("../secret")).toBe("default");
     expect(normalizeAppConfigName("")).toBe("default");
+  });
+
+  it("reads safe app config forward targets", () => {
+    expect(readAppConfigForwardName({ forwardTo: "full.config.js" })).toBe("full");
+    expect(readAppConfigForwardName({ forwardTo: "../secret" })).toBeUndefined();
+    expect(readAppConfigForwardName({})).toBeUndefined();
   });
 });
 

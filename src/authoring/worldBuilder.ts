@@ -37,6 +37,14 @@ export const defaultStartingQuestionCubeTutorialPages: readonly TutorialPageSpec
     xrBody: "Press B while aiming at an object for its help.",
   },
 ];
+export const defaultStartingQuestionCubeGoalPages: readonly TutorialPageSpec[] = [
+  {
+    title: "Goal",
+    body: "Explore this world and use its portals to learn how the faces connect.",
+    desktopBody: "Explore this world. Use Right click or F on objects for menus, and try to predict where each portal leads.",
+    xrBody: "Explore this world. Use the side trigger on objects for menus, and try to predict where each portal leads.",
+  },
+];
 
 interface MutableCell {
   readonly id: string;
@@ -63,6 +71,7 @@ export interface WorldBuilder {
 export interface StartingQuestionCubeAuthoringParams extends StaticObjectAuthoringParams {
   readonly message?: string;
   readonly tutorialPages?: readonly TutorialPageSpec[];
+  readonly goalPages?: readonly TutorialPageSpec[];
 }
 
 export interface StartingPositionAuthoringParams {
@@ -197,6 +206,7 @@ export function createWorldBuilder(): WorldBuilder {
         tutorialPages: params.tutorialPages ?? (params.message
           ? [{ title: "Tutorial", body: params.message }]
           : defaultStartingQuestionCubeTutorialPages),
+        goalPages: params.goalPages ?? defaultStartingQuestionCubeGoalPages,
       });
       objectIds.add(questionCube.id);
       cell.visuals.objects.push(stripLibraryBrand(questionCube));

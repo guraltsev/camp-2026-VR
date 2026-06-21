@@ -71,6 +71,10 @@ startingQuestionCube("face-00", {
   position: [-2.45, 0.05, 3.25],
   scale: 1,
   turn: -18,
+  goalPages: [{
+    title: "Goal",
+    body: "Explore the icosahedron's twenty triangular faces. Track how far you can travel before returning near the start.",
+  }],
 });
 
 runner = geo_mouse("icosahedron-runner", {

@@ -53,16 +53,19 @@ import {
   setRuntimeMenuAimCollisionOutlinesEnabled,
   setRuntimeMenuEditingFlagId,
   setRuntimeMenuEditingSignMessage,
+  setRuntimeMenuGoalPageIndex,
   setRuntimeMenuReloadConfirmUntilMs,
   setRuntimeMenuTutorialPageIndex,
   showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuGeometryComputerActions,
+  showRuntimeMenuGoal,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuEditSign,
   showRuntimeMenuMainPage,
   showRuntimeMenuPlaceFlagOptions,
+  showRuntimeMenuQuestionHelp,
+  showRuntimeMenuQuestionTutorial,
   showRuntimeMenuSettings,
-  showRuntimeMenuTutorial,
   setRuntimeMenuSelectedTool,
   toggleRuntimeMenuDebugOverlayItem,
 } from "../../runtime/runtimeMenuState";
@@ -497,7 +500,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onShowMainRequested() {
       menuState = menuState.page === "debug-settings"
         ? showRuntimeMenuSettings(menuState)
-        : showRuntimeMenuMainPage(menuState);
+        : menuState.page === "tutorial" || menuState.page === "goal"
+          ? showRuntimeMenuQuestionHelp(menuState)
+          : showRuntimeMenuMainPage(menuState);
       syncDesktopPalette();
     },
     onWorldSelected(worldId) {
@@ -623,11 +628,25 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onGeometryComputerStepSkewRequested(computerId, deltaXMeters) {
       stepGeometryComputerSkewTarget(computerId, deltaXMeters);
     },
+    onQuestionHelpTutorialRequested() {
+      menuState = showRuntimeMenuQuestionTutorial(menuState);
+      syncDesktopPalette();
+    },
+    onQuestionHelpGoalRequested() {
+      menuState = showRuntimeMenuGoal(menuState);
+      syncDesktopPalette();
+    },
     onTutorialPreviousRequested() {
       stepOpenTutorialPage(-1);
     },
     onTutorialNextRequested() {
       stepOpenTutorialPage(1);
+    },
+    onGoalPreviousRequested() {
+      stepOpenGoalPage(-1);
+    },
+    onGoalNextRequested() {
+      stepOpenGoalPage(1);
     },
     onSignKeyboardCharacter(character) {
       appendEditingSignCharacter(character);
@@ -1834,10 +1853,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       menuState.page === "edit-sign" ||
       menuState.page === "geodesic-cannon-actions" ||
       menuState.page === "geometry-computer-actions" ||
-      menuState.page === "tutorial"
+      menuState.page === "question-help"
     ) {
       cancelRuntimeMenuAndSelectedTool();
       return;
+    } else if (menuState.page === "tutorial" || menuState.page === "goal") {
+      menuState = showRuntimeMenuQuestionHelp(menuState);
     } else if (menuState.page === "debug-settings") {
       menuState = showRuntimeMenuSettings(menuState);
     } else {
@@ -3630,7 +3651,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
     switch (target?.object?.kind) {
       case "asset":
-        return tryOpenFocusedTutorial(target.object);
+        return tryOpenFocusedQuestionHelp(target.object);
       case "geodesic-segment":
         return tryExtendFocusedGeodesicFromAim(ray);
       case "measured-geodesic-length":
@@ -3719,26 +3740,28 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return true;
     }
 
-    if (focused.object.kind === "asset" && tryOpenFocusedTutorial(focused.object)) {
+    if (focused.object.kind === "asset" && tryOpenFocusedQuestionHelp(focused.object)) {
       return true;
     }
 
     return false;
   }
 
-  function tryOpenFocusedTutorial(object: RuntimeWorldObject): boolean {
+  function tryOpenFocusedQuestionHelp(object: RuntimeWorldObject): boolean {
     if (object.kind !== "asset" || object.interactable?.action !== "open-tutorial") {
       return false;
     }
 
-    const pages = object.tutorialPages;
-    if (!pages || pages.length === 0) {
+    const tutorialPages = object.tutorialPages ?? [];
+    const goalPages = object.goalPages ?? [];
+    if (tutorialPages.length === 0 && goalPages.length === 0) {
       return false;
     }
 
-    menuState = showRuntimeMenuTutorial(menuState, {
+    menuState = showRuntimeMenuQuestionHelp(menuState, {
       objectId: object.id,
-      pages,
+      tutorialPages,
+      goalPages,
     });
     syncDesktopPalette();
     return true;
@@ -3751,6 +3774,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     menuState = setRuntimeMenuTutorialPageIndex(menuState, options.pageIndex + delta);
+    syncDesktopPalette();
+  }
+
+  function stepOpenGoalPage(delta: -1 | 1): void {
+    const options = menuState.goalOptions;
+    if (menuState.page !== "goal" || !options) {
+      return;
+    }
+
+    menuState = setRuntimeMenuGoalPageIndex(menuState, options.pageIndex + delta);
     syncDesktopPalette();
   }
 

@@ -130,6 +130,32 @@ export interface TutorialPaletteContent {
   };
 }
 
+export interface GoalPaletteContent {
+  readonly kind: "goal";
+  readonly objectId: string;
+  readonly title: string;
+  readonly body: string;
+  readonly pageLabel: string;
+  readonly previousAction: {
+    readonly label: string;
+    readonly disabled: boolean;
+  };
+  readonly nextAction: {
+    readonly label: string;
+    readonly disabled: boolean;
+  };
+}
+
+export interface QuestionHelpPaletteContent {
+  readonly kind: "question-help";
+  readonly objectId: string;
+  readonly options: readonly {
+    readonly id: "tutorial" | "goal";
+    readonly label: string;
+    readonly disabled: boolean;
+  }[];
+}
+
 export interface PaletteDefinition {
   readonly pageId: RuntimeMenuPageId;
   readonly leftAction: PaletteHeaderAction;
@@ -143,7 +169,9 @@ export interface PaletteDefinition {
     | EditSignPaletteContent
     | GeodesicCannonActionsPaletteContent
     | GeometryComputerActionsPaletteContent
-    | TutorialPaletteContent;
+    | TutorialPaletteContent
+    | GoalPaletteContent
+    | QuestionHelpPaletteContent;
 }
 
 export function createPaletteDefinition(
@@ -276,9 +304,44 @@ export function createPaletteDefinition(
     return {
       pageId: "tutorial",
       leftAction: createHeaderAction("none"),
+      rightAction: createHeaderAction("back"),
+      reloadConfirmationActive,
+      content: createPagedHelpContent("tutorial", state.tutorialOptions, inputMode),
+    };
+  }
+
+  if (state.page === "goal" && state.goalOptions) {
+    return {
+      pageId: "goal",
+      leftAction: createHeaderAction("none"),
+      rightAction: createHeaderAction("back"),
+      reloadConfirmationActive,
+      content: createPagedHelpContent("goal", state.goalOptions, inputMode),
+    };
+  }
+
+  if (state.page === "question-help" && state.questionHelpOptions) {
+    return {
+      pageId: "question-help",
+      leftAction: createHeaderAction("none"),
       rightAction: createHeaderAction("close"),
       reloadConfirmationActive,
-      content: createTutorialContent(state.tutorialOptions, inputMode),
+      content: {
+        kind: "question-help",
+        objectId: state.questionHelpOptions.objectId,
+        options: [
+          {
+            id: "tutorial",
+            label: "Tutorial",
+            disabled: state.questionHelpOptions.tutorialPages.length === 0,
+          },
+          {
+            id: "goal",
+            label: "Goal",
+            disabled: state.questionHelpOptions.goalPages.length === 0,
+          },
+        ],
+      },
     };
   }
 
@@ -296,10 +359,21 @@ export function createPaletteDefinition(
   };
 }
 
-function createTutorialContent(
+function createPagedHelpContent(
+  kind: "tutorial",
   options: NonNullable<RuntimeMenuState["tutorialOptions"]>,
   inputMode: InputMode,
-): TutorialPaletteContent {
+): TutorialPaletteContent;
+function createPagedHelpContent(
+  kind: "goal",
+  options: NonNullable<RuntimeMenuState["goalOptions"]>,
+  inputMode: InputMode,
+): GoalPaletteContent;
+function createPagedHelpContent(
+  kind: "tutorial" | "goal",
+  options: NonNullable<RuntimeMenuState["tutorialOptions"]> | NonNullable<RuntimeMenuState["goalOptions"]>,
+  inputMode: InputMode,
+): TutorialPaletteContent | GoalPaletteContent {
   const pageCount = options.pages.length;
   const pageIndex = pageCount === 0
     ? 0
@@ -307,7 +381,7 @@ function createTutorialContent(
   const page = options.pages[pageIndex] ?? { title: "Tutorial", body: "" };
 
   return {
-    kind: "tutorial",
+    kind,
     objectId: options.objectId,
     title: page.title,
     body: resolveTutorialBodyForInputMode(page, inputMode),

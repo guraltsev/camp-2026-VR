@@ -40,6 +40,7 @@ export const defaultAppConfigName = "default";
 
 const defaultDebugOverlayItems = ["fps", "location", "portal-quantities"] as const;
 const debugOptionIds = debugOptionDefinitions.map((option) => option.id);
+const maxAppConfigForwardDepth = 8;
 
 export const defaultAppConfig: AppConfig = {
   startingWorldId: defaultWorldId,
@@ -64,10 +65,30 @@ export const defaultAppConfig: AppConfig = {
 };
 
 export async function loadAppConfig(configName = defaultAppConfigName): Promise<AppConfig> {
+  return loadAppConfigByName(normalizeAppConfigName(configName), new Set(), 0);
+}
+
+async function loadAppConfigByName(configName: string, visitedConfigNames: Set<string>, depth: number): Promise<AppConfig> {
   const configUrl = buildAppConfigUrl(configName);
   try {
     const module = await import(/* @vite-ignore */ `${configUrl}?v=${Date.now()}`);
-    return normalizeAppConfig(module.default ?? module.noneuclidConfig ?? {});
+    const rawConfig = module.default ?? module.noneuclidConfig ?? {};
+    const forwardConfigName = readAppConfigForwardName(rawConfig);
+
+    if (forwardConfigName) {
+      if (depth >= maxAppConfigForwardDepth || visitedConfigNames.has(forwardConfigName)) {
+        console.warn("[noneuclid] using built-in defaults; app config forwarding loop detected", {
+          configName,
+          forwardConfigName,
+        });
+        return defaultAppConfig;
+      }
+
+      visitedConfigNames.add(configName);
+      return loadAppConfigByName(forwardConfigName, visitedConfigNames, depth + 1);
+    }
+
+    return normalizeAppConfig(rawConfig);
   } catch (error) {
     console.warn("[noneuclid] using built-in defaults; unable to load app config", error);
     return defaultAppConfig;
@@ -90,6 +111,18 @@ export function normalizeAppConfigName(rawValue: string | null | undefined): str
 
 export function buildAppConfigUrl(configName: string): string {
   return `/${normalizeAppConfigName(configName)}.config.js`;
+}
+
+export function readAppConfigForwardName(rawConfig: unknown): string | undefined {
+  const raw = isRecord(rawConfig) ? rawConfig : {};
+  const value = raw.forwardTo;
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const withoutExtension = value.replace(/(\.config)?\.js$/, "");
+  return /^[a-zA-Z0-9_-]+$/.test(withoutExtension) ? withoutExtension : undefined;
 }
 
 export function normalizeAppConfig(rawConfig: unknown): AppConfig {

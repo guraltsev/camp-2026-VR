@@ -135,7 +135,7 @@ describe("runtimeObjectRegistry", () => {
     expect(registry.getTooltipObjectsInCell("cell-a").map((object) => object.id)).toEqual(["computer-a"]);
   });
 
-  it("marks question cube tutorial assets as primary tutorial interactables", () => {
+  it("marks help hub assets as primary read interactables", () => {
     const questionCube = createRuntimeStaticAssetObject({
       id: "question-a",
       kind: "asset",
@@ -147,11 +147,11 @@ describe("runtimeObjectRegistry", () => {
     const registry = createRuntimeObjectRegistry([questionCube]);
 
     expect(questionCube.tooltip).toEqual({
-      label: "Question cube",
+      label: "Help hub",
       rangeMeters: 2.5,
     });
     expect(questionCube.interactable).toEqual({
-      label: "Open tutorial",
+      label: "Read",
       action: "open-tutorial",
       rangeMeters: 2.5,
     });

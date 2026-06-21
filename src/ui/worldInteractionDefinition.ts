@@ -70,7 +70,7 @@ export function createWorldFocusMessageDefinition(
       if (options.object.interactable?.action === "open-tutorial") {
         return withObjectHelp(options.object, {
           title,
-          actions: [primaryAction("open-tutorial", "Tutorial")],
+          actions: [primaryAction("open-tutorial", "Read")],
         });
       }
       return withObjectHelp(options.object, { title, actions: [] });

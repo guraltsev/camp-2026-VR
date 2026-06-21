@@ -71,6 +71,7 @@ export interface PositionedCellObjectSpec {
   readonly displayHelpMessage?: string;
   readonly autoDisplayHelpRangeMeters?: number;
   readonly tutorialPages?: readonly TutorialPageSpec[];
+  readonly goalPages?: readonly TutorialPageSpec[];
 }
 
 export interface AssetObjectSpec extends PositionedCellObjectSpec {

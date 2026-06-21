@@ -25,6 +25,8 @@ export interface StaticObjectAuthoringParams {
   readonly autoDisplayHelpRangeMeters?: number;
   /** Optional pages shown by object-specific tutorial menus. */
   readonly tutorialPages?: readonly TutorialPageSpec[];
+  /** Optional pages shown by scenario-specific goal menus. */
+  readonly goalPages?: readonly TutorialPageSpec[];
   readonly forwardTilt?: number;
   readonly sideTilt?: number;
   readonly turn?: number;
@@ -69,6 +71,7 @@ export function createStaticAssetObject(
     displayHelpMessage: params.displayHelpMessage,
     autoDisplayHelpRangeMeters: params.autoDisplayHelpRangeMeters,
     tutorialPages: params.tutorialPages,
+    goalPages: params.goalPages,
   };
 }
 

@@ -13,7 +13,9 @@ export type RuntimeMenuPageId =
   | "edit-sign"
   | "geodesic-cannon-actions"
   | "geometry-computer-actions"
-  | "tutorial";
+  | "question-help"
+  | "tutorial"
+  | "goal";
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
 export type RuntimeToolId =
@@ -83,6 +85,16 @@ export interface RuntimeMenuState {
     readonly pages: readonly TutorialPageSpec[];
     readonly pageIndex: number;
   };
+  readonly goalOptions?: {
+    readonly objectId: string;
+    readonly pages: readonly TutorialPageSpec[];
+    readonly pageIndex: number;
+  };
+  readonly questionHelpOptions?: {
+    readonly objectId: string;
+    readonly tutorialPages: readonly TutorialPageSpec[];
+    readonly goalPages: readonly TutorialPageSpec[];
+  };
   readonly editingFlagId?: string;
 }
 
@@ -135,6 +147,8 @@ export function closeRuntimeMenu(state: RuntimeMenuState): RuntimeMenuState {
     geodesicCannonOptions: undefined,
     geometryComputerOptions: undefined,
     tutorialOptions: undefined,
+    goalOptions: undefined,
+    questionHelpOptions: undefined,
     editingFlagId: undefined,
   };
 }
@@ -169,6 +183,8 @@ export function showRuntimeMenuMainPage(state: RuntimeMenuState): RuntimeMenuSta
     geodesicCannonOptions: undefined,
     geometryComputerOptions: undefined,
     tutorialOptions: undefined,
+    goalOptions: undefined,
+    questionHelpOptions: undefined,
     editingFlagId: undefined,
   };
 }
@@ -258,6 +274,77 @@ export function showRuntimeMenuTutorial(
   };
 }
 
+export function showRuntimeMenuQuestionHelp(
+  state: RuntimeMenuState,
+  options?: {
+    readonly objectId: string;
+    readonly tutorialPages?: readonly TutorialPageSpec[];
+    readonly goalPages?: readonly TutorialPageSpec[];
+  },
+): RuntimeMenuState {
+  const questionHelpOptions = options
+    ? {
+        objectId: options.objectId,
+        tutorialPages: options.tutorialPages ?? [],
+        goalPages: options.goalPages ?? [],
+      }
+    : state.questionHelpOptions;
+  if (!questionHelpOptions) {
+    return state;
+  }
+
+  return {
+    ...state,
+    isOpen: true,
+    page: "question-help",
+    questionHelpOptions,
+    tutorialOptions: undefined,
+    goalOptions: undefined,
+  };
+}
+
+export function showRuntimeMenuQuestionTutorial(state: RuntimeMenuState): RuntimeMenuState {
+  const options = state.questionHelpOptions;
+  if (!options || options.tutorialPages.length === 0) {
+    return state;
+  }
+
+  return showRuntimeMenuTutorial(state, {
+    objectId: options.objectId,
+    pages: options.tutorialPages,
+  });
+}
+
+export function showRuntimeMenuGoal(
+  state: RuntimeMenuState,
+  options?: {
+    readonly objectId: string;
+    readonly pages: readonly TutorialPageSpec[];
+    readonly pageIndex?: number;
+  },
+): RuntimeMenuState {
+  const resolvedOptions = options ?? (state.questionHelpOptions
+    ? {
+        objectId: state.questionHelpOptions.objectId,
+        pages: state.questionHelpOptions.goalPages,
+      }
+    : undefined);
+  if (!resolvedOptions || resolvedOptions.pages.length === 0) {
+    return state;
+  }
+
+  return {
+    ...state,
+    isOpen: true,
+    page: "goal",
+    goalOptions: {
+      objectId: resolvedOptions.objectId,
+      pages: resolvedOptions.pages,
+      pageIndex: clampTutorialPageIndex(resolvedOptions.pageIndex ?? 0, resolvedOptions.pages),
+    },
+  };
+}
+
 export function setRuntimeMenuTutorialPageIndex(
   state: RuntimeMenuState,
   pageIndex: number,
@@ -271,6 +358,23 @@ export function setRuntimeMenuTutorialPageIndex(
     tutorialOptions: {
       ...state.tutorialOptions,
       pageIndex: clampTutorialPageIndex(pageIndex, state.tutorialOptions.pages),
+    },
+  };
+}
+
+export function setRuntimeMenuGoalPageIndex(
+  state: RuntimeMenuState,
+  pageIndex: number,
+): RuntimeMenuState {
+  if (!state.goalOptions) {
+    return state;
+  }
+
+  return {
+    ...state,
+    goalOptions: {
+      ...state.goalOptions,
+      pageIndex: clampTutorialPageIndex(pageIndex, state.goalOptions.pages),
     },
   };
 }

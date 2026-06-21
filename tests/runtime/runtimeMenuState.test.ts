@@ -5,14 +5,18 @@ import {
   selectRuntimeMenuPlaceFlagToolType,
   setRuntimeMenuAimCollisionOutlinesEnabled,
   setRuntimeMenuEditingSignMessage,
+  setRuntimeMenuGoalPageIndex,
   setRuntimeMenuSelectedTool,
   setRuntimeMenuTutorialPageIndex,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuGeometryComputerActions,
+  showRuntimeMenuGoal,
   showRuntimeMenuMainPage,
   showRuntimeMenuEditSign,
   showRuntimeMenuPlaceFlagOptions,
+  showRuntimeMenuQuestionHelp,
+  showRuntimeMenuQuestionTutorial,
   showRuntimeMenuTutorial,
 } from "../../src/runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
@@ -231,7 +235,7 @@ describe("runtimeMenuState", () => {
     const secondPage = createPaletteDefinition(setRuntimeMenuTutorialPageIndex(state, 1));
 
     expect(firstPage.pageId).toBe("tutorial");
-    expect(firstPage.rightAction.id).toBe("close");
+    expect(firstPage.rightAction.id).toBe("back");
     expect(firstPage.content).toMatchObject({
       kind: "tutorial",
       title: "Move",
@@ -247,6 +251,59 @@ describe("runtimeMenuState", () => {
       pageLabel: "2 / 2",
       previousAction: { label: "<", disabled: false },
       nextAction: { label: ">", disabled: true },
+    });
+  });
+
+  it("creates a help hub with tutorial and goal choices", () => {
+    const state = showRuntimeMenuQuestionHelp(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), {
+      objectId: "startingQuestionCube",
+      tutorialPages: [{ title: "Move", body: "Use arrows." }],
+      goalPages: [{ title: "Goal", body: "Find a portal." }],
+    });
+
+    const hub = createPaletteDefinition(state);
+    const tutorial = createPaletteDefinition(showRuntimeMenuQuestionTutorial(state));
+    const goal = createPaletteDefinition(showRuntimeMenuGoal(state));
+
+    expect(hub.pageId).toBe("question-help");
+    expect(hub.content).toMatchObject({
+      kind: "question-help",
+      options: [
+        { id: "tutorial", label: "Tutorial", disabled: false },
+        { id: "goal", label: "Goal", disabled: false },
+      ],
+    });
+    expect(tutorial.content).toMatchObject({ kind: "tutorial", title: "Move" });
+    expect(goal.content).toMatchObject({ kind: "goal", title: "Goal" });
+  });
+
+  it("creates a paged goal menu", () => {
+    const state = showRuntimeMenuGoal(createRuntimeMenuState({
+      selectedWorldId: "cube",
+    }), {
+      objectId: "startingQuestionCube",
+      pages: [
+        { title: "Goal", body: "Find a portal." },
+        { title: "Bonus", body: "Return home." },
+      ],
+    });
+    const secondPage = createPaletteDefinition(setRuntimeMenuGoalPageIndex(state, 1));
+
+    expect(createPaletteDefinition(state).content).toMatchObject({
+      kind: "goal",
+      title: "Goal",
+      pageLabel: "1 / 2",
+      previousAction: { disabled: true },
+      nextAction: { disabled: false },
+    });
+    expect(secondPage.content).toMatchObject({
+      kind: "goal",
+      title: "Bonus",
+      pageLabel: "2 / 2",
+      previousAction: { disabled: false },
+      nextAction: { disabled: true },
     });
   });
 

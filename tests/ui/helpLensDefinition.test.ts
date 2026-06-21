@@ -44,7 +44,7 @@ describe("helpLensDefinition", () => {
       inputMode: "desktop",
       selectedTool: "none",
       focus: {
-        title: "Question cube",
+        title: "Help hub",
         displayHelpMessage: "Move with Arrow keys or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.",
         actions: [],
       },
@@ -59,7 +59,7 @@ describe("helpLensDefinition", () => {
       inputMode: "xr",
       selectedTool: "none",
       focus: {
-        title: "Question cube",
+        title: "Help hub",
         displayHelpMessage: "Move with Arrow keys or the left stick. Look at nearby objects for prompts. Use primary action or trigger for the selected action. Use context action or side trigger for tools and object menus. Press H or B while aiming at an object for its help.",
         actions: [],
       },

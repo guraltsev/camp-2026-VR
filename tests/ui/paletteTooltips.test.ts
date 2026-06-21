@@ -9,6 +9,9 @@ describe("paletteTooltips", () => {
     expect(resolvePaletteTooltipLabel("geodesic-cannon-action:carry")).toBe("Move emitter while maintaining attached geodesics");
     expect(resolvePaletteTooltipLabel("geodesic-cannon-action:tie-and-detach")).toBe("Select two geodesics attached to this emitter, tie them together, and release them from the emitter");
     expect(resolvePaletteTooltipLabel("geodesic-cannon-action:delete:g-a")).toBe("Delete geodesic");
+    expect(resolvePaletteTooltipLabel("question-help:tutorial")).toBe("Tutorial");
+    expect(resolvePaletteTooltipLabel("question-help:goal")).toBe("Goal");
+    expect(resolvePaletteTooltipLabel("goal:next")).toBe("Next page");
     expect(resolvePaletteTooltipLabel("sign-action:trash")).toBe("Delete sign");
   });
 

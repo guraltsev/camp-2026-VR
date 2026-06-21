@@ -1,5 +1,7 @@
 import type { CellComplexSpec } from "../cell-complex/specs";
 import { compileWorldScript } from "./compileWorldScript";
+import basicCubeWorldSource from "../examples/001-basic-cube.world.js?raw";
+import basicTetrahedronWorldSource from "../examples/002-basic-tetrahedron.world.js?raw";
 import cubeWorldSource from "../examples/cube.world.js?raw";
 import dodecahedronWorldSource from "../examples/dodecahedron.world.js?raw";
 import icosahedronWorldSource from "../examples/icosahedron.world.js?raw";
@@ -7,6 +9,8 @@ import octahedronWorldSource from "../examples/octahedron.world.js?raw";
 import tetrahedronWorldSource from "../examples/tetrahedron.world.js?raw";
 import torusWorldSource from "../examples/torus.world.js?raw";
 
+export const basicCube = compileExampleWorld(basicCubeWorldSource, "001-basic-cube.world.js");
+export const basicTetrahedron = compileExampleWorld(basicTetrahedronWorldSource, "002-basic-tetrahedron.world.js");
 export const cube = compileExampleWorld(cubeWorldSource, "cube.world.js");
 export const dodecahedron = compileExampleWorld(dodecahedronWorldSource, "dodecahedron.world.js");
 export const icosahedron = compileExampleWorld(icosahedronWorldSource, "icosahedron.world.js");

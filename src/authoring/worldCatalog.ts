@@ -1,5 +1,5 @@
 import type { CellComplexSpec } from "../cell-complex/specs";
-import { cube, dodecahedron, icosahedron, octahedron, tetrahedron, torus } from "./exampleWorlds";
+import { basicCube, basicTetrahedron, cube, dodecahedron, icosahedron, octahedron, tetrahedron, torus } from "./exampleWorlds";
 
 export interface WorldCatalogEntry {
   readonly id: string;
@@ -12,6 +12,8 @@ interface WorldCatalogRecord extends WorldCatalogEntry {
 }
 
 const worldCatalogRecords = [
+  createWorldCatalogRecord("001-basic-cube", "001 Basic Cube", basicCube),
+  createWorldCatalogRecord("002-basic-tetrahedron", "002 Basic Tetrahedron", basicTetrahedron),
   createWorldCatalogRecord("cube", "Cube", cube),
   createWorldCatalogRecord("dodecahedron", "Dodecahedron", dodecahedron),
   createWorldCatalogRecord("icosahedron", "Icosahedron", icosahedron),

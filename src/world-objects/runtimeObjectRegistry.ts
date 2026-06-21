@@ -37,6 +37,7 @@ export interface RuntimeWorldObjectBase {
   readonly displayHelpMessage?: string;
   readonly autoDisplayHelpRangeMeters?: number;
   readonly tutorialPages?: readonly TutorialPageSpec[];
+  readonly goalPages?: readonly TutorialPageSpec[];
 }
 
 export interface RuntimeCreatureObject extends RuntimeWorldObjectBase {
@@ -190,16 +191,18 @@ export function createRuntimeStaticAssetObject(
 ): RuntimeStaticAssetObject {
   const geometryComputer = objectSpec.class === "geometry-computer";
   const questionCube = objectSpec.class === "question-cube";
+  const questionCubeHasHelpMenu = questionCube &&
+    ((objectSpec.tutorialPages?.length ?? 0) > 0 || (objectSpec.goalPages?.length ?? 0) > 0);
   const questionCubeRangeMeters = objectSpec.autoDisplayHelpRangeMeters ?? 2.5;
   const helpTooltip = !geometryComputer
-    ? questionCube && objectSpec.tutorialPages && objectSpec.tutorialPages.length > 0
+    ? questionCubeHasHelpMenu
       ? {
-          label: "Question cube",
+          label: "Help hub",
           rangeMeters: questionCubeRangeMeters,
         }
       : objectSpec.displayHelpMessage
       ? {
-        label: questionCube ? "Question cube" : objectSpec.class ?? objectSpec.id,
+        label: questionCube ? "Help hub" : objectSpec.class ?? objectSpec.id,
         rangeMeters: questionCube ? questionCubeRangeMeters : objectSpec.autoDisplayHelpRangeMeters ?? 2.5,
       }
       : undefined
@@ -223,15 +226,16 @@ export function createRuntimeStaticAssetObject(
       : undefined),
     autoDisplayHelpRangeMeters: objectSpec.autoDisplayHelpRangeMeters,
     tutorialPages: objectSpec.tutorialPages,
+    goalPages: objectSpec.goalPages,
     tooltip: geometryComputer
       ? {
           label: "Geometry computer",
           rangeMeters: 3,
         }
       : helpTooltip,
-    interactable: questionCube && objectSpec.tutorialPages && objectSpec.tutorialPages.length > 0
+    interactable: questionCubeHasHelpMenu
       ? {
-          label: "Open tutorial",
+          label: "Read",
           action: "open-tutorial",
           rangeMeters: questionCubeRangeMeters,
         }

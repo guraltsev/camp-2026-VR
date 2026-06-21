@@ -20,6 +20,10 @@ startingQuestionCube("torus-room", {
   position: [-2.45, 0.05, 3.25],
   scale: 1,
   turn: -18,
+  goalPages: [{
+    title: "Goal",
+    body: "Cross opposite portals in the torus room and watch how the room wraps around. Then use the computer to change the torus skew.",
+  }],
 });
 
 torus_mouse = geo_mouse("torus-geo-mouse", {

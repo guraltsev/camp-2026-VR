@@ -5,6 +5,7 @@ import {
   showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuPlaceFlagOptions,
+  showRuntimeMenuQuestionHelp,
   showRuntimeMenuTutorial,
 } from "../../src/runtime/runtimeMenuState";
 import { createScenePaletteLibraryAdapter } from "../../src/render/three/scenePaletteLibraryAdapter";
@@ -188,6 +189,28 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("tutorial:next");
     expect(actionIds).not.toContain("tutorial:previous");
     expect(actionIds).toContain("tutorial:next");
+
+    adapter.dispose();
+  });
+
+  it("renders help hub choices", () => {
+    const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
+    adapter.setDefinition(createPaletteDefinition(showRuntimeMenuQuestionHelp(
+      createRuntimeMenuState({ selectedWorldId: "cube" }),
+      {
+        objectId: "startingQuestionCube",
+        tutorialPages: [{ title: "Move", body: "Use arrows." }],
+        goalPages: [{ title: "Goal", body: "Find a portal." }],
+      },
+    )));
+
+    const itemIds = collectPaletteItemIds(adapter.root);
+    const actionIds = collectPaletteActionItemIds(adapter.root);
+
+    expect(itemIds).toContain("question-help:tutorial");
+    expect(itemIds).toContain("question-help:goal");
+    expect(actionIds).toContain("question-help:tutorial");
+    expect(actionIds).toContain("question-help:goal");
 
     adapter.dispose();
   });

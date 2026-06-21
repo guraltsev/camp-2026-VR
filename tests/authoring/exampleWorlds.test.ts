@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { worldCatalog } from "../../src/authoring/worldCatalog";
-import { cube, dodecahedron, icosahedron, octahedron, tetrahedron, torus } from "../../src/authoring/exampleWorlds";
+import {
+  basicCube,
+  basicTetrahedron,
+  cube,
+  dodecahedron,
+  icosahedron,
+  octahedron,
+  tetrahedron,
+  torus,
+} from "../../src/authoring/exampleWorlds";
 import {
   defaultStartingQuestionCubeMessage,
   defaultStartingQuestionCubeTutorialPages,
@@ -13,6 +22,8 @@ import { createDefaultPlayerPose, playerPoseToDynamicObject, type PlayerPose } f
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 
 const exampleWorlds = [
+  ["001-basic-cube", basicCube],
+  ["002-basic-tetrahedron", basicTetrahedron],
   ["cube", cube],
   ["dodecahedron", dodecahedron],
   ["icosahedron", icosahedron],
@@ -28,6 +39,8 @@ describe("example worlds", () => {
 
   it("exposes every Platonic solid as a selectable world", () => {
     expect(worldCatalog.map((entry) => entry.id).sort()).toEqual([
+      "001-basic-cube",
+      "002-basic-tetrahedron",
       "cube",
       "dodecahedron",
       "icosahedron",
@@ -74,6 +87,12 @@ describe("example worlds", () => {
       assetPath: "questionblock/questionBlock.glb",
       displayHelpMessage: defaultStartingQuestionCubeMessage,
       tutorialPages: defaultStartingQuestionCubeTutorialPages,
+      goalPages: expect.arrayContaining([
+        expect.objectContaining({
+          title: "Goal",
+          body: expect.any(String),
+        }),
+      ]),
     });
   });
 

@@ -42,8 +42,12 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
   readonly onGeometryComputerSetSkewRequested?: (computerId: string, skewXMeters: number) => void;
   readonly onGeometryComputerStepSkewRequested?: (computerId: string, deltaXMeters: number) => void;
+  readonly onQuestionHelpTutorialRequested?: () => void;
+  readonly onQuestionHelpGoalRequested?: () => void;
   readonly onTutorialPreviousRequested?: () => void;
   readonly onTutorialNextRequested?: () => void;
+  readonly onGoalPreviousRequested?: () => void;
+  readonly onGoalNextRequested?: () => void;
   readonly onSignKeyboardCharacter?: (character: string) => void;
   readonly onSignKeyboardBackspace?: () => void;
   readonly onSignDeleteRequested?: () => void;
@@ -393,7 +397,15 @@ function buildContent(
   }
 
   if (definition.content.kind === "tutorial") {
-    return buildTutorialContent(definition.content, options);
+    return buildPagedHelpContent(definition.content, options);
+  }
+
+  if (definition.content.kind === "goal") {
+    return buildPagedHelpContent(definition.content, options);
+  }
+
+  if (definition.content.kind === "question-help") {
+    return buildQuestionHelpContent(definition.content, options);
   }
 
   if (definition.content.kind === "debug-settings") {
@@ -691,8 +703,63 @@ function buildGeometryComputerActionsContent(
   return panel;
 }
 
-function buildTutorialContent(
-  content: Extract<PaletteDefinition["content"], { readonly kind: "tutorial" }>,
+function buildQuestionHelpContent(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "question-help" }>,
+  options: VrPaletteLibraryAdapterOptions,
+): Container {
+  const panel = new Container({
+    width: "100%",
+    minHeight: 300,
+    flexDirection: "column",
+    gap: 16,
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 2,
+  });
+  panel.add(new Text({
+    text: "Help hub",
+    fontSize: 34,
+    fontWeight: "bold",
+    color: textColor,
+    fill: textColor,
+    flexShrink: 0,
+    wordBreak: "break-word",
+  }));
+
+  const optionRows = new Container({
+    width: "100%",
+    flexDirection: "column",
+    gap: 10,
+  });
+  for (const entry of content.options) {
+    const button = createInteractiveSurface({
+      width: "100%",
+      height: 58,
+      label: entry.label,
+      labelFontSize: 20,
+      disabled: entry.disabled,
+      backgroundColor: entry.disabled ? "#334155" : actionColor,
+      onClick: () => {
+        if (entry.id === "tutorial") {
+          options.onQuestionHelpTutorialRequested?.();
+        } else {
+          options.onQuestionHelpGoalRequested?.();
+        }
+      },
+    });
+    button.userData.xrPaletteItemId = `question-help:${entry.id}`;
+    button.userData.scenePaletteItemId = `question-help:${entry.id}`;
+    optionRows.add(button);
+  }
+
+  panel.add(optionRows);
+  return panel;
+}
+
+function buildPagedHelpContent(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "tutorial" | "goal" }>,
   options: VrPaletteLibraryAdapterOptions,
 ): Container {
   const panel = new Container({
@@ -741,10 +808,16 @@ function buildTutorialContent(
     label: "",
     disabled: content.previousAction.disabled,
     backgroundColor: content.previousAction.disabled ? "#334155" : actionColor,
-    onClick: () => options.onTutorialPreviousRequested?.(),
+    onClick: () => {
+      if (content.kind === "tutorial") {
+        options.onTutorialPreviousRequested?.();
+      } else {
+        options.onGoalPreviousRequested?.();
+      }
+    },
   });
-  previousButton.userData.xrPaletteItemId = "tutorial:previous";
-  previousButton.userData.scenePaletteItemId = "tutorial:previous";
+  previousButton.userData.xrPaletteItemId = `${content.kind}:previous`;
+  previousButton.userData.scenePaletteItemId = `${content.kind}:previous`;
   previousButton.add(new ChevronLeft({
     width: 28,
     height: 28,
@@ -767,10 +840,16 @@ function buildTutorialContent(
     label: "",
     disabled: content.nextAction.disabled,
     backgroundColor: content.nextAction.disabled ? "#334155" : actionColor,
-    onClick: () => options.onTutorialNextRequested?.(),
+    onClick: () => {
+      if (content.kind === "tutorial") {
+        options.onTutorialNextRequested?.();
+      } else {
+        options.onGoalNextRequested?.();
+      }
+    },
   });
-  nextButton.userData.xrPaletteItemId = "tutorial:next";
-  nextButton.userData.scenePaletteItemId = "tutorial:next";
+  nextButton.userData.xrPaletteItemId = `${content.kind}:next`;
+  nextButton.userData.scenePaletteItemId = `${content.kind}:next`;
   nextButton.add(new ChevronRight({
     width: 28,
     height: 28,

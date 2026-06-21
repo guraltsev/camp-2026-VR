@@ -59,6 +59,10 @@ startingQuestionCube("face-0", {
   position: [-2.45, 0.05, 3.25],
   scale: 1,
   turn: -18,
+  goalPages: [{
+    title: "Goal",
+    body: "Explore the octahedron's eight triangular faces. Try to find the marker after crossing several portals.",
+  }],
 });
 
 centerpiece = geo_butterfly("octahedron-butterfly", {

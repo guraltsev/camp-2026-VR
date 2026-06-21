@@ -364,6 +364,10 @@ body {
   justify-content: space-between;
 }
 
+.desktop-tool-palette-help-hub {
+  min-height: 220px;
+}
+
 .desktop-tool-palette-tutorial-title {
   color: #f8fafc;
   font: 750 1.45rem/1.1 system-ui, sans-serif;

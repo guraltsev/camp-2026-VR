@@ -5,6 +5,7 @@ import {
   showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuDebugSettings,
   showRuntimeMenuSettings,
+  showRuntimeMenuQuestionHelp,
   showRuntimeMenuTutorial,
 } from "../../src/runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
@@ -130,6 +131,25 @@ describe("desktopToolPalette", () => {
     expect(view.content.pageLabel).toBe("2 / 2");
     expect(view.content.previousDisabled).toBe(false);
     expect(view.content.nextDisabled).toBe(true);
+  });
+
+  it("describes the help hub choices", () => {
+    const definition = createPaletteDefinition(showRuntimeMenuQuestionHelp(createRuntimeMenuState({
+      selectedWorldId: "cube",
+      debugOverlayEnabled: true,
+    }), {
+      objectId: "startingQuestionCube",
+      tutorialPages: [{ title: "Move", body: "Use arrows." }],
+      goalPages: [{ title: "Goal", body: "Find a portal." }],
+    }));
+    const view = describeDesktopPaletteView(definition);
+
+    expect(view.pageId).toBe("question-help");
+    expect(view.content.kind).toBe("question-help");
+    if (view.content.kind !== "question-help") {
+      throw new Error("Expected help hub content.");
+    }
+    expect(view.content.optionLabels).toEqual(["Tutorial", "Goal"]);
   });
 
 
