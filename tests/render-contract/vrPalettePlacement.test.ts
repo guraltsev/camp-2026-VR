@@ -1,6 +1,9 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { resolveVrPalettePlacement } from "../../src/render/three/vrPalettePlacement";
+import {
+  resolveFrontFacingQuaternion,
+  resolveVrPalettePlacement,
+} from "../../src/render/three/vrPalettePlacement";
 
 describe("vrPalettePlacement", () => {
   it("floats in front of the headset at a comfortable distance", () => {
@@ -34,5 +37,15 @@ describe("vrPalettePlacement", () => {
     });
 
     expect(placement.position.toArray()).toEqual([1, 2, 3]);
+  });
+
+  it("can orient tooltip planes so their front faces the headset", () => {
+    const tooltipPosition = new THREE.Vector3(0.5, 1.4, -1.2);
+    const headPosition = new THREE.Vector3(0, 1.7, 0);
+    const quaternion = resolveFrontFacingQuaternion(tooltipPosition, headPosition);
+    const facing = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).normalize();
+    const toHead = headPosition.clone().sub(tooltipPosition).normalize();
+
+    expect(facing.angleTo(toHead)).toBeLessThan(1e-6);
   });
 });

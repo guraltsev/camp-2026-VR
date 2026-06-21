@@ -24,11 +24,12 @@ export interface VrPalettePlacement {
 const upAxis = new THREE.Vector3(0, 1, 0);
 const headOffset = new THREE.Vector3(0, -0.12, -0.72);
 const lookAtMatrix = new THREE.Matrix4();
+const positiveZFacingFlip = new THREE.Quaternion().setFromAxisAngle(upAxis, Math.PI);
 
 export function resolveVrPalettePlacement(options: ResolveVrPalettePlacementOptions): VrPalettePlacement {
   const anchorKind: VrPaletteAnchorKind = "head";
   const targetPosition = options.head.position.clone().add(applyLocalOffset(headOffset, options.head.quaternion));
-  const targetQuaternion = computeFacingQuaternion(targetPosition, options.head.position);
+  const targetQuaternion = resolveFacingQuaternion(targetPosition, options.head.position);
 
   if (options.freeze && options.previousPosition && options.previousQuaternion) {
     return {
@@ -57,12 +58,16 @@ function applyLocalOffset(offset: THREE.Vector3, quaternion?: THREE.Quaternion):
   return quaternion ? offset.clone().applyQuaternion(quaternion) : offset.clone();
 }
 
-function computeFacingQuaternion(position: THREE.Vector3, headPosition: THREE.Vector3): THREE.Quaternion {
-  const forward = headPosition.clone().sub(position).normalize();
+export function resolveFacingQuaternion(position: THREE.Vector3, targetPosition: THREE.Vector3): THREE.Quaternion {
+  const forward = targetPosition.clone().sub(position).normalize();
   if (forward.lengthSq() <= 1e-6) {
     return new THREE.Quaternion();
   }
 
-  lookAtMatrix.lookAt(position, headPosition, upAxis);
+  lookAtMatrix.lookAt(position, targetPosition, upAxis);
   return new THREE.Quaternion().setFromRotationMatrix(lookAtMatrix);
+}
+
+export function resolveFrontFacingQuaternion(position: THREE.Vector3, targetPosition: THREE.Vector3): THREE.Quaternion {
+  return resolveFacingQuaternion(position, targetPosition).multiply(positiveZFacingFlip);
 }

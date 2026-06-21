@@ -269,7 +269,7 @@ import { createXrControllerHandModels } from "./xrControllerHandModels";
 import { createXrEntryUi } from "./xrEntryUi";
 import { resolveXrPortalEyeRenderRoot, type XrPortalEyeRenderRoot } from "./xrPortalEye";
 import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose, xrRigidTransformLocalMatrix } from "./xrPlayerRig";
-import { resolveVrPalettePlacement } from "./vrPalettePlacement";
+import { resolveFrontFacingQuaternion, resolveVrPalettePlacement } from "./vrPalettePlacement";
 import { createXrScenePaletteInput } from "./xrScenePaletteInput";
 import {
   createXrSessionState,
@@ -328,6 +328,11 @@ interface RootAimRay {
   readonly quaternion: THREE.Quaternion;
 }
 
+interface XrHeadWorldPose {
+  readonly position: THREE.Vector3;
+  readonly quaternion: THREE.Quaternion;
+}
+
 const underCellInfinityFloorSizeMeters = 1_000;
 const underCellInfinityFloorWorldZMeters = -1;
 const fallbackObjectAimCollisionRadiusMeters = 0.25;
@@ -349,6 +354,10 @@ const carriedGeodesicEmitterDesktopDistanceMeters = 0.75;
 const carriedGeodesicEmitterPoseToleranceMeters = 1e-4;
 const geodesicCreatureDebugCheckIntervalSeconds = 0.1;
 const geodesicCreatureHealthyLogIntervalSeconds = 5;
+const xrHeadWorldMatrix = new THREE.Matrix4();
+const xrHeadWorldPosition = new THREE.Vector3();
+const xrHeadWorldQuaternion = new THREE.Quaternion();
+const xrHeadWorldScale = new THREE.Vector3();
 
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const appConfig = options.appConfig ?? defaultAppConfig;
@@ -967,6 +976,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else {
       applyDesktopCameraPose();
     }
+    const xrHeadWorldPose = xrActive ? resolveXrHeadWorldPose(xrViewerPose) : undefined;
     const activeAimRay = resolveActiveRootAimRay(xrActive, xrFrame, xrReferenceSpace);
     updateCarriedGeodesicCannonPose(xrActive, activeAimRay);
     if (frame.helpRequested && !desktopFlagEditor.isOpen()) {
@@ -1056,7 +1066,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     } else {
       applyDesktopCameraPose();
     }
-    updateFloatingObjectTooltip(xrActive, activeAimRay);
+    updateFloatingObjectTooltip(xrActive, activeAimRay, xrHeadWorldPose);
     updateHelpLens(xrActive, activeAimRay);
     const frameAfterCameraMs = performance.now();
     const frameBeforePortalMs = frameAfterCameraMs;
@@ -1079,7 +1089,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     updateProtractorToolFeedback(activeAimRay);
     updateGeodesicEmitterLabels();
     syncXrDebugState(frame.source, moveResult);
-    updateScenePalette(xrActive, xrFrame, xrReferenceSpace, deltaSeconds, frame);
+    updateScenePalette(xrActive, xrFrame, xrReferenceSpace, xrHeadWorldPose, deltaSeconds, frame);
     portalDebugRuntime.updateVisiblePortalPaths();
     const frameAfterUiMs = performance.now();
     const frameBeforeRenderMs = performance.now();
@@ -1713,20 +1723,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     xrActive: boolean,
     xrFrame: XRFrame | undefined,
     xrReferenceSpace: XRReferenceSpace | null,
+    xrHeadWorldPose: XrHeadWorldPose | undefined,
     deltaSeconds: number,
     frame: RuntimeInputFrame,
   ): void {
     if (xrActive && xrFrame && xrReferenceSpace) {
       const inputSources = [...(renderer.xr.getSession()?.inputSources ?? [])];
-      camera.updateMatrixWorld(true);
-      const headPosition = new THREE.Vector3();
-      const headQuaternion = new THREE.Quaternion();
-      const headScale = new THREE.Vector3();
-      camera.matrixWorld.decompose(headPosition, headQuaternion, headScale);
+      const headPosition = xrHeadWorldPose?.position;
+      const headQuaternion = xrHeadWorldPose?.quaternion;
       const placement = resolveVrPalettePlacement({
         head: {
-          position: headPosition,
-          quaternion: headQuaternion,
+          position: headPosition ?? camera.getWorldPosition(new THREE.Vector3()),
+          quaternion: headQuaternion ?? camera.getWorldQuaternion(new THREE.Quaternion()),
         },
         previousPosition: previousXrPalettePosition,
         previousQuaternion: previousXrPaletteQuaternion,
@@ -1779,6 +1787,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       definition: createPaletteDefinition(menuState, appConfig, "desktop"),
       placement,
     });
+  }
+
+  function resolveXrHeadWorldPose(xrViewerPose: XRViewerPose | undefined): XrHeadWorldPose | undefined {
+    if (!xrViewerPose) {
+      return undefined;
+    }
+
+    xrHeadWorldMatrix.copy(xrRig.root.matrixWorld).multiply(xrRigidTransformLocalMatrix(xrViewerPose.transform));
+    xrHeadWorldMatrix.decompose(xrHeadWorldPosition, xrHeadWorldQuaternion, xrHeadWorldScale);
+    return {
+      position: xrHeadWorldPosition,
+      quaternion: xrHeadWorldQuaternion,
+    };
   }
 
   function onDesktopContextMenu(event: MouseEvent): void {
@@ -4766,6 +4787,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function updateFloatingObjectTooltip(
     xrActive: boolean,
     activeAimRay: RootAimRay | undefined,
+    xrHeadWorldPose: XrHeadWorldPose | undefined,
   ): void {
     if (menuState.isOpen || desktopFlagEditor.isOpen()) {
       floatingObjectTooltip.update({ visible: false });
@@ -4780,6 +4802,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       updateXrObjectTooltip(text && focused ? {
         text,
         anchor: focused.tooltipAnchor,
+        headWorldPosition: xrHeadWorldPose?.position,
       } : undefined);
       return;
     }
@@ -4798,6 +4821,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function updateXrObjectTooltip(options: {
     readonly text: string;
     readonly anchor: { readonly x: number; readonly y: number; readonly z: number };
+    readonly headWorldPosition?: THREE.Vector3;
   } | undefined): void {
     if (!options) {
       if (xrObjectTooltip) {
@@ -4813,7 +4837,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       y: options.anchor.y,
       z: options.anchor.z + xrObjectTooltipYOffsetMeters,
     }));
-    tooltip.root.quaternion.copy(camera.quaternion);
+    tooltip.root.quaternion.copy(
+      options.headWorldPosition
+        ? resolveFrontFacingQuaternion(tooltip.root.position, options.headWorldPosition)
+        : camera.quaternion,
+    );
     tooltip.root.updateMatrixWorld(true);
   }
 
