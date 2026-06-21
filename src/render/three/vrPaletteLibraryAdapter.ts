@@ -9,6 +9,11 @@ import type {
 import type { PaletteDefinition, PaletteHeaderAction } from "../../ui/paletteDefinition";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
 import { resolveVrPaletteHeaderActions } from "./vrPaletteHeaderActions";
+import {
+  scenePalettePanelHeightPixels,
+  scenePalettePanelPixelSize,
+  scenePalettePanelWidthPixels,
+} from "./scenePaletteLayout";
 
 export interface VrPaletteLibraryAdapterOptions {
   readonly onLeftAction: (actionId: PaletteDefinition["leftAction"]["id"]) => void;
@@ -53,9 +58,6 @@ export interface VrPaletteLibraryAdapter {
 export type ScenePaletteLibraryAdapterOptions = VrPaletteLibraryAdapterOptions;
 export type ScenePaletteLibraryAdapter = VrPaletteLibraryAdapter;
 
-const panelPixelSize = 0.00144;
-const panelWidth = 780;
-const panelHeight = 560;
 const surfaceColor = "#0f172a";
 const sectionColor = "#111827";
 const borderColor = "#475569";
@@ -92,9 +94,9 @@ const signKeyboardRows = [
 export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOptions): VrPaletteLibraryAdapter {
   let renderedChildren: Container[] = [];
   const root = new Container({
-    width: panelWidth,
-    height: panelHeight,
-    pixelSize: panelPixelSize,
+    width: scenePalettePanelWidthPixels,
+    height: scenePalettePanelHeightPixels,
+    pixelSize: scenePalettePanelPixelSize,
     flexDirection: "column",
     borderRadius: 28,
     padding: 20,

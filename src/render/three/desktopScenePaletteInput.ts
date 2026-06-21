@@ -5,6 +5,11 @@ import type {
   ScenePalettePlacement,
   ScenePalettePointerSource,
 } from "./scenePaletteInput";
+import {
+  clampScenePaletteLocalPoint,
+  scenePalettePanelHeightMeters,
+  scenePalettePanelWidthMeters,
+} from "./scenePaletteLayout";
 
 export interface DesktopScenePaletteInput {
   update(options: {
@@ -19,10 +24,7 @@ export interface DesktopScenePaletteInput {
 
 export type DesktopScenePaletteToggleAction = "open" | "right-action" | "close" | "none";
 
-const cursorClamp = 0.92;
 const cursorSpeed = 0.0032;
-const panelWidthMeters = 720 * 0.0012;
-const panelHeightMeters = 500 * 0.0012;
 const cameraPosition = new THREE.Vector3();
 const cameraQuaternion = new THREE.Quaternion();
 const cameraScale = new THREE.Vector3();
@@ -34,33 +36,29 @@ const forwardAxis = new THREE.Vector3(0, 0, -1);
 export function createDesktopScenePaletteInput(): DesktopScenePaletteInput {
   const pointerObject = new THREE.Object3D();
   pointerObject.name = "desktop-scene-palette-pointer";
-  let cursorX = 0;
-  let cursorY = 0;
+  let cursorLocalX = 0;
+  let cursorLocalY = 0;
   let previousMenuTogglePressed = false;
 
   return {
     update({ desktopFrame, deltaSeconds, camera, isOpen, placement }) {
       if (!isOpen) {
-        cursorX = 0;
-        cursorY = 0;
+        cursorLocalX = 0;
+        cursorLocalY = 0;
       } else {
-        cursorX = THREE.MathUtils.clamp(
-          cursorX + desktopFrame.palettePointerDeltaPixels.x * cursorSpeed,
-          -cursorClamp,
-          cursorClamp,
+        const clampedCursor = clampScenePaletteLocalPoint(
+          cursorLocalX - desktopFrame.palettePointerDeltaPixels.x * cursorSpeed * scenePalettePanelWidthMeters * 0.5,
+          cursorLocalY - desktopFrame.palettePointerDeltaPixels.y * cursorSpeed * scenePalettePanelHeightMeters * 0.5,
         );
-        cursorY = THREE.MathUtils.clamp(
-          cursorY + desktopFrame.palettePointerDeltaPixels.y * cursorSpeed,
-          -cursorClamp,
-          cursorClamp,
-        );
+        cursorLocalX = clampedCursor.x;
+        cursorLocalY = clampedCursor.y;
       }
 
       camera.updateMatrixWorld(true);
       camera.matrixWorld.decompose(cameraPosition, cameraQuaternion, cameraScale);
       targetLocal.set(
-        -cursorX * panelWidthMeters * 0.5,
-        -cursorY * panelHeightMeters * 0.5,
+        cursorLocalX,
+        cursorLocalY,
         0,
       );
       targetWorld.copy(targetLocal)
