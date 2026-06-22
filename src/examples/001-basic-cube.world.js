@@ -42,10 +42,16 @@ startingQuestionCube("front", {
   position: [-2.45, 0.05, 3.25],
   scale: 1,
   turn: -18,
-  goalPages: [{
+  goalPages: [
+    {
     title: "Goal",
-    body: "Visit each of the cube world's six square faces. Use landmarks and floor textures to tell the faces apart.",
-  }],
+    body: "Explore the world. Use landmarks and floor textures to tell the faces apart.\n\n You can use the tool menu to place signs to help you keep track of places you have visited.",
+  },
+{
+    title: "Questions",
+    body: "Answer these questions:\n\n How much space is there? Is this a finite or infinite world? \n\n Does this world look like ours or are there points where something strange happens?",
+  }
+],
 });
 
 startingPosition("front", {

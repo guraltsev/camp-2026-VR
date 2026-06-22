@@ -31,10 +31,17 @@ startingQuestionCube("face-a", {
   position: [-2.45, 0.05, 3.25],
   scale: 1,
   turn: -18,
-  goalPages: [{
+  goalPages: [
+   {
     title: "Goal",
-    body: "Explore the tetrahedron's four triangular faces and notice how every face connects to the other three.",
-  }],
+    body: "Explore the world. Use landmarks and floor textures to tell the faces apart.\n\n You can use the tool menu to place signs to help you keep track of places you have visited.",
+  },
+{
+    title: "Questions",
+    body: "Answer these questions:\n\n How much space is there? Is this a finite or infinite world? \n\n Does this world look like ours or are there points where something strange happens?",
+  }
+
+  ],
 });
 
 face_a_mouse = geo_mouse("face-a-geo-mouse", {
