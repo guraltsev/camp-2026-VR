@@ -167,6 +167,40 @@ describe("updateRuntimeObjectRenderArchetypeInstances", () => {
     expect(diagnostics.capacityOverflowCount).toBe(0);
   });
 
+  it("suppresses records closer than their camera distance cutoff", () => {
+    const archetype = createArchetype("player-rover", 2);
+    const diagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
+    const records: RuntimeObjectRenderRecord[] = [
+      {
+        objectId: "user-robot",
+        cellId: "room-a",
+        archetypeKey: "player-rover",
+        localMatrix: new THREE.Matrix4().makeTranslation(0.49, 0, 0),
+        suppressWithinCameraDistanceMeters: 0.5,
+      },
+      {
+        objectId: "user-robot",
+        cellId: "room-a",
+        archetypeKey: "player-rover",
+        localMatrix: new THREE.Matrix4().makeTranslation(0.5, 0, 0),
+        suppressWithinCameraDistanceMeters: 0.5,
+      },
+    ];
+
+    updateRuntimeObjectRenderArchetypeInstances(
+      [archetype],
+      groupRuntimeObjectRenderRecordsByArchetype(records),
+      new Map([["room-a", [createRootVisiblePortalPath("room-a")]]]),
+      diagnostics,
+      new Map(),
+      { cameraPositions: [new THREE.Vector3(0, 0, 0)] },
+    );
+
+    expect(archetype.mesh.count).toBe(1);
+    expect(readMatrix(archetype.mesh, 0)).toEqual(new THREE.Matrix4().makeTranslation(0.5, 0, 0).elements);
+    expect(diagnostics.capacityOverflowCount).toBe(0);
+  });
+
   it("flattens statically-kept visible path groups for runtime object rendering", () => {
     const rootPath = createRootVisiblePortalPath("room-a");
     const portalPath = {

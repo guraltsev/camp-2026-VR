@@ -181,8 +181,12 @@ export function updateRuntimeObjectRenderArchetypeInstances(
   visiblePathsByDestinationCell: ReadonlyMap<string, readonly VisiblePortalPath[]>,
   diagnostics: RuntimeObjectRenderArchetypeDiagnostics,
   clipIndexByPathId: ReadonlyMap<number, number> = new Map(),
+  options: {
+    readonly cameraPositions?: readonly THREE.Vector3[];
+  } = {},
 ): void {
   const composedMatrix = new THREE.Matrix4();
+  const composedPosition = new THREE.Vector3();
 
   for (const archetype of archetypes) {
     const records = recordsByArchetypeKey.get(archetype.archetypeKey) ?? [];
@@ -194,14 +198,19 @@ export function updateRuntimeObjectRenderArchetypeInstances(
       const renderablePaths = record.omitRootVisiblePath
         ? paths.filter((path) => path.depth !== 0)
         : paths;
-      requestedCount += renderablePaths.length;
 
       for (const path of renderablePaths) {
+        composedMatrix.multiplyMatrices(path.rootFromDestinationMatrix, record.localMatrix);
+        if (isRuntimeObjectRecordSuppressedNearCamera(record, composedMatrix, composedPosition, options.cameraPositions)) {
+          continue;
+        }
+
+        requestedCount += 1;
+
         if (count >= archetype.capacity) {
           continue;
         }
 
-        composedMatrix.multiplyMatrices(path.rootFromDestinationMatrix, record.localMatrix);
         archetype.mesh.setMatrixAt(count, composedMatrix);
         archetype.portalPathIdAttribute.setX(count, path.pathId);
         archetype.portalClipIndexAttribute.setX(
@@ -221,6 +230,22 @@ export function updateRuntimeObjectRenderArchetypeInstances(
       diagnostics.recordCapacityOverflow(archetype, requestedCount);
     }
   }
+}
+
+function isRuntimeObjectRecordSuppressedNearCamera(
+  record: RuntimeObjectRenderRecord,
+  rootMatrix: THREE.Matrix4,
+  scratchPosition: THREE.Vector3,
+  cameraPositions: readonly THREE.Vector3[] | undefined,
+): boolean {
+  const distanceMeters = record.suppressWithinCameraDistanceMeters;
+  if (distanceMeters === undefined || distanceMeters <= 0 || !cameraPositions || cameraPositions.length === 0) {
+    return false;
+  }
+
+  scratchPosition.setFromMatrixPosition(rootMatrix);
+  const distanceSquared = distanceMeters * distanceMeters;
+  return cameraPositions.some((cameraPosition) => scratchPosition.distanceToSquared(cameraPosition) < distanceSquared);
 }
 
 export function createPortalInstanceRenderDebugState(

@@ -2242,7 +2242,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       ...renderedComputed,
       summary,
     };
-    applyPortalVisibleResult(renderRoot.rootCellId, latestVisibleResult.paths, latestVisibleResult.visiblePathById);
+    applyPortalVisibleResult(
+      renderRoot.rootCellId,
+      latestVisibleResult.paths,
+      latestVisibleResult.visiblePathById,
+      true,
+      [runtimeObjectCameraPosition(renderRoot.camera, renderRoot.renderFromRootMatrix)],
+    );
     portalInstanceRenderState = createPortalInstanceRenderStateFromVisibleResult(
       renderRoot.rootCellId,
       latestVisibleResult,
@@ -2347,8 +2353,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     if (latestVisibleResult) {
       const unionVisiblePathById = buildUnionVisiblePathById(portalEyeRenderStates.map((state) => state.result));
       const unionVisiblePaths = [...unionVisiblePathById.values()].sort((left, right) => left.pathId - right.pathId);
+      const cameraPositions = renderRoots.map((renderRoot) =>
+        runtimeObjectCameraPosition(renderRoot.camera, renderRoot.renderFromRootMatrix)
+      );
       portalClipData.updateStereo(portalEyeRenderStates.map((state) => state.result.paths));
-      applyPortalVisiblePaths(unionVisiblePaths, false);
+      applyPortalVisiblePaths(unionVisiblePaths, false, cameraPositions);
       portalInstanceRenderState = createPortalInstanceRenderStateFromVisibleResult(
         portalEyeRenderStates[0]?.rootCellId ?? playerPose.cellId,
         latestVisibleResult,
@@ -2391,6 +2400,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     visiblePaths: readonly VisiblePortalPath[],
     visiblePathById: ReadonlyMap<number, VisiblePortalPath>,
     updateClipData = true,
+    cameraPositions: readonly THREE.Vector3[] = [runtimeObjectCameraPosition()],
   ): void {
     if (updateClipData) {
       portalClipData.update(visiblePaths);
@@ -2400,18 +2410,19 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       visiblePathById,
     );
     updatePortalVisiblePathInstances(visiblePathsByDestinationCell);
-    syncRuntimeObjectPortalInstances(flattenVisiblePortalPathGroups(visiblePathsByDestinationCell));
+    syncRuntimeObjectPortalInstances(flattenVisiblePortalPathGroups(visiblePathsByDestinationCell), cameraPositions);
   }
 
   function applyPortalVisiblePaths(
     visiblePaths: readonly VisiblePortalPath[],
     updateClipData = true,
+    cameraPositions: readonly THREE.Vector3[] = [runtimeObjectCameraPosition()],
   ): void {
     if (updateClipData) {
       portalClipData.update(visiblePaths);
     }
     updatePortalVisiblePathInstances(groupVisiblePortalPathsByDestinationCell(visiblePaths));
-    syncRuntimeObjectPortalInstances(visiblePaths);
+    syncRuntimeObjectPortalInstances(visiblePaths, cameraPositions);
   }
 
   function updatePortalVisiblePathInstances(
@@ -2482,6 +2493,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   function syncRuntimeObjectPortalInstances(
     visiblePaths: readonly VisiblePortalPath[] = getRuntimeObjectVisiblePaths(),
+    cameraPositions: readonly THREE.Vector3[] = [runtimeObjectCameraPosition()],
   ): void {
     syncRuntimeObjectRenderSources();
     const records = collectRuntimeObjectRenderRecords();
@@ -2494,8 +2506,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       visiblePathsByDestinationCell,
       runtimeObjectRenderDiagnostics,
       portalClipData.clipIndexByPathId,
+      { cameraPositions },
     );
     syncSelectableHitboxDebug();
+  }
+
+  function runtimeObjectCameraPosition(
+    renderCamera: THREE.Camera = camera,
+    renderFromRootMatrix?: THREE.Matrix4,
+  ): THREE.Vector3 {
+    renderCamera.updateMatrixWorld(true);
+    const position = new THREE.Vector3().setFromMatrixPosition(renderCamera.matrixWorld);
+    return renderFromRootMatrix ? position.applyMatrix4(renderFromRootMatrix) : position;
   }
 
   function syncRuntimeObjectRenderSources(): void {

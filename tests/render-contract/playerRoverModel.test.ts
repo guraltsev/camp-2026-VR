@@ -37,6 +37,7 @@ describe("player rover render model", () => {
     expect(records.map((record) => record.cellId)).toEqual(["room-a"]);
     expect(records[0]?.omitRootVisiblePath).toBe(true);
     expect(records[0]?.objectId).toBe("user-robot");
+    expect(records[0]?.suppressWithinCameraDistanceMeters).toBe(0.5);
   });
 });
 

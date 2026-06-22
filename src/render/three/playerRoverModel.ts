@@ -16,6 +16,7 @@ export const playerRoverAssetPath = standardUserRobotObject.assetPath;
 
 const playerRoverObjectId = standardUserRobotObject.id;
 const playerRoverArchetypePrefix = `player-avatar:${playerRoverObjectId}`;
+const playerRoverCameraSuppressionDistanceMeters = 0.5;
 
 export interface PlayerRoverRenderModel {
   readonly root: THREE.Object3D;
@@ -72,6 +73,7 @@ export function createPlayerRoverRenderModel(
         archetypeKey,
         localMatrix,
         omitRootVisiblePath: true,
+        suppressWithinCameraDistanceMeters: playerRoverCameraSuppressionDistanceMeters,
       }));
 
       return baseRecords;

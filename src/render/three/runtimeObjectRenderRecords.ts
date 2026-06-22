@@ -6,6 +6,7 @@ export interface RuntimeObjectRenderRecord {
   readonly archetypeKey: string;
   readonly localMatrix: THREE.Matrix4;
   readonly omitRootVisiblePath?: boolean;
+  readonly suppressWithinCameraDistanceMeters?: number;
 }
 
 export interface RuntimeObjectRenderSourceMesh {
