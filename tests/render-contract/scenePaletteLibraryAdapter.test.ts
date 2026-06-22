@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { publicAssetUrl } from "../../src/glue/assetUrls";
 import {
   createRuntimeMenuState,
   showRuntimeMenuEditSign,
@@ -29,10 +30,10 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("tool:geodesic-cannon");
     expect(itemIds).toContain("tool:measure-length");
     expect(itemIds).toContain("tool-options:place-sign");
-    expect(imageSources).toContain("/assets/WoodenSign1/WoodenSign1.png");
-    expect(imageSources).toContain("/assets/flashlight/Lightsaber.png");
-    expect(imageSources).toContain("/assets/icons/Ruler.png");
-    expect(imageSources).toContain("/assets/icons/protractor.png");
+    expect(imageSources).toContain(publicAssetUrl("WoodenSign1/WoodenSign1.png"));
+    expect(imageSources).toContain(publicAssetUrl("flashlight/Lightsaber.png"));
+    expect(imageSources).toContain(publicAssetUrl("icons/Ruler.png"));
+    expect(imageSources).toContain(publicAssetUrl("icons/protractor.png"));
 
     adapter.dispose();
   });
@@ -50,8 +51,8 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).not.toContain("reload-world");
     expect(itemIds).toContain("sign-type:WoodenSign1");
     expect(itemIds).toContain("sign-type:WoodenSign2");
-    expect(imageSources).toContain("/assets/WoodenSign1/WoodenSign1.png");
-    expect(imageSources).toContain("/assets/WoodenSign2/WoodenSign2.png");
+    expect(imageSources).toContain(publicAssetUrl("WoodenSign1/WoodenSign1.png"));
+    expect(imageSources).toContain(publicAssetUrl("WoodenSign2/WoodenSign2.png"));
 
     adapter.dispose();
   });
@@ -81,10 +82,10 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(actionIds).toContain("geodesic-cannon-action:rotate:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:aim:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:delete:g-a");
-    expect(imageSources).toContain("/assets/icons/arrow-circle-inverted.png");
-    expect(imageSources).toContain("/assets/icons/aim-inverted.png");
-    expect(imageSources).toContain("/assets/icons/carry-icon-white.png");
-    expect(imageSources).toContain("/assets/icons/unlink-inverted.png");
+    expect(imageSources).toContain(publicAssetUrl("icons/arrow-circle-inverted.png"));
+    expect(imageSources).toContain(publicAssetUrl("icons/aim-inverted.png"));
+    expect(imageSources).toContain(publicAssetUrl("icons/carry-icon-white.png"));
+    expect(imageSources).toContain(publicAssetUrl("icons/unlink-inverted.png"));
 
     adapter.dispose();
   });
@@ -108,7 +109,7 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(actionIds).not.toContain("geodesic-cannon-action:rotate:g-a");
     expect(actionIds).not.toContain("geodesic-cannon-action:aim:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:delete:g-a");
-    expect(imageSources).toContain("/assets/icons/lock.png");
+    expect(imageSources).toContain(publicAssetUrl("icons/lock.png"));
 
     adapter.dispose();
   });

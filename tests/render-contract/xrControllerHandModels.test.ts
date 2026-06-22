@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
+import { publicAssetUrl } from "../../src/glue/assetUrls";
 import {
   createHandModelTemplates,
   resolveWristToolIndicatorVisual,
@@ -25,32 +26,32 @@ describe("xrControllerHandModels", () => {
     expect(resolveWristToolIndicatorVisual("aim", "WoodenSign1")).toBeUndefined();
     expect(resolveWristToolIndicatorVisual("place-flag", "WoodenSign2")).toMatchObject({
       icon: "image",
-      imageSource: "/assets/WoodenSign2/WoodenSign2.png",
+      imageSource: publicAssetUrl("WoodenSign2/WoodenSign2.png"),
       label: "Sign",
     });
     expect(resolveWristToolIndicatorVisual("geodesic-cannon", "WoodenSign1")).toMatchObject({
       icon: "image",
-      imageSource: "/assets/flashlight/Lightsaber.png",
+      imageSource: publicAssetUrl("flashlight/Lightsaber.png"),
       label: "Geodesic emitter",
     });
     expect(resolveWristToolIndicatorVisual("protractor", "WoodenSign1")).toMatchObject({
       icon: "image",
-      imageSource: "/assets/icons/protractor.png",
+      imageSource: publicAssetUrl("icons/protractor.png"),
       label: "Protractor",
     });
     expect(resolveWristToolIndicatorVisual("measure-length", "WoodenSign1")).toMatchObject({
       icon: "image",
-      imageSource: "/assets/icons/Ruler.png",
+      imageSource: publicAssetUrl("icons/Ruler.png"),
       label: "Length",
     });
     expect(resolveWristToolIndicatorVisual("geodesic-cannon-rotate", "WoodenSign1")).toMatchObject({
       icon: "image",
-      imageSource: "/assets/icons/arrow-circle-inverted.png",
+      imageSource: publicAssetUrl("icons/arrow-circle-inverted.png"),
       label: "Turn",
     });
     expect(resolveWristToolIndicatorVisual("geodesic-cannon-carry", "WoodenSign1")).toMatchObject({
       icon: "image",
-      imageSource: "/assets/icons/carry-icon.png",
+      imageSource: publicAssetUrl("icons/carry-icon.png"),
       label: "Carry",
     });
     expect(resolveWristToolIndicatorVisual("none", "WoodenSign1")).toBeUndefined();

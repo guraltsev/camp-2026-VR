@@ -1,23 +1,24 @@
 import { describe, expect, it } from "vitest";
+import { publicAssetUrl } from "../../src/glue/assetUrls";
 import { getInputHintGlyph } from "../../src/ui/inputIntents";
 
 describe("inputIntents", () => {
   it("maps desktop primary, context, and help to desktop glyph assets", () => {
     expect(getInputHintGlyph("desktop", "primary")).toMatchObject({
       label: "Left click",
-      iconSrc: "/assets/icons/left-click-icon.png",
+      iconSrc: publicAssetUrl("icons/left-click-icon.png"),
     });
     expect(getInputHintGlyph("desktop", "context-menu")).toMatchObject({
       label: "Right click",
-      iconSrc: "/assets/icons/right-click-icon.png",
+      iconSrc: publicAssetUrl("icons/right-click-icon.png"),
     });
     expect(getInputHintGlyph("desktop", "help")).toMatchObject({
       label: "H",
-      iconSrc: "/assets/icons/h-alphabet-round-icon.png",
+      iconSrc: publicAssetUrl("icons/h-alphabet-round-icon.png"),
     });
     expect(getInputHintGlyph("desktop", "move")).toMatchObject({
       label: "Arrow keys",
-      iconSrc: "/assets/icons/arrowkeys.png",
+      iconSrc: publicAssetUrl("icons/arrowkeys.png"),
     });
   });
 

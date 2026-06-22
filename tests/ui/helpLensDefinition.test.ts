@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { publicAssetUrl } from "../../src/glue/assetUrls";
 import { createHelpLensDefinition } from "../../src/ui/helpLensDefinition";
 
 describe("helpLensDefinition", () => {
@@ -20,7 +21,7 @@ describe("helpLensDefinition", () => {
         intent: "context-menu",
         mode: "desktop",
         label: "Right click",
-        iconSrc: "/assets/icons/right-click-icon.png",
+        iconSrc: publicAssetUrl("icons/right-click-icon.png"),
       },
       label: "Edit",
     }]);
@@ -80,7 +81,7 @@ describe("helpLensDefinition", () => {
         intent: "move",
         mode: "desktop",
         label: "Arrow keys",
-        iconSrc: "/assets/icons/arrowkeys.png",
+        iconSrc: publicAssetUrl("icons/arrowkeys.png"),
       },
       label: "move",
     });
