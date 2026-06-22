@@ -133,6 +133,40 @@ describe("updateRuntimeObjectRenderArchetypeInstances", () => {
     expect(diagnostics.capacityOverflowCount).toBe(0);
   });
 
+  it("omits player source and ghost records from stereo root-cell paths", () => {
+    const archetype = createArchetype("player-rover", 2);
+    const diagnostics = createRuntimeObjectRenderArchetypeDiagnostics();
+    const records: RuntimeObjectRenderRecord[] = [
+      {
+        objectId: "user-robot",
+        cellId: "room-a",
+        archetypeKey: "player-rover",
+        localMatrix: new THREE.Matrix4(),
+        omitRootVisiblePath: true,
+      },
+      {
+        objectId: "user-robot",
+        cellId: "room-b",
+        archetypeKey: "player-rover",
+        localMatrix: new THREE.Matrix4(),
+        omitRootVisiblePath: true,
+      },
+    ];
+
+    updateRuntimeObjectRenderArchetypeInstances(
+      [archetype],
+      groupRuntimeObjectRenderRecordsByArchetype(records),
+      new Map([
+        ["room-a", [createRootVisiblePortalPath("room-a")]],
+        ["room-b", [createRootVisiblePortalPath("room-b")]],
+      ]),
+      diagnostics,
+    );
+
+    expect(archetype.mesh.count).toBe(0);
+    expect(diagnostics.capacityOverflowCount).toBe(0);
+  });
+
   it("flattens statically-kept visible path groups for runtime object rendering", () => {
     const rootPath = createRootVisiblePortalPath("room-a");
     const portalPath = {

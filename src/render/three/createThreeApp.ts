@@ -56,6 +56,7 @@ import {
   setRuntimeMenuEditingSignMessage,
   setRuntimeMenuGoalPageIndex,
   setRuntimeMenuReloadConfirmUntilMs,
+  setRuntimeMenuSelectedWorldId,
   setRuntimeMenuTutorialPageIndex,
   showRuntimeMenuGeodesicCannonActions,
   showRuntimeMenuGeometryComputerActions,
@@ -544,6 +545,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           ? showRuntimeMenuQuestionHelp(menuState)
           : showRuntimeMenuMainPage(menuState);
       syncDesktopPalette();
+    },
+    onWorldSelected(worldId) {
+      if (!appConfig.menu.worldSelectionSectionEnabled) {
+        return;
+      }
+      menuState = setRuntimeMenuSelectedWorldId(menuState, worldId);
+      syncDesktopPalette();
+      requestAppRestart(() => options.onWorldChangeRequested?.(worldId));
     },
     onConfigSelected(configName) {
       if (!appConfig.menu.configSelectionSectionEnabled) {

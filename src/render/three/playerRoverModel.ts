@@ -83,7 +83,10 @@ export function createPlayerRoverRenderModel(
               ...playerPoseToDynamicObject(playerPose, options.collision),
             },
             archetypeKeys: matchingArchetypeKeys,
-          })
+          }).map((record) => ({
+            ...record,
+            omitRootVisiblePath: true,
+          }))
         : [];
 
       return [...baseRecords, ...ghostRecords];

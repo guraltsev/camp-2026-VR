@@ -31,6 +31,8 @@ export interface DesktopPaletteView {
     }
     | {
       readonly kind: "settings";
+      readonly selectedWorldId: string;
+      readonly worldLabel?: string;
       readonly selectedAppConfigName: string;
       readonly appConfigLabel?: string;
       readonly debugEnabled: boolean;
@@ -86,6 +88,7 @@ export interface DesktopPaletteView {
 export interface DesktopToolPaletteOptions {
   readonly onLeftAction: (actionId: PaletteHeaderAction["id"]) => void;
   readonly onRightAction: (actionId: PaletteHeaderAction["id"]) => void;
+  readonly onWorldSelected: (worldId: string) => void;
   readonly onConfigSelected: (configName: string) => void;
   readonly onReloadRequested: () => void;
   readonly onHomeRequested: () => void;
@@ -281,6 +284,8 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
       rightAction: definition.rightAction,
       content: {
         kind: "settings",
+        selectedWorldId: content.selectedWorldId,
+        worldLabel: content.worldOptions.find((option) => option.id === content.selectedWorldId)?.label,
         selectedAppConfigName: content.selectedAppConfigName,
         appConfigLabel: content.appConfigOptions.find((option) => option.id === content.selectedAppConfigName)?.label,
         debugEnabled: content.debugEnabled,
@@ -665,6 +670,31 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     const settings = document.createElement("div");
     settings.className = "desktop-tool-palette-settings";
 
+    const worldField = document.createElement("label");
+    worldField.className = "desktop-tool-palette-field";
+
+    const worldLabel = document.createElement("span");
+    worldLabel.className = "desktop-tool-palette-field-label";
+    worldLabel.textContent = "World";
+
+    const worldSelect = document.createElement("select");
+    worldSelect.className = "desktop-tool-palette-select";
+    worldSelect.ariaLabel = "World";
+
+    for (const option of definition.content.worldOptions) {
+      const item = document.createElement("option");
+      item.value = option.id;
+      item.textContent = option.label;
+      item.selected = option.id === definition.content.selectedWorldId;
+      worldSelect.append(item);
+    }
+
+    worldSelect.addEventListener("change", () => {
+      options.onWorldSelected(worldSelect.value);
+    });
+
+    worldField.append(worldLabel, worldSelect);
+
     const configField = document.createElement("label");
     configField.className = "desktop-tool-palette-field";
 
@@ -722,6 +752,10 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
       debugDetailsButton.ariaLabel = "Open debug settings";
       debugDetailsButton.addEventListener("click", () => options.onDebugSettingsRequested());
       debugSection.append(debugDetailsButton);
+    }
+
+    if (definition.content.worldSelectionSectionEnabled) {
+      settings.append(worldField);
     }
 
     if (definition.content.configSelectionSectionEnabled) {

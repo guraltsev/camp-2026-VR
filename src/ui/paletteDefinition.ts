@@ -1,4 +1,5 @@
 import { appConfigCatalog, defaultAppConfig, getEnabledMainTools, type AppConfig, type ConfigurableToolId } from "../glue/appConfig";
+import { worldCatalog } from "../authoring/worldCatalog";
 import { portalPanelModeDefinitions } from "../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -34,6 +35,9 @@ export interface MainPaletteContent {
 
 export interface SettingsPaletteContent {
   readonly kind: "settings";
+  readonly selectedWorldId: string;
+  readonly worldOptions: readonly PaletteSelectOption[];
+  readonly worldSelectionSectionEnabled: boolean;
   readonly selectedAppConfigName: string;
   readonly appConfigOptions: readonly PaletteSelectOption[];
   readonly configSelectionSectionEnabled: boolean;
@@ -224,6 +228,12 @@ export function createPaletteDefinition(
       reloadConfirmationActive,
       content: {
         kind: "settings",
+        selectedWorldId: state.selectedWorldId,
+        worldOptions: worldCatalog.map((entry) => ({
+          id: entry.id,
+          label: entry.label,
+        })),
+        worldSelectionSectionEnabled: appConfig.menu.worldSelectionSectionEnabled,
         selectedAppConfigName: state.selectedAppConfigName,
         appConfigOptions: appConfigCatalog.map((entry) => ({
           id: entry.id,

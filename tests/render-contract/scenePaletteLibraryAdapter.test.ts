@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizeAppConfig } from "../../src/glue/appConfig";
 import { publicAssetUrl } from "../../src/glue/assetUrls";
 import {
   createRuntimeMenuState,
@@ -217,7 +218,7 @@ describe("scenePaletteLibraryAdapter", () => {
     adapter.dispose();
   });
 
-  it("renders config choices in settings", () => {
+  it("renders world and config choices in settings", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
     adapter.setDefinition(createPaletteDefinition(showRuntimeMenuSettings(
       createRuntimeMenuState({ selectedWorldId: "cube", selectedAppConfigName: "full" }),
@@ -229,7 +230,28 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("config:full");
     expect(itemIds).toContain("config:001");
     expect(itemIds).toContain("config:002");
+    expect(itemIds).toContain("world:cube");
+    expect(itemIds).toContain("world:torus");
+
+    adapter.dispose();
+  });
+
+  it("hides world choices when the active config disables world selection", () => {
+    const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
+    adapter.setDefinition(createPaletteDefinition(
+      showRuntimeMenuSettings(createRuntimeMenuState({ selectedWorldId: "001-basic-cube" })),
+      normalizeAppConfig({
+        optionsMenu: {
+          worldSelectionSection: false,
+        },
+      }),
+    ));
+
+    const itemIds = collectPaletteItemIds(adapter.root);
+
     expect(itemIds).not.toContain("world:cube");
+    expect(itemIds).not.toContain("world:torus");
+    expect(itemIds).toContain("config:default");
 
     adapter.dispose();
   });
@@ -305,6 +327,7 @@ function createNoopOptions(): Parameters<typeof createScenePaletteLibraryAdapter
   return {
     onLeftAction: () => undefined,
     onRightAction: () => undefined,
+    onWorldSelected: () => undefined,
     onConfigSelected: () => undefined,
     onReloadRequested: () => undefined,
     onHomeRequested: () => undefined,

@@ -19,6 +19,7 @@ import {
 export interface VrPaletteLibraryAdapterOptions {
   readonly onLeftAction: (actionId: PaletteDefinition["leftAction"]["id"]) => void;
   readonly onRightAction: (actionId: PaletteDefinition["rightAction"]["id"]) => void;
+  readonly onWorldSelected: (worldId: string) => void;
   readonly onConfigSelected: (configName: string) => void;
   readonly onReloadRequested: () => void;
   readonly onHomeRequested: () => void;
@@ -429,6 +430,24 @@ function buildContent(
     scrollbarZIndex: 1004,
   });
 
+  const worldSection = new Container({
+    width: "100%",
+    flexDirection: "column",
+    gap: 8,
+    padding: 12,
+    borderRadius: 20,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 1,
+  });
+  worldSection.add(createSectionLabel("World"));
+  worldSection.add(createOptionGrid(
+    definition.content.worldOptions,
+    definition.content.selectedWorldId,
+    "world",
+    options.onWorldSelected,
+  ));
+
   const configSection = new Container({
     width: "100%",
     flexDirection: "column",
@@ -474,6 +493,10 @@ function buildContent(
   comfortSection.add(createToggleRow("Anti-nausea vignette", definition.content.antiNauseaModeEnabled, (enabled) => {
     options.onAntiNauseaModeToggled(enabled);
   }, "anti-nausea-vignette-toggle"));
+
+  if (definition.content.worldSelectionSectionEnabled) {
+    settings.add(worldSection);
+  }
 
   if (definition.content.configSelectionSectionEnabled) {
     settings.add(configSection);

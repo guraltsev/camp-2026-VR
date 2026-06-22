@@ -174,6 +174,7 @@ describe("desktopToolPalette", () => {
       throw new Error("Expected settings content.");
     }
 
+    expect(view.content.worldLabel).toBe("Torus");
     expect(view.content.appConfigLabel).toBe("Default");
     expect(view.content.debugEnabled).toBe(true);
   });

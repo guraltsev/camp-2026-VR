@@ -128,7 +128,12 @@ async function restartApp(container: HTMLDivElement, nextLaunchOptions: LaunchOp
 async function restartAppWithConfig(container: HTMLDivElement, configName: string): Promise<void> {
   const appConfig = await loadAppConfig(configName);
   const configLocation = new URL(window.location.href) as unknown as Location;
-  configLocation.search = `?config=${encodeURIComponent(configName)}`;
+  const params = new URLSearchParams();
+  params.set("config", configName);
+  if (appConfig.menu.worldSelectionSectionEnabled) {
+    params.set("world", launchOptions.selectedWorldId);
+  }
+  configLocation.search = params.toString();
   void restartApp(container, readLaunchOptions(configLocation, appConfig, configName));
 }
 
