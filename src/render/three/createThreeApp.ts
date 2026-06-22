@@ -283,6 +283,7 @@ import {
   transitionXrSessionState,
   type XrSessionState,
 } from "./xrSessionState";
+import { createXrSessionRestartCoordinator } from "./xrSessionRestart";
 import {
   composeRigidTransform3,
   identityRigidTransform3,
@@ -437,16 +438,17 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   let aimTargetCycleState: { readonly signature: string; readonly index: number } | undefined;
   let xrObjectTooltip: { readonly text: string; readonly root: THREE.Object3D } | undefined;
   let reloadConfirmationTimeout: number | undefined;
+  const xrSessionRestartCoordinator = createXrSessionRestartCoordinator();
   const debugOverlay = createDebugOverlay(container);
   const commandDispatcher = createAppCommandDispatcher({
     reloadWorld() {
-      options.onReloadRequested?.();
+      requestAppRestart(() => options.onReloadRequested?.());
     },
     goHome() {
       resetPlayerToHome();
     },
     changeWorld(worldId) {
-      options.onWorldChangeRequested?.(worldId);
+      requestAppRestart(() => options.onWorldChangeRequested?.(worldId));
     },
     setDebugOverlayEnabled(enabled) {
       applyMenuDebugState(setRuntimeMenuDebugOverlayEnabled(menuState, enabled));
@@ -1669,6 +1671,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         window.clearTimeout(reloadConfirmationTimeout);
         reloadConfirmationTimeout = undefined;
       }
+      xrSessionRestartCoordinator.cancel();
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", onResize);
       renderer.domElement.removeEventListener("contextmenu", onDesktopContextMenu);
@@ -1733,6 +1736,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       renderer.domElement.remove();
     },
   };
+
+  function requestAppRestart(restart: () => void): void {
+    const session = renderer.xr.isPresenting ? renderer.xr.getSession() : undefined;
+
+    xrSessionRestartCoordinator.requestRestart(session, restart, (error) => {
+      const message = error instanceof Error ? error.message : "Unable to leave immersive VR before restarting.";
+      console.warn("[noneuclid] unable to end XR session before restart", error);
+      xrSessionState = transitionXrSessionState(xrSessionState, "failed", message);
+      xrEntryUi.update(xrSessionState);
+      syncXrDebugState("desktop");
+    });
+  }
 
   async function enterVr(): Promise<void> {
     const xr = navigator.xr;
