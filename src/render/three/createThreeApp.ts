@@ -495,6 +495,22 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
   });
   const aimCrossMarker = createAimCrossMarker(scene);
+  const aimControllerRayPositions = new Float32Array(6);
+  const aimControllerRayGeometry = new THREE.BufferGeometry();
+  aimControllerRayGeometry.setAttribute("position", new THREE.BufferAttribute(aimControllerRayPositions, 3));
+  const aimControllerRayMaterial = new THREE.LineBasicMaterial({
+    color: 0xef1b1b,
+    transparent: true,
+    opacity: 0.74,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const aimControllerRay = new THREE.Line(aimControllerRayGeometry, aimControllerRayMaterial);
+  aimControllerRay.name = "aim-controller-ray";
+  aimControllerRay.renderOrder = 49;
+  aimControllerRay.frustumCulled = false;
+  aimControllerRay.visible = false;
+  scene.add(aimControllerRay);
   const floatingObjectTooltip = createFloatingObjectTooltip(document.body);
   const helpLensRenderer = createHelpLensRenderer(document.body, scene);
   const xrEntryUi = createXrEntryUi(container, enterVr);
@@ -1108,7 +1124,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameAfterPortalMs = performance.now();
     const frameBeforeUiMs = frameAfterPortalMs;
 
-    updateAimCrossMarker(activeAimRay);
+    updateAimCrossMarker(xrActive, activeAimRay);
     updateProtractorToolFeedback(activeAimRay);
     updateGeodesicEmitterLabels();
     syncXrDebugState(frame.source, moveResult);
@@ -1665,6 +1681,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       desktopToolIndicator.dispose();
       desktopFlagEditor.dispose();
       aimCrossMarker.dispose();
+      aimControllerRay.removeFromParent();
+      aimControllerRayGeometry.dispose();
+      aimControllerRayMaterial.dispose();
       floatingObjectTooltip.dispose();
       helpLensRenderer.dispose();
       vrComfortVignette.dispose();
@@ -4966,7 +4985,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return mesh;
   }
 
-  function updateAimCrossMarker(activeAimRay: RootAimRay | undefined): void {
+  function updateAimCrossMarker(xrActive: boolean, activeAimRay: RootAimRay | undefined): void {
     if (
       (
         menuState.selectedTool !== "none" &&
@@ -4982,13 +5001,33 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       desktopFlagEditor.isOpen()
     ) {
       aimCrossMarker.update(undefined);
+      updateAimControllerRay(false);
       return;
     }
 
-    aimCrossMarker.update(
-      activeAimRay ? resolveCurrentAimTarget(activeAimRay) : undefined,
-      activeAimRay,
-    );
+    const target = activeAimRay ? resolveCurrentAimTarget(activeAimRay) : undefined;
+    aimCrossMarker.update(target, activeAimRay);
+    updateAimControllerRay(xrActive && Boolean(target), activeAimRay, aimCrossMarker.root.position);
+  }
+
+  function updateAimControllerRay(
+    visible: boolean,
+    activeAimRay?: RootAimRay,
+    targetPosition?: THREE.Vector3,
+  ): void {
+    if (!visible || !activeAimRay || !targetPosition) {
+      aimControllerRay.visible = false;
+      return;
+    }
+
+    aimControllerRayPositions[0] = activeAimRay.origin.x;
+    aimControllerRayPositions[1] = activeAimRay.origin.y;
+    aimControllerRayPositions[2] = activeAimRay.origin.z;
+    aimControllerRayPositions[3] = targetPosition.x;
+    aimControllerRayPositions[4] = targetPosition.y;
+    aimControllerRayPositions[5] = targetPosition.z;
+    aimControllerRayGeometry.attributes.position.needsUpdate = true;
+    aimControllerRay.visible = true;
   }
 
   function updateProtractorToolFeedback(activeAimRay: RootAimRay | undefined): void {
