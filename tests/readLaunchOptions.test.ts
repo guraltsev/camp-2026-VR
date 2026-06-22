@@ -12,6 +12,22 @@ describe("readLaunchOptions", () => {
     expect(readLaunchOptions(locationWithSearch("")).renderQualityEnabled).toBe(false);
   });
 
+  it("enables anti-nausea comfort mode by default", () => {
+    expect(readLaunchOptions(locationWithSearch("")).vrComfortOptions).toMatchObject({
+      antiNauseaModeEnabled: true,
+      antiNauseaVisibleFovScale: 0.5,
+    });
+  });
+
+  it("can configure anti-nausea comfort mode from URL arguments", () => {
+    expect(readLaunchOptions(locationWithSearch("?antiNausea=off")).vrComfortOptions.antiNauseaModeEnabled)
+      .toBe(false);
+    expect(readLaunchOptions(locationWithSearch("?antiNauseaFovScale=0.35")).vrComfortOptions.antiNauseaVisibleFovScale)
+      .toBe(0.35);
+    expect(readLaunchOptions(locationWithSearch("?antiNauseaFovScale=2")).vrComfortOptions.antiNauseaVisibleFovScale)
+      .toBe(1);
+  });
+
   it("can enable render quality with a URL argument", () => {
     expect(readLaunchOptions(locationWithSearch("?renderQuality=on")).renderQualityEnabled).toBe(true);
     expect(readLaunchOptions(locationWithSearch("?renderQuality=1")).renderQualityEnabled).toBe(true);

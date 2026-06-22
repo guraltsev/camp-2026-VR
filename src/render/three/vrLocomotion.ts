@@ -40,18 +40,16 @@ export function computeJoystickLocomotion(
   }
 
   const comfort = { ...defaultVrComfortOptions, ...options };
-  const normalized = applyJoystickDeadZone(axes, comfort.joystickDeadZone);
-  const length = Math.hypot(normalized.x, normalized.y);
 
-  if (length === 0) {
+  if (Math.abs(axes.y) <= comfort.joystickDeadZone) {
     return { localDisplacement: vec3(0, 0, 0) };
   }
 
-  const scaled = length > 1 ? { x: normalized.x / length, y: normalized.y / length } : normalized;
+  const scaledY = Math.max(-1, Math.min(1, axes.y));
   const stepMeters = comfort.moveSpeedMetersPerSecond * deltaSeconds;
 
   return {
-    localDisplacement: vec3(scaled.x * stepMeters, -scaled.y * stepMeters, 0),
+    localDisplacement: vec3(0, -scaledY * stepMeters, 0),
   };
 }
 

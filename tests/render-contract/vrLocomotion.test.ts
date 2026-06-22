@@ -23,14 +23,19 @@ describe("VR locomotion mapping", () => {
     expect(computeJoystickLocomotion({ x: 0.05, y: -0.05 }, 1).localDisplacement).toEqual({ x: 0, y: 0, z: 0 });
   });
 
-  it("normalizes diagonal locomotion", () => {
+  it("uses joystick Y for forward locomotion without strafing", () => {
     const frame = computeJoystickLocomotion({ x: 1, y: -1 }, 1, {
       moveSpeedMetersPerSecond: 1.5,
     });
 
-    expect(Math.hypot(frame.localDisplacement.x, frame.localDisplacement.y)).toBeCloseTo(1.5);
-    expect(frame.localDisplacement.x).toBeCloseTo(1.5 / Math.SQRT2);
-    expect(frame.localDisplacement.y).toBeCloseTo(1.5 / Math.SQRT2);
+    expect(frame.localDisplacement.x).toBe(0);
+    expect(frame.localDisplacement.y).toBeCloseTo(1.5);
+  });
+
+  it("does not drift forward from turn-only joystick input", () => {
+    expect(computeJoystickLocomotion({ x: 1, y: 0.1 }, 1, {
+      joystickDeadZone: 0.18,
+    }).localDisplacement).toEqual({ x: 0, y: 0, z: 0 });
   });
 
   it("returns zero displacement when axes are missing", () => {

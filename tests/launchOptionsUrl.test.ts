@@ -5,6 +5,7 @@ import {
 } from "../src/glue/launchOptionsUrl";
 import { defaultAppConfig, defaultAppConfigName } from "../src/glue/appConfig";
 import type { LaunchOptions } from "../src/glue/readLaunchOptions";
+import { defaultVrComfortOptions } from "../src/render/three/vrComfort";
 
 describe("launchOptionsUrl", () => {
   it("removes recognized launch options from the visible URL", () => {
@@ -18,7 +19,7 @@ describe("launchOptionsUrl", () => {
   it("builds an explicit URL containing the current launch options", () => {
     expect(buildUrlWithLaunchOptions("https://example.test/play?keep=1", exampleLaunchOptions()))
       .toBe(
-        "https://example.test/play?keep=1&world=cube&ui=DebugButton&debugLevel=verbose&portalPanels=panel-with-text&debugOptions=runtime-diagnostics%2Cportal-path-debug&debugOverlay=false&debugOverlayItems=location&renderQuality=true",
+        "https://example.test/play?keep=1&world=cube&ui=DebugButton&debugLevel=verbose&portalPanels=panel-with-text&debugOptions=runtime-diagnostics%2Cportal-path-debug&debugOverlay=false&debugOverlayItems=location&renderQuality=true&antiNausea=true&antiNauseaFovScale=0.5",
       );
   });
 
@@ -42,6 +43,7 @@ function exampleLaunchOptions(): LaunchOptions {
     debugOverlayEnabled: false,
     debugOverlayItems: ["location"],
     renderQualityEnabled: true,
+    vrComfortOptions: defaultVrComfortOptions,
     appConfig: defaultAppConfig,
     appConfigName: defaultAppConfigName,
   };

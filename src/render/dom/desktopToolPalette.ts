@@ -33,6 +33,7 @@ export interface DesktopPaletteView {
       readonly selectedWorldId: string;
       readonly worldLabel?: string;
       readonly debugEnabled: boolean;
+      readonly antiNauseaModeEnabled: boolean;
       readonly reloadConfirmationActive: boolean;
     }
     | {
@@ -92,6 +93,7 @@ export interface DesktopToolPaletteOptions {
   readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
   readonly onDebugOverlayToggled: (enabled: boolean) => void;
   readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
+  readonly onAntiNauseaModeToggled: (enabled: boolean) => void;
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
@@ -281,6 +283,7 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
         selectedWorldId: content.selectedWorldId,
         worldLabel: content.worldOptions.find((option) => option.id === content.selectedWorldId)?.label,
         debugEnabled: content.debugEnabled,
+        antiNauseaModeEnabled: content.antiNauseaModeEnabled,
         reloadConfirmationActive: content.reloadConfirmationActive,
       },
     };
@@ -727,6 +730,31 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     if (definition.content.debugSectionEnabled) {
       settings.append(debugSection);
     }
+
+    const comfortSection = document.createElement("section");
+    comfortSection.className = "desktop-tool-palette-section";
+
+    const comfortHeading = document.createElement("span");
+    comfortHeading.className = "desktop-tool-palette-field-label";
+    comfortHeading.textContent = "Comfort";
+    comfortSection.append(comfortHeading);
+
+    const antiNauseaToggle = document.createElement("label");
+    antiNauseaToggle.className = "desktop-tool-palette-toggle";
+
+    const antiNauseaCheckbox = document.createElement("input");
+    antiNauseaCheckbox.type = "checkbox";
+    antiNauseaCheckbox.checked = definition.content.antiNauseaModeEnabled;
+    antiNauseaCheckbox.addEventListener("change", () => {
+      options.onAntiNauseaModeToggled(antiNauseaCheckbox.checked);
+    });
+
+    const antiNauseaText = document.createElement("span");
+    antiNauseaText.textContent = "Anti-nausea vignette";
+
+    antiNauseaToggle.append(antiNauseaCheckbox, antiNauseaText);
+    comfortSection.append(antiNauseaToggle);
+    settings.append(comfortSection);
 
     return settings;
   }

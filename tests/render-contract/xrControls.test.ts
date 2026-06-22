@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createXrControls, createXrInputFrame, isCarryActionPressed, isHelpPressed, isInteractPressed, isResetPressed, readPrimaryStickAxes } from "../../src/render/three/xrControls";
+import { combineStickAxes, createXrControls, createXrInputFrame, isCarryActionPressed, isHelpPressed, isInteractPressed, isResetPressed, readPrimaryStickAxes } from "../../src/render/three/xrControls";
 
 describe("XR controls", () => {
   it("never throws and returns no movement when gamepad data is missing", () => {
@@ -15,11 +15,11 @@ describe("XR controls", () => {
     expect(readPrimaryStickAxes({ axes: [0.3, -0.4] })).toEqual({ x: 0.3, y: -0.4 });
   });
 
-  it("maps left stick to locomotion and right stick to continuous rotation", () => {
+  it("maps either stick to forward locomotion and continuous rotation", () => {
     const frame = createXrInputFrame(
       [
-        { handedness: "left", gamepad: { axes: [0, 0, 0, -1] } },
-        { handedness: "right", gamepad: { axes: [0, 0, 1, 0] } },
+        { handedness: "left", gamepad: { axes: [0, 0, 0.25, -1] } },
+        { handedness: "right", gamepad: { axes: [0, 0, 0.75, -0.5] } },
       ],
       1,
       {
@@ -31,6 +31,31 @@ describe("XR controls", () => {
     expect(frame.localDisplacement).toEqual({ x: 0, y: 1.5, z: 0 });
     expect(frame.yawDeltaRadians).toBeCloseTo(-1);
     expect(frame.pitchDeltaRadians).toBe(0);
+  });
+
+  it("does not strafe from either controller joystick", () => {
+    const leftOnly = createXrInputFrame(
+      [{ handedness: "left", gamepad: { axes: [0, 0, 1, -0.5] } }],
+      1,
+      { moveSpeedMetersPerSecond: 1.5, turnSpeedRadiansPerSecond: 1 },
+    );
+    const rightOnly = createXrInputFrame(
+      [{ handedness: "right", gamepad: { axes: [0, 0, -1, -0.5] } }],
+      1,
+      { moveSpeedMetersPerSecond: 1.5, turnSpeedRadiansPerSecond: 1 },
+    );
+
+    expect(leftOnly.localDisplacement).toEqual({ x: 0, y: 0.75, z: 0 });
+    expect(leftOnly.yawDeltaRadians).toBeCloseTo(-1);
+    expect(rightOnly.localDisplacement).toEqual({ x: 0, y: 0.75, z: 0 });
+    expect(rightOnly.yawDeltaRadians).toBeCloseTo(1);
+  });
+
+  it("combines both controller joysticks with clamped axes", () => {
+    expect(combineStickAxes([
+      { x: 0.75, y: -0.75 },
+      { x: 0.75, y: -0.75 },
+    ])).toEqual({ x: 1, y: -1 });
   });
 
   it("dead-zones small controller rotation", () => {

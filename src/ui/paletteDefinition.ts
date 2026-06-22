@@ -40,6 +40,7 @@ export interface SettingsPaletteContent {
   readonly worldSelectionSectionEnabled: boolean;
   readonly debugSectionEnabled: boolean;
   readonly debugEnabled: boolean;
+  readonly antiNauseaModeEnabled: boolean;
   readonly reloadConfirmationActive: boolean;
 }
 
@@ -232,6 +233,7 @@ export function createPaletteDefinition(
         worldSelectionSectionEnabled: appConfig.menu.worldSelectionSectionEnabled,
         debugSectionEnabled: appConfig.menu.debugSectionEnabled,
         debugEnabled: state.debugEnabled,
+        antiNauseaModeEnabled: state.antiNauseaModeEnabled,
         reloadConfirmationActive,
       },
     };

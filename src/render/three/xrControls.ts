@@ -64,14 +64,12 @@ export function createXrInputFrame(
 ): RuntimeInputFrame {
   const comfort = { ...defaultVrComfortOptions, ...options };
   const sources = [...inputSources].filter((source) => source.gamepad);
-  const left = sources.find((source) => source.handedness === "left");
-  const right = sources.find((source) => source.handedness === "right");
-  const movementSource = left ?? sources[0];
-  const rotationSource = right && right !== movementSource ? right : sources.find((source) => source !== movementSource);
-  const moveAxes = readPrimaryStickAxes(movementSource?.gamepad);
-  const turnAxes = readPrimaryStickAxes(rotationSource?.gamepad);
-  const locomotion = computeJoystickLocomotion(moveAxes, deltaSeconds, comfort);
-  const yawDeltaRadians = computeContinuousTurn(turnAxes?.x, deltaSeconds, comfort);
+  const stickAxes = sources
+    .map((source) => readPrimaryStickAxes(source.gamepad))
+    .filter((axes): axes is StickAxes => axes !== undefined);
+  const combinedAxes = combineStickAxes(stickAxes);
+  const locomotion = computeJoystickLocomotion(combinedAxes, deltaSeconds, comfort);
+  const yawDeltaRadians = computeContinuousTurn(combinedAxes?.x, deltaSeconds, comfort);
 
   return {
     localDisplacement: locomotion.localDisplacement,
@@ -83,6 +81,17 @@ export function createXrInputFrame(
     carryActionRequested: sources.some((source) => isCarryActionPressed(source)),
     helpRequested: sources.some((source) => isHelpPressed(source.gamepad)),
     source: "xr",
+  };
+}
+
+export function combineStickAxes(axes: readonly StickAxes[]): StickAxes | undefined {
+  if (axes.length === 0) {
+    return undefined;
+  }
+
+  return {
+    x: clampStickAxis(axes.reduce((sum, item) => sum + item.x, 0)),
+    y: clampStickAxis(axes.reduce((sum, item) => sum + item.y, 0)),
   };
 }
 
@@ -108,6 +117,14 @@ export function readPrimaryStickAxes(gamepad: GamepadLike | undefined): StickAxe
   }
 
   return { x: axes[0] ?? 0, y: axes[1] ?? 0 };
+}
+
+function clampStickAxis(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(-1, Math.min(1, value));
 }
 
 export function isResetPressed(gamepad: GamepadLike | undefined): boolean {

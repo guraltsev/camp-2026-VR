@@ -32,6 +32,7 @@ export interface ScenePaletteControllerOptions {
   readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
   readonly onDebugOverlayToggled: (enabled: boolean) => void;
   readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
+  readonly onAntiNauseaModeToggled: (enabled: boolean) => void;
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
@@ -115,6 +116,7 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
     onConsoleLogLevelSelected: options.onConsoleLogLevelSelected,
     onDebugOverlayToggled: options.onDebugOverlayToggled,
     onDebugOverlayItemToggled: options.onDebugOverlayItemToggled,
+    onAntiNauseaModeToggled: options.onAntiNauseaModeToggled,
     onPortalPanelModeSelected: options.onPortalPanelModeSelected,
     onPortalInspectionToggled: options.onPortalInspectionToggled,
     onCollisionGeometryWireframesToggled: options.onCollisionGeometryWireframesToggled,

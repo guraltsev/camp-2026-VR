@@ -2,6 +2,7 @@ import type { DebugOptionId } from "../glue/debugOptions";
 import type { DebugSettings } from "../glue/debugSettings";
 import type { DebugLevelId } from "../glue/debugLevels";
 import type { PortalPanelModeId } from "../glue/portalPanelMode";
+import type { VrComfortOptions } from "../render/three/vrComfort";
 import type { PlacedFlagType } from "../world-objects/placedFlags";
 import type { TutorialPageSpec } from "../cell-complex/specs";
 
@@ -58,6 +59,7 @@ export interface RuntimeMenuState {
   readonly portalInspectionEnabled: boolean;
   readonly collisionGeometryWireframesEnabled: boolean;
   readonly aimCollisionOutlinesEnabled: boolean;
+  readonly antiNauseaModeEnabled: boolean;
   readonly selectedTool: RuntimeToolId;
   readonly reloadConfirmUntilMs?: number;
   readonly placeFlagOptions: {
@@ -103,6 +105,7 @@ export interface CreateRuntimeMenuStateOptions {
   readonly debugSettings?: DebugSettings;
   readonly debugOverlayEnabled?: boolean;
   readonly debugOverlayItems?: readonly RuntimeDebugOverlayItemId[];
+  readonly vrComfortOptions?: Pick<VrComfortOptions, "antiNauseaModeEnabled">;
 }
 
 export function createRuntimeMenuState(options: CreateRuntimeMenuStateOptions): RuntimeMenuState {
@@ -123,6 +126,7 @@ export function createRuntimeMenuState(options: CreateRuntimeMenuStateOptions): 
       collisionGeometryDebugOptions,
     ),
     aimCollisionOutlinesEnabled: hasAnyDebugOption(debugSettings?.debugOptions, aimCollisionDebugOptions),
+    antiNauseaModeEnabled: options.vrComfortOptions?.antiNauseaModeEnabled ?? true,
     selectedTool: "none",
     placeFlagOptions: {
       flagType: "WoodenSign1",
@@ -475,6 +479,16 @@ export function setRuntimeMenuAimCollisionOutlinesEnabled(
   return {
     ...state,
     aimCollisionOutlinesEnabled: enabled,
+  };
+}
+
+export function setRuntimeMenuAntiNauseaModeEnabled(
+  state: RuntimeMenuState,
+  enabled: boolean,
+): RuntimeMenuState {
+  return {
+    ...state,
+    antiNauseaModeEnabled: enabled,
   };
 }
 

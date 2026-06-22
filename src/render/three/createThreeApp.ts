@@ -51,6 +51,7 @@ import {
   setRuntimeMenuPortalInspectionEnabled,
   setRuntimeMenuPortalPanelMode,
   setRuntimeMenuAimCollisionOutlinesEnabled,
+  setRuntimeMenuAntiNauseaModeEnabled,
   setRuntimeMenuEditingFlagId,
   setRuntimeMenuEditingSignMessage,
   setRuntimeMenuGoalPageIndex,
@@ -272,6 +273,11 @@ import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromVie
 import { resolveFrontFacingQuaternion, resolveVrPalettePlacement, shouldAutoCloseVrPalette } from "./vrPalettePlacement";
 import { createXrScenePaletteInput } from "./xrScenePaletteInput";
 import {
+  createVrComfortVignette,
+  isArtificialLocomotionActive,
+  type VrComfortOptions,
+} from "./vrComfort";
+import {
   createXrSessionState,
   detectXrSessionState,
   transitionXrSessionState,
@@ -301,6 +307,7 @@ export interface ThreeAppOptions {
   readonly debugOverlayEnabled: boolean;
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly renderQualityEnabled: boolean;
+  readonly vrComfortOptions: VrComfortOptions;
   readonly appConfig?: AppConfig;
   readonly assets: PreparedWorldAssets;
   readonly onWorldChangeRequested?: (worldId: string) => void;
@@ -390,9 +397,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   renderer.setSize(initialCanvasSize.width, initialCanvasSize.height);
   container.append(renderer.domElement);
   const controls = createDesktopControls(renderer.domElement);
-  const xrControls = createXrControls();
-  const xrRig = createXrPlayerRig(camera);
+  let vrComfortOptions = options.vrComfortOptions;
+  const xrControls = createXrControls(vrComfortOptions);
+  const xrRig = createXrPlayerRig(camera, vrComfortOptions);
   scene.add(xrRig.root);
+  const vrComfortVignette = createVrComfortVignette(camera, vrComfortOptions);
   const clock = new THREE.Clock();
   let playerPose = appState.playerPose;
   let xrSessionState: XrSessionState = createXrSessionState("unknown", {
@@ -419,6 +428,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     debugOverlayEnabled: options.debugOverlayEnabled,
     debugOverlayItems: options.debugOverlayItems,
+    vrComfortOptions,
   });
   let previousDesktopPalettePlacement: ReturnType<typeof resolveDesktopScenePalettePlacement> | undefined;
   let fixedXrPalettePlacement: ReturnType<typeof resolveVrPalettePlacement> | undefined;
@@ -549,6 +559,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
     onDebugOverlayItemToggled(itemId, enabled) {
       applyMenuDebugState(toggleRuntimeMenuDebugOverlayItem(menuState, itemId, enabled));
+    },
+    onAntiNauseaModeToggled(enabled) {
+      applyMenuComfortState(setRuntimeMenuAntiNauseaModeEnabled(menuState, enabled));
     },
     onPortalPanelModeSelected(mode) {
       applyMenuDebugState(setRuntimeMenuPortalPanelMode(menuState, mode));
@@ -912,6 +925,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       : undefined;
     const frameBeforeInputMs = performance.now();
     const frame = xrActive ? getXrInputFrame(deltaSeconds) : getDesktopInputFrame(deltaSeconds);
+    vrComfortVignette.update({
+      active: xrActive && isArtificialLocomotionActive(frame),
+      deltaSeconds,
+      normalFovDegrees: camera.fov,
+    });
     const rotatingGeodesicCannon = menuState.selectedTool === "geodesic-cannon-rotate";
     const aimingGeodesicCannon = menuState.selectedTool === "geodesic-cannon-aim";
     const effectiveHeadLocalMeters = rotatingGeodesicCannon && xrActive
@@ -1354,6 +1372,17 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncDesktopPalette();
   }
 
+  function applyMenuComfortState(nextMenuState: typeof menuState): void {
+    menuState = nextMenuState;
+    vrComfortOptions = {
+      ...vrComfortOptions,
+      antiNauseaModeEnabled: menuState.antiNauseaModeEnabled,
+    };
+    vrComfortVignette.setOptions(vrComfortOptions);
+    syncLaunchOptionsState();
+    syncDesktopPalette();
+  }
+
   function applyDebugSettings(settings: DebugSettings): void {
     debugLevel = settings.debugLevel;
     portalPanelMode = settings.portalPanelMode;
@@ -1596,6 +1625,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       debugOptions: settings.debugOptions,
       debugOverlayEnabled: menuState.debugOverlayEnabled,
       debugOverlayItems: menuState.debugOverlayItems,
+      vrComfortOptions,
     });
   }
 
@@ -1632,6 +1662,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       aimCrossMarker.dispose();
       floatingObjectTooltip.dispose();
       helpLensRenderer.dispose();
+      vrComfortVignette.dispose();
       clearXrObjectTooltip();
       controls.dispose();
       clearProtractorToolFeedback();

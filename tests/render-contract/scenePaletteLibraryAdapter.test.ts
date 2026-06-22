@@ -294,6 +294,7 @@ function createNoopOptions(): Parameters<typeof createScenePaletteLibraryAdapter
     onConsoleLogLevelSelected: () => undefined,
     onDebugOverlayToggled: () => undefined,
     onDebugOverlayItemToggled: () => undefined,
+    onAntiNauseaModeToggled: () => undefined,
     onPortalPanelModeSelected: () => undefined,
     onPortalInspectionToggled: () => undefined,
     onCollisionGeometryWireframesToggled: () => undefined,

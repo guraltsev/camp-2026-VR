@@ -8,6 +8,7 @@ import {
   type RuntimeDebugOverlayItemId,
 } from "../runtime/runtimeMenuState";
 import { defaultAppConfig, defaultAppConfigName, type AppConfig } from "./appConfig";
+import { defaultVrComfortOptions, type VrComfortOptions } from "../render/three/vrComfort";
 
 export interface LaunchOptions {
   readonly selectedWorldId: string;
@@ -20,6 +21,7 @@ export interface LaunchOptions {
   readonly debugOverlayEnabled: boolean;
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly renderQualityEnabled: boolean;
+  readonly vrComfortOptions: VrComfortOptions;
   readonly appConfig: AppConfig;
   readonly appConfigName: string;
 }
@@ -76,6 +78,7 @@ export function readLaunchOptions(
     renderQualityEnabled: params.has("renderQuality")
       ? isRenderQualityEnabled(params.get("renderQuality"))
       : appConfig.debug.renderQualityEnabled,
+    vrComfortOptions: readVrComfortOptions(params),
     appConfig,
     appConfigName,
   };
@@ -91,4 +94,40 @@ function isExplicitlyDisabled(rawValue: string | null): boolean {
 
 function isRenderQualityEnabled(rawValue: string | null): boolean {
   return rawValue === "1" || rawValue === "true" || rawValue === "yes" || rawValue === "on" || rawValue === "enabled";
+}
+
+function readVrComfortOptions(params: URLSearchParams): VrComfortOptions {
+  return {
+    ...defaultVrComfortOptions,
+    antiNauseaModeEnabled: params.has("antiNausea")
+      ? !isExplicitlyDisabled(params.get("antiNausea"))
+      : defaultVrComfortOptions.antiNauseaModeEnabled,
+    antiNauseaVisibleFovScale: readNumberParam(
+      params,
+      "antiNauseaFovScale",
+      defaultVrComfortOptions.antiNauseaVisibleFovScale,
+      0.05,
+      1,
+    ),
+  };
+}
+
+function readNumberParam(
+  params: URLSearchParams,
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const rawValue = params.get(key);
+  if (rawValue === null) {
+    return fallback;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, parsed));
 }

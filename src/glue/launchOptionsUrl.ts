@@ -15,6 +15,8 @@ const launchOptionSearchParams = [
   "debugOverlay",
   "debugOverlayItems",
   "renderQuality",
+  "antiNausea",
+  "antiNauseaFovScale",
   "worldPicker",
 ] as const;
 
@@ -56,6 +58,11 @@ export function buildUrlWithLaunchOptions(href: string, options: LaunchOptions):
   url.searchParams.set("debugOverlay", options.debugOverlayEnabled ? "true" : "false");
   url.searchParams.set("debugOverlayItems", serializeRuntimeDebugOverlayItems(options.debugOverlayItems));
   url.searchParams.set("renderQuality", options.renderQualityEnabled ? "true" : "false");
+  url.searchParams.set("antiNausea", options.vrComfortOptions.antiNauseaModeEnabled ? "true" : "false");
+  url.searchParams.set(
+    "antiNauseaFovScale",
+    String(options.vrComfortOptions.antiNauseaVisibleFovScale),
+  );
 
   return url.toString();
 }

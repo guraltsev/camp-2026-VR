@@ -26,6 +26,7 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onConsoleLogLevelSelected: (level: RuntimeMenuConsoleLogLevelId) => void;
   readonly onDebugOverlayToggled: (enabled: boolean) => void;
   readonly onDebugOverlayItemToggled: (itemId: RuntimeDebugOverlayItemId, enabled: boolean) => void;
+  readonly onAntiNauseaModeToggled: (enabled: boolean) => void;
   readonly onPortalPanelModeSelected: (mode: PortalPanelModeId) => void;
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
@@ -458,6 +459,21 @@ function buildContent(
   debugSection.add(createSectionLabel("Debug"));
   debugSection.add(createDebugToolsRow(definition.content.debugEnabled, options));
 
+  const comfortSection = new Container({
+    width: "100%",
+    flexDirection: "column",
+    gap: 8,
+    padding: 12,
+    borderRadius: 20,
+    backgroundColor: sectionColor,
+    borderColor,
+    borderWidth: 1,
+  });
+  comfortSection.add(createSectionLabel("Comfort"));
+  comfortSection.add(createToggleRow("Anti-nausea vignette", definition.content.antiNauseaModeEnabled, (enabled) => {
+    options.onAntiNauseaModeToggled(enabled);
+  }, "anti-nausea-vignette-toggle"));
+
   if (definition.content.worldSelectionSectionEnabled) {
     settings.add(worldSection);
   }
@@ -465,6 +481,8 @@ function buildContent(
   if (definition.content.debugSectionEnabled) {
     settings.add(debugSection);
   }
+
+  settings.add(comfortSection);
 
   return settings;
 }

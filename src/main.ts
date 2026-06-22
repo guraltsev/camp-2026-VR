@@ -78,6 +78,7 @@ async function restartApp(container: HTMLDivElement, nextLaunchOptions: LaunchOp
         debugOverlayEnabled: launchOptions.debugOverlayEnabled,
         debugOverlayItems: launchOptions.debugOverlayItems,
         renderQualityEnabled: launchOptions.renderQualityEnabled,
+        vrComfortOptions: launchOptions.vrComfortOptions,
         appConfig: launchOptions.appConfig,
         assets,
         onWorldChangeRequested(worldId) {
