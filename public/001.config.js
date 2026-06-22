@@ -4,6 +4,7 @@ export default {
   startingWorld: "001-basic-cube",
 
   optionsMenu: {
+    configSelectionSection: false,
     worldSelectionSection: false,
     debugSection: false,
   },

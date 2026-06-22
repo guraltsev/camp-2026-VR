@@ -236,12 +236,13 @@ describe("scenePaletteLibraryAdapter", () => {
     adapter.dispose();
   });
 
-  it("hides world choices when the active config disables world selection", () => {
+  it("hides world and config choices when the active config disables those settings sections", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
     adapter.setDefinition(createPaletteDefinition(
       showRuntimeMenuSettings(createRuntimeMenuState({ selectedWorldId: "001-basic-cube" })),
       normalizeAppConfig({
         optionsMenu: {
+          configSelectionSection: false,
           worldSelectionSection: false,
         },
       }),
@@ -251,7 +252,8 @@ describe("scenePaletteLibraryAdapter", () => {
 
     expect(itemIds).not.toContain("world:cube");
     expect(itemIds).not.toContain("world:torus");
-    expect(itemIds).toContain("config:default");
+    expect(itemIds).not.toContain("config:default");
+    expect(itemIds).not.toContain("config:full");
 
     adapter.dispose();
   });

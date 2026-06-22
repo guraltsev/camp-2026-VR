@@ -11,7 +11,7 @@ describe("launchOptionsUrl", () => {
   it("removes recognized launch options from the visible URL", () => {
     expect(
       removeLaunchOptionsFromUrl(
-        "https://example.test/play?config=classroom&world=cube&ui=DebugButton&debugLevel=verbose&keep=1#here",
+        "https://example.test/play?config=classroom&configName=full&world=cube&ui=DebugButton&debugLevel=verbose&keep=1#here",
       ),
     ).toBe("https://example.test/play?keep=1#here");
   });

@@ -4,6 +4,7 @@ export default {
   startingWorld: "002-basic-tetrahedron",
 
   optionsMenu: {
+    configSelectionSection: false,
     worldSelectionSection: false,
     debugSection: false,
   },

@@ -2,10 +2,8 @@ import * as THREE from "three";
 import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex";
 import { yawRigidTransform3 } from "../../math/rigidTransform3";
 import type { PlayerPose } from "../../movement/playerPose";
-import { playerPoseToDynamicObject } from "../../movement/playerPose";
 import type { DynamicObjectState } from "../../movement/dynamicObject";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
-import { collectPortalGhostRuntimeObjectRenderRecords } from "./runtimeObjectGhostRecords";
 import {
   collectRuntimeObjectRenderSourceMeshes,
   type RuntimeObjectRenderRecord,
@@ -62,7 +60,7 @@ export function createPlayerRoverRenderModel(
         playerRoverArchetypePrefix,
       );
     },
-    collectRecords(playerPose, archetypeKeys, options) {
+    collectRecords(playerPose, archetypeKeys, _options) {
       const localMatrix = rigidTransformToThreeMatrix(
         yawRigidTransform3(playerPose.yawRadians, playerPose.position),
       );
@@ -75,21 +73,8 @@ export function createPlayerRoverRenderModel(
         localMatrix,
         omitRootVisiblePath: true,
       }));
-      const ghostRecords = options?.ghostWorld && options.collision
-        ? collectPortalGhostRuntimeObjectRenderRecords({
-            world: options.ghostWorld,
-            object: {
-              id: playerRoverObjectId,
-              ...playerPoseToDynamicObject(playerPose, options.collision),
-            },
-            archetypeKeys: matchingArchetypeKeys,
-          }).map((record) => ({
-            ...record,
-            omitRootVisiblePath: true,
-          }))
-        : [];
 
-      return [...baseRecords, ...ghostRecords];
+      return baseRecords;
     },
   };
 }

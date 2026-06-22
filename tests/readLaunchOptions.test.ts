@@ -97,6 +97,7 @@ describe("readLaunchOptions", () => {
     const config = normalizeAppConfig({
       startingWorld,
       optionsMenu: {
+        configSelectionSection: false,
         worldSelectionSection: false,
         debugSection: false,
       },
@@ -145,7 +146,7 @@ describe("readLaunchOptions", () => {
       angles: false,
     });
     expect(config.menu).toMatchObject({
-      configSelectionSectionEnabled: true,
+      configSelectionSectionEnabled: false,
       worldSelectionSectionEnabled: false,
       debugSectionEnabled: false,
     });
@@ -182,6 +183,7 @@ describe("readLaunchOptions", () => {
 
   it("normalizes launch config names safely", () => {
     expect(readAppConfigName(locationWithSearch("?config=classroom"))).toBe("classroom");
+    expect(readAppConfigName(locationWithSearch("?configName=classroom"))).toBe("classroom");
     expect(normalizeAppConfigName("classroom.config.js")).toBe("classroom");
     expect(normalizeAppConfigName("../secret")).toBe("default");
     expect(normalizeAppConfigName("")).toBe("default");

@@ -14,7 +14,7 @@ const squareRoomBase = [
 ] as const;
 
 describe("player rover render model", () => {
-  it("emits a target-cell ghost record when the player body touches a portal side", () => {
+  it("does not emit clone-adjacent ghost records when the player body touches a portal side", () => {
     const world = compileCellComplex(twoRoomsWithPortal());
     const model = createPlayerRoverRenderModel(stubAssets());
     expect(model).toBeDefined();
@@ -34,10 +34,9 @@ describe("player rover render model", () => {
       },
     );
 
-    expect(records.map((record) => record.cellId)).toEqual(["room-a", "room-b"]);
+    expect(records.map((record) => record.cellId)).toEqual(["room-a"]);
     expect(records[0]?.omitRootVisiblePath).toBe(true);
-    expect(records[1]?.omitRootVisiblePath).toBe(true);
-    expect(records[1]?.objectId).toBe("user-robot");
+    expect(records[0]?.objectId).toBe("user-robot");
   });
 });
 

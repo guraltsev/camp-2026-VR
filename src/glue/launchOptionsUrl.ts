@@ -6,6 +6,7 @@ import { serializeRuntimeDebugOverlayItems } from "../runtime/runtimeMenuState";
 
 const launchOptionSearchParams = [
   "config",
+  "configName",
   "world",
   "ui",
   "debug",

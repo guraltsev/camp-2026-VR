@@ -112,7 +112,7 @@ async function loadAppConfigByName(configName: string, visitedConfigNames: Set<s
 
 export function readAppConfigName(location: Location): string {
   const params = new URLSearchParams(location.search);
-  return normalizeAppConfigName(params.get("config"));
+  return normalizeAppConfigName(params.get("config") ?? params.get("configName"));
 }
 
 export function normalizeAppConfigName(rawValue: string | null | undefined): string {
