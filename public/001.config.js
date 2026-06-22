@@ -13,10 +13,10 @@ export default {
     // Sign placement and editing.
     placeFlags: true,
 
-    // All other tools are hidden for this scenario.
-    geodesicEmitters: false,
-    distances: false,
-    angles: false,
+    // Geodesic construction and measurement tools.
+    geodesicEmitters: true,
+    distances: true,
+    angles: true,
   },
 
   debug: {

@@ -93,7 +93,7 @@ describe("readLaunchOptions", () => {
   it.each([
     ["001", "001-basic-cube"],
     ["002", "002-basic-tetrahedron"],
-  ] as const)("supports the locked-down %s config shape", (configName, startingWorld) => {
+  ] as const)("supports the starter %s config shape", (configName, startingWorld) => {
     const config = normalizeAppConfig({
       startingWorld,
       optionsMenu: {
@@ -103,9 +103,9 @@ describe("readLaunchOptions", () => {
       },
       tools: {
         placeFlags: true,
-        geodesicEmitters: false,
-        distances: false,
-        angles: false,
+        geodesicEmitters: true,
+        distances: true,
+        angles: true,
       },
       debug: {
         level: "off",
@@ -141,9 +141,9 @@ describe("readLaunchOptions", () => {
     });
     expect(config.tools).toEqual({
       placeFlags: true,
-      geodesicEmitters: false,
-      distances: false,
-      angles: false,
+      geodesicEmitters: true,
+      distances: true,
+      angles: true,
     });
     expect(config.menu).toMatchObject({
       configSelectionSectionEnabled: false,
