@@ -79,6 +79,7 @@ async function restartApp(container: HTMLDivElement, nextLaunchOptions: LaunchOp
         debugOverlayItems: launchOptions.debugOverlayItems,
         renderQualityEnabled: launchOptions.renderQualityEnabled,
         vrComfortOptions: launchOptions.vrComfortOptions,
+        appConfigName: launchOptions.appConfigName,
         appConfig: launchOptions.appConfig,
         assets,
         onWorldChangeRequested(worldId) {
@@ -86,6 +87,9 @@ async function restartApp(container: HTMLDivElement, nextLaunchOptions: LaunchOp
             ...launchOptions,
             selectedWorldId: worldId,
           });
+        },
+        onAppConfigChangeRequested(configName) {
+          void restartAppWithConfig(container, configName);
         },
         onReloadRequested() {
           void restartApp(container, launchOptions);
@@ -119,6 +123,13 @@ async function restartApp(container: HTMLDivElement, nextLaunchOptions: LaunchOp
     console.error(error);
     loadingStatus.showError(error instanceof Error ? error.message : "Unable to start the world.");
   }
+}
+
+async function restartAppWithConfig(container: HTMLDivElement, configName: string): Promise<void> {
+  const appConfig = await loadAppConfig(configName);
+  const configLocation = new URL(window.location.href) as unknown as Location;
+  configLocation.search = `?config=${encodeURIComponent(configName)}`;
+  void restartApp(container, readLaunchOptions(configLocation, appConfig, configName));
 }
 
 function applyRuntimeDiagnostics(world: Parameters<typeof installRuntimeDiagnostics>[0], settings: DebugSettings): void {

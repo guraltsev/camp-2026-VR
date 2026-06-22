@@ -8,6 +8,7 @@ import { publicUrl } from "./assetUrls";
 export type ConfigurableToolId = "place-flag" | "geodesic-cannon" | "measure-length" | "protractor";
 
 export interface AppMenuConfig {
+  readonly configSelectionSectionEnabled: boolean;
   readonly worldSelectionSectionEnabled: boolean;
   readonly debugSectionEnabled: boolean;
 }
@@ -39,6 +40,18 @@ export type RawAppConfig = Record<string, unknown>;
 
 export const defaultAppConfigName = "default";
 
+export interface AppConfigCatalogEntry {
+  readonly id: string;
+  readonly label: string;
+}
+
+export const appConfigCatalog: readonly AppConfigCatalogEntry[] = [
+  { id: "default", label: "Default" },
+  { id: "full", label: "Full sandbox" },
+  { id: "001", label: "001 Basic Cube" },
+  { id: "002", label: "002 Basic Tetrahedron" },
+];
+
 const defaultDebugOverlayItems = ["fps", "location", "portal-quantities"] as const;
 const debugOptionIds = debugOptionDefinitions.map((option) => option.id);
 const maxAppConfigForwardDepth = 8;
@@ -46,6 +59,7 @@ const maxAppConfigForwardDepth = 8;
 export const defaultAppConfig: AppConfig = {
   startingWorldId: defaultWorldId,
   menu: {
+    configSelectionSectionEnabled: true,
     worldSelectionSectionEnabled: true,
     debugSectionEnabled: true,
   },
@@ -136,6 +150,11 @@ export function normalizeAppConfig(rawConfig: unknown): AppConfig {
   return {
     startingWorldId: readWorldId(raw, "startingWorld") ?? readWorldId(raw, "startingWorldId") ?? defaultAppConfig.startingWorldId,
     menu: {
+      configSelectionSectionEnabled: readBoolean(
+        rawMenu,
+        "configSelectionSection",
+        defaultAppConfig.menu.configSelectionSectionEnabled,
+      ),
       worldSelectionSectionEnabled: readBoolean(rawMenu, "worldSelectionSection", defaultAppConfig.menu.worldSelectionSectionEnabled),
       debugSectionEnabled: readBoolean(rawMenu, "debugSection", defaultAppConfig.menu.debugSectionEnabled),
     },

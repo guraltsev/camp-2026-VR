@@ -144,6 +144,11 @@ describe("readLaunchOptions", () => {
       distances: false,
       angles: false,
     });
+    expect(config.menu).toMatchObject({
+      configSelectionSectionEnabled: true,
+      worldSelectionSectionEnabled: false,
+      debugSectionEnabled: false,
+    });
   });
 
   it("lets URL params override app config defaults", () => {

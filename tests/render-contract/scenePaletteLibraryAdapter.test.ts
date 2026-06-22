@@ -6,6 +6,7 @@ import {
   showRuntimeMenuGeometryComputerActions,
   showRuntimeMenuPlaceFlagOptions,
   showRuntimeMenuQuestionHelp,
+  showRuntimeMenuSettings,
   showRuntimeMenuTutorial,
 } from "../../src/runtime/runtimeMenuState";
 import { createScenePaletteLibraryAdapter } from "../../src/render/three/scenePaletteLibraryAdapter";
@@ -214,6 +215,23 @@ describe("scenePaletteLibraryAdapter", () => {
 
     adapter.dispose();
   });
+
+  it("renders config choices in settings", () => {
+    const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
+    adapter.setDefinition(createPaletteDefinition(showRuntimeMenuSettings(
+      createRuntimeMenuState({ selectedWorldId: "cube", selectedAppConfigName: "full" }),
+    )));
+
+    const itemIds = collectPaletteItemIds(adapter.root);
+
+    expect(itemIds).toContain("config:default");
+    expect(itemIds).toContain("config:full");
+    expect(itemIds).toContain("config:001");
+    expect(itemIds).toContain("config:002");
+    expect(itemIds).not.toContain("world:cube");
+
+    adapter.dispose();
+  });
 });
 
 function collectPaletteItemIds(root: { readonly children: readonly any[]; readonly userData?: Record<string, unknown> }): string[] {
@@ -286,7 +304,7 @@ function createNoopOptions(): Parameters<typeof createScenePaletteLibraryAdapter
   return {
     onLeftAction: () => undefined,
     onRightAction: () => undefined,
-    onWorldSelected: () => undefined,
+    onConfigSelected: () => undefined,
     onReloadRequested: () => undefined,
     onHomeRequested: () => undefined,
     onDebugEnabledChanged: () => undefined,

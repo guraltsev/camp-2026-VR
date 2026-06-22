@@ -47,7 +47,7 @@ import {
   setRuntimeMenuDebugEnabled,
   setRuntimeMenuDebugOverlayEnabled,
   setRuntimeMenuCollisionGeometryWireframesEnabled,
-  setRuntimeMenuSelectedWorldId,
+  setRuntimeMenuSelectedAppConfigName,
   setRuntimeMenuPortalInspectionEnabled,
   setRuntimeMenuPortalPanelMode,
   setRuntimeMenuAimCollisionOutlinesEnabled,
@@ -309,9 +309,11 @@ export interface ThreeAppOptions {
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly renderQualityEnabled: boolean;
   readonly vrComfortOptions: VrComfortOptions;
+  readonly appConfigName: string;
   readonly appConfig?: AppConfig;
   readonly assets: PreparedWorldAssets;
   readonly onWorldChangeRequested?: (worldId: string) => void;
+  readonly onAppConfigChangeRequested?: (configName: string) => void;
   readonly onReloadRequested?: () => void;
   readonly onLaunchOptionsChanged?: (patch: Partial<LaunchOptions>) => void;
   readonly onCopyUrlWithOptionsRequested?: () => void;
@@ -422,6 +424,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   );
   let menuState = createRuntimeMenuState({
     selectedWorldId: options.selectedWorldId,
+    selectedAppConfigName: options.appConfigName,
     debugSettings: {
       debugLevel: options.debugLevel,
       portalPanelMode: options.portalPanelMode,
@@ -542,13 +545,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           : showRuntimeMenuMainPage(menuState);
       syncDesktopPalette();
     },
-    onWorldSelected(worldId) {
-      if (!appConfig.menu.worldSelectionSectionEnabled) {
+    onConfigSelected(configName) {
+      if (!appConfig.menu.configSelectionSectionEnabled) {
         return;
       }
-      menuState = setRuntimeMenuSelectedWorldId(menuState, worldId);
+      menuState = setRuntimeMenuSelectedAppConfigName(menuState, configName);
       syncDesktopPalette();
-      dispatchRuntimeCommand({ kind: "change-world", worldId });
+      requestAppRestart(() => options.onAppConfigChangeRequested?.(configName));
     },
     onReloadRequested() {
       requestConfirmedReload();

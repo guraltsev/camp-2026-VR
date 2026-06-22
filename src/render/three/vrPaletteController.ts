@@ -22,7 +22,7 @@ export interface VrPaletteControllerOptions {
   readonly onCloseRequested: () => void;
   readonly onShowSettingsRequested: () => void;
   readonly onShowMainRequested: () => void;
-  readonly onWorldSelected: (worldId: string) => void;
+  readonly onConfigSelected: (configName: string) => void;
   readonly onReloadRequested: () => void;
   readonly onHomeRequested: () => void;
   readonly onDebugEnabledChanged: (enabled: boolean) => void;
@@ -91,7 +91,7 @@ export function createVrPaletteController(options: VrPaletteControllerOptions): 
         options.onShowMainRequested();
       }
     },
-    onWorldSelected: options.onWorldSelected,
+    onConfigSelected: options.onConfigSelected,
     onReloadRequested: options.onReloadRequested,
     onHomeRequested: options.onHomeRequested,
     onDebugEnabledChanged: options.onDebugEnabledChanged,

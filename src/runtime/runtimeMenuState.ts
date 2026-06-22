@@ -5,6 +5,7 @@ import type { PortalPanelModeId } from "../glue/portalPanelMode";
 import type { VrComfortOptions } from "../render/three/vrComfort";
 import type { PlacedFlagType } from "../world-objects/placedFlags";
 import type { TutorialPageSpec } from "../cell-complex/specs";
+import { defaultAppConfigName } from "../glue/appConfig";
 
 export type RuntimeMenuPageId =
   | "main"
@@ -51,6 +52,7 @@ export interface RuntimeMenuState {
   readonly isOpen: boolean;
   readonly page: RuntimeMenuPageId;
   readonly selectedWorldId: string;
+  readonly selectedAppConfigName: string;
   readonly debugEnabled: boolean;
   readonly consoleLogLevel: RuntimeMenuConsoleLogLevelId;
   readonly debugOverlayEnabled: boolean;
@@ -102,6 +104,7 @@ export interface RuntimeMenuState {
 
 export interface CreateRuntimeMenuStateOptions {
   readonly selectedWorldId: string;
+  readonly selectedAppConfigName?: string;
   readonly debugSettings?: DebugSettings;
   readonly debugOverlayEnabled?: boolean;
   readonly debugOverlayItems?: readonly RuntimeDebugOverlayItemId[];
@@ -115,6 +118,7 @@ export function createRuntimeMenuState(options: CreateRuntimeMenuStateOptions): 
     isOpen: false,
     page: "main",
     selectedWorldId: options.selectedWorldId,
+    selectedAppConfigName: options.selectedAppConfigName ?? defaultAppConfigName,
     debugEnabled: debugSettings?.debugLevel !== "off",
     consoleLogLevel: debugSettings?.debugLevel === "verbose" ? "verbose" : "basic",
     debugOverlayEnabled: options.debugOverlayEnabled ?? true,
@@ -401,6 +405,13 @@ export function setRuntimeMenuSelectedWorldId(state: RuntimeMenuState, worldId: 
   return {
     ...state,
     selectedWorldId: worldId,
+  };
+}
+
+export function setRuntimeMenuSelectedAppConfigName(state: RuntimeMenuState, configName: string): RuntimeMenuState {
+  return {
+    ...state,
+    selectedAppConfigName: configName,
   };
 }
 
