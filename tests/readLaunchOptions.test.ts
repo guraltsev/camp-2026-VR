@@ -185,7 +185,7 @@ describe("readLaunchOptions", () => {
     expect(normalizeAppConfigName("classroom.config.js")).toBe("classroom");
     expect(normalizeAppConfigName("../secret")).toBe("default");
     expect(normalizeAppConfigName("")).toBe("default");
-    expect(buildAppConfigUrl("classroom")).toBe("/classroom.config.js");
+    expect(buildAppConfigUrl("classroom")).toBe(`${import.meta.env.BASE_URL}classroom.config.js`);
   });
 
   it("reads safe app config forward targets", () => {
