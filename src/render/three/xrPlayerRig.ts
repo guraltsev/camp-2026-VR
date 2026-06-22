@@ -16,7 +16,11 @@ export interface XrPlayerRig {
   syncXrCullingCamera(camera: THREE.PerspectiveCamera, viewerPose: XRViewerPose | undefined): void;
   syncXrViewCullingCameras(cameras: readonly THREE.Camera[], viewerPose: XRViewerPose | undefined): readonly THREE.Camera[];
   resolveCameraYawRadians(headLocalYawRadians?: number): number;
-  consumePhysicalInput(headLocalMeters: Vec3 | undefined, yawRadians: number): RuntimeInputFrame;
+  consumePhysicalInput(
+    headLocalMeters: Vec3 | undefined,
+    playerYawRadians: number,
+    referenceSpaceYawRadians?: number,
+  ): RuntimeInputFrame;
   acceptPhysicalMove(result: MoveResult, currentHeadLocalMeters?: Vec3): void;
   getSharedRenderRootCellId(pose: PlayerPose): string;
 }
@@ -114,13 +118,14 @@ export function createXrPlayerRig(camera: THREE.PerspectiveCamera, options: Part
     resolveCameraYawRadians(headLocalYawRadians = 0) {
       return root.rotation.y + headLocalYawRadians;
     },
-    consumePhysicalInput(headLocalMeters, yawRadians) {
+    consumePhysicalInput(headLocalMeters, playerYawRadians, referenceSpaceYawRadians = root.rotation.y) {
       const physical = computePhysicalRoomScaleDisplacement({
         previousHeadLocalMeters: previousAcceptedHeadLocalMeters,
         currentHeadLocalMeters: headLocalMeters,
         maxPhysicalStepMeters: comfort.maxPhysicalStepMeters,
       });
-      const localDisplacement = globalHorizontalDeltaToPlayerLocal(physical.localDisplacement, yawRadians);
+      const worldDisplacement = rotateHorizontalDelta(physical.localDisplacement, referenceSpaceYawRadians);
+      const localDisplacement = globalHorizontalDeltaToPlayerLocal(worldDisplacement, playerYawRadians);
 
       return {
         localDisplacement,
@@ -160,6 +165,17 @@ export function globalHorizontalDeltaToPlayerLocal(delta: Vec3, yawRadians: numb
   return vec3(
     cosYaw * delta.x + sinYaw * delta.y,
     -sinYaw * delta.x + cosYaw * delta.y,
+    delta.z,
+  );
+}
+
+export function rotateHorizontalDelta(delta: Vec3, yawRadians: number): Vec3 {
+  const sinYaw = Math.sin(yawRadians);
+  const cosYaw = Math.cos(yawRadians);
+
+  return vec3(
+    cosYaw * delta.x - sinYaw * delta.y,
+    sinYaw * delta.x + cosYaw * delta.y,
     delta.z,
   );
 }

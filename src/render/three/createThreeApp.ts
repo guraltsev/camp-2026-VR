@@ -969,7 +969,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
       if (xrActive && !rotatingGeodesicCannon) {
         const beforePhysicalCellId = playerPose.cellId;
-        const physicalFrame = xrRig.consumePhysicalInput(effectiveHeadLocalMeters, playerPose.yawRadians);
+        const physicalReferenceSpaceYawRadians = playerPose.yawRadians - (headLocalYawRadians ?? 0);
+        const physicalFrame = xrRig.consumePhysicalInput(
+          effectiveHeadLocalMeters,
+          playerPose.yawRadians,
+          physicalReferenceSpaceYawRadians,
+        );
         const physicalMoveResult = movePlayer({
           world: activeWorld(),
           pose: playerPose,

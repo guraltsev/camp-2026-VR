@@ -10,6 +10,7 @@ import {
   createXrPlayerRig,
   headYawRadiansFromViewerPose,
   resolveSharedXrRenderRootCellId,
+  rotateHorizontalDelta,
   xrRigidTransformLocalMatrix,
 } from "../../src/render/three/xrPlayerRig";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
@@ -103,7 +104,7 @@ describe("VR locomotion mapping", () => {
     expect(local.z).toBe(0);
   });
 
-  it("keeps room-scale headset deltas in world space after artificial yaw", async () => {
+  it("rotates room-scale headset deltas through artificial yaw", async () => {
     const THREE = await import("three");
     const rig = createXrPlayerRig(new THREE.PerspectiveCamera());
     const accepted: MoveResult = {
@@ -120,7 +121,7 @@ describe("VR locomotion mapping", () => {
     };
 
     rig.acceptPhysicalMove(accepted, { x: 0, y: 0, z: 1.6 });
-    const physicalFrame = rig.consumePhysicalInput({ x: 0, y: 0.2, z: 1.6 }, Math.PI);
+    const physicalFrame = rig.consumePhysicalInput({ x: 0, y: 0.2, z: 1.6 }, Math.PI, Math.PI);
     const moved = movePlayer({
       pose: accepted.pose,
       localDisplacement: physicalFrame.localDisplacement,
@@ -129,12 +130,12 @@ describe("VR locomotion mapping", () => {
       coordinateFrame: "global",
     });
 
-    expect(physicalFrame.localDisplacement.y).toBeCloseTo(-0.2);
+    expect(physicalFrame.localDisplacement.y).toBeCloseTo(0.2);
     expect(moved.pose.position.x).toBeCloseTo(0);
-    expect(moved.pose.position.y).toBeCloseTo(0.2);
+    expect(moved.pose.position.y).toBeCloseTo(-0.2);
   });
 
-  it("does not turn a physical sidestep into forward motion when facing sideways", async () => {
+  it("uses the current artificial yaw when converting a physical sidestep", async () => {
     const THREE = await import("three");
     const rig = createXrPlayerRig(new THREE.PerspectiveCamera());
     const accepted: MoveResult = {
@@ -151,7 +152,7 @@ describe("VR locomotion mapping", () => {
     };
 
     rig.acceptPhysicalMove(accepted, { x: 0, y: 0, z: 1.6 });
-    const physicalFrame = rig.consumePhysicalInput({ x: 0, y: 0.2, z: 1.6 }, -Math.PI / 2);
+    const physicalFrame = rig.consumePhysicalInput({ x: 0, y: 0.2, z: 1.6 }, -Math.PI / 2, -Math.PI / 2);
     const moved = movePlayer({
       pose: accepted.pose,
       localDisplacement: physicalFrame.localDisplacement,
@@ -160,8 +161,15 @@ describe("VR locomotion mapping", () => {
       coordinateFrame: "global",
     });
 
-    expect(moved.pose.position.x).toBeCloseTo(0);
-    expect(moved.pose.position.y).toBeCloseTo(0.2);
+    expect(moved.pose.position.x).toBeCloseTo(0.2);
+    expect(moved.pose.position.y).toBeCloseTo(0);
+  });
+
+  it("maps tracking-space physical deltas into cell space with the XR reference yaw", () => {
+    const worldDelta = rotateHorizontalDelta({ x: 0, y: 0.2, z: 0 }, Math.PI);
+
+    expect(worldDelta.x).toBeCloseTo(0);
+    expect(worldDelta.y).toBeCloseTo(-0.2);
   });
 
   it("builds XR view matrices that survive Three camera matrix updates", async () => {
