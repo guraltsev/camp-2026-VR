@@ -45,3 +45,5 @@ The default deployment path is GitHub Pages through GitHub Actions.
 
 The workflow installs dependencies, runs the test suite, builds the Vite app
 with the correct Pages base path, publishes `.nojekyll`, and deploys `dist/`.
+
+--Push to main--
