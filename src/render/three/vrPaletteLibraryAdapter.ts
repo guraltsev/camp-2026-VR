@@ -769,6 +769,16 @@ function buildQuestionHelpContent(
     flexShrink: 0,
     wordBreak: "break-word",
   }));
+  panel.add(new Text({
+    text: content.body,
+    fontSize: 20,
+    fontWeight: "medium",
+    lineHeight: "140%",
+    color: textColor,
+    fill: textColor,
+    flexShrink: 0,
+    wordBreak: "break-word",
+  }));
 
   const optionRows = new Container({
     width: "100%",

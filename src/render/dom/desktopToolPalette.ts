@@ -81,6 +81,7 @@ export interface DesktopPaletteView {
     }
     | {
       readonly kind: "question-help";
+      readonly body: string;
       readonly optionLabels: readonly string[];
     };
 }
@@ -395,6 +396,7 @@ export function describeDesktopPaletteView(definition: PaletteDefinition): Deskt
       rightAction: definition.rightAction,
       content: {
         kind: "question-help",
+        body: definition.content.body,
         optionLabels: definition.content.options.filter((entry) => !entry.disabled).map((entry) => entry.label),
       },
     };
@@ -586,6 +588,11 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     heading.className = "desktop-tool-palette-tutorial-title";
     heading.textContent = "Help hub";
     section.append(heading);
+
+    const body = document.createElement("p");
+    body.className = "desktop-tool-palette-tutorial-body";
+    body.textContent = definition.content.body;
+    section.append(body);
 
     for (const entry of definition.content.options) {
       const button = document.createElement("button");

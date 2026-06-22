@@ -12,6 +12,7 @@ import { isWorldLibraryObjectSpec, type WorldLibraryObjectSpec } from "../world-
 import { normalizeFloorMaterial, type WorldFloorMaterialSpec } from "../world-assets/floorTextures";
 import { worldObjectLibrary } from "../world-objects/library";
 import { degreesToRadians, type StaticObjectAuthoringParams } from "../world-objects/staticAssets";
+import { helpHubHomeGuidance } from "../helpHubCopy";
 
 const defaultHeightMeters = 15;
 const startingHouseLookOffsetDegrees = 12;
@@ -32,9 +33,9 @@ export const defaultStartingQuestionCubeTutorialPages: readonly TutorialPageSpec
   },
   {
     title: "Get help",
-    body: "Press H or B while aiming at an object for its help.",
-    desktopBody: "Press H while aiming at an object for its help.",
-    xrBody: "Press B while aiming at an object for its help.",
+    body: `Press H or B while aiming at an object for its help. ${helpHubHomeGuidance}`,
+    desktopBody: `Press H while aiming at an object for its help. ${helpHubHomeGuidance}`,
+    xrBody: `Press B while aiming at an object for its help. ${helpHubHomeGuidance}`,
   },
 ];
 export const defaultStartingQuestionCubeGoalPages: readonly TutorialPageSpec[] = [

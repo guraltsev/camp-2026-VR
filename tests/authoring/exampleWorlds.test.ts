@@ -19,6 +19,7 @@ import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
 import { DEFAULT_PLAYER_HEIGHT_METERS, DEFAULT_PLAYER_RADIUS_METERS } from "../../src/movement/playerBody";
 import { createDefaultPlayerPose, playerPoseToDynamicObject, type PlayerPose } from "../../src/movement/playerPose";
+import { helpHubHomeGuidance } from "../../src/helpHubCopy";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 
 const exampleWorlds = [
@@ -94,6 +95,7 @@ describe("example worlds", () => {
         }),
       ]),
     });
+    expect(questionCube?.tutorialPages?.some((page) => page.body.includes(helpHubHomeGuidance))).toBe(true);
   });
 
   it("keeps tetrahedron faces equilateral so portal-glued corners align", () => {

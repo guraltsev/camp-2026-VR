@@ -49,7 +49,7 @@ startingQuestionCube("front", {
   },
 {
     title: "Questions",
-    body: "Answer these questions:\n\n How much space is there? Is this a finite or infinite world? \n\n Does this world look like ours or are there points where something strange happens?",
+    body: "Answer these questions:\n\n How much space is there? Is this a finite or infinite world? \n\n Does this world look like ours or are there points where something different happens?",
   }
 ],
 });

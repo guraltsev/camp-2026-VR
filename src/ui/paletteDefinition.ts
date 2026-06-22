@@ -1,5 +1,6 @@
 import { appConfigCatalog, defaultAppConfig, getEnabledMainTools, type AppConfig, type ConfigurableToolId } from "../glue/appConfig";
 import { worldCatalog } from "../authoring/worldCatalog";
+import { helpHubHomeGuidance } from "../helpHubCopy";
 import { portalPanelModeDefinitions } from "../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -153,12 +154,15 @@ export interface GoalPaletteContent {
 export interface QuestionHelpPaletteContent {
   readonly kind: "question-help";
   readonly objectId: string;
+  readonly body: string;
   readonly options: readonly {
     readonly id: "tutorial" | "goal";
     readonly label: string;
     readonly disabled: boolean;
   }[];
 }
+
+export const questionHelpHubBody = helpHubHomeGuidance;
 
 export interface PaletteDefinition {
   readonly pageId: RuntimeMenuPageId;
@@ -340,6 +344,7 @@ export function createPaletteDefinition(
       content: {
         kind: "question-help",
         objectId: state.questionHelpOptions.objectId,
+        body: questionHelpHubBody,
         options: [
           {
             id: "tutorial",

@@ -8,7 +8,7 @@ import {
   showRuntimeMenuQuestionHelp,
   showRuntimeMenuTutorial,
 } from "../../src/runtime/runtimeMenuState";
-import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
+import { createPaletteDefinition, questionHelpHubBody } from "../../src/ui/paletteDefinition";
 import { describeDesktopPaletteView } from "../../src/render/dom/desktopToolPalette";
 
 describe("desktopToolPalette", () => {
@@ -149,6 +149,7 @@ describe("desktopToolPalette", () => {
     if (view.content.kind !== "question-help") {
       throw new Error("Expected help hub content.");
     }
+    expect(view.content.body).toBe(questionHelpHubBody);
     expect(view.content.optionLabels).toEqual(["Tutorial", "Goal"]);
   });
 

@@ -19,7 +19,7 @@ import {
   showRuntimeMenuQuestionTutorial,
   showRuntimeMenuTutorial,
 } from "../../src/runtime/runtimeMenuState";
-import { createPaletteDefinition } from "../../src/ui/paletteDefinition";
+import { createPaletteDefinition, questionHelpHubBody } from "../../src/ui/paletteDefinition";
 
 describe("runtimeMenuState", () => {
   it("starts with no tool selected by default", () => {
@@ -270,6 +270,7 @@ describe("runtimeMenuState", () => {
     expect(hub.pageId).toBe("question-help");
     expect(hub.content).toMatchObject({
       kind: "question-help",
+      body: questionHelpHubBody,
       options: [
         { id: "tutorial", label: "Tutorial", disabled: false },
         { id: "goal", label: "Goal", disabled: false },
