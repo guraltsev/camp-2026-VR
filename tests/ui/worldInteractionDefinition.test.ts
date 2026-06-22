@@ -97,7 +97,7 @@ describe("worldInteractionDefinition", () => {
         radiusMeters: 0.3,
       } as RuntimeWorldObject,
       selectedTool: "none",
-    })?.actions).toMatchObject([{ id: "remove-angle", intent: "primary", label: "Remove" }]);
+    })?.actions).toMatchObject([{ id: "remove-angle", intent: "primary", label: "Delete measurement" }]);
   });
 });
 

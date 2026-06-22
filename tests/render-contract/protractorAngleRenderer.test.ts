@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createProtractorAngleRuntime } from "../../src/render/three/protractorAngleRenderer";
-import { createProtractorAngleObject, resolveProtractorCenterSelection } from "../../src/world-objects/protractorTool";
+import {
+  createProtractorAngleObject,
+  protractorAngleLabelVerticalOffsetMeters,
+  resolveProtractorCenterSelection,
+} from "../../src/world-objects/protractorTool";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 import type { GeodesicCannonObject } from "../../src/world-objects/geodesicCannon";
 
@@ -49,7 +53,7 @@ describe("protractor angle renderer", () => {
     const labelAngle = object.angleRadians / 2;
 
     expect(label?.position.x).toBeCloseTo(Math.cos(labelAngle) * object.radiusMeters);
-    expect(label?.position.y).toBeCloseTo(0.3);
+    expect(label?.position.y).toBeCloseTo(protractorAngleLabelVerticalOffsetMeters);
     expect(label?.position.z).toBeCloseTo(-Math.sin(labelAngle) * object.radiusMeters);
     expect(label?.rotation.y).toBeCloseTo(labelAngle + Math.PI / 2);
 

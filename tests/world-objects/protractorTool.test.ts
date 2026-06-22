@@ -4,6 +4,7 @@ import { createRuntimeObjectRegistry } from "../../src/world-objects/runtimeObje
 import {
   createProtractorAngleObject,
   protractorAngleRadiusMeters,
+  protractorSelectionsUseDifferentGeodesics,
   refreshProtractorAngleObject,
   resolveProtractorCenterSelection,
   resolveProtractorDirectedGeodesicSelection,
@@ -95,6 +96,20 @@ describe("protractor tool objects", () => {
     expect(angle.radiusMeters).toBe(protractorAngleRadiusMeters);
     expect(angle.angleDegrees).toBeCloseTo(90);
     expect(angle.tooltip?.label).toBe("g-a ∠ g-b = 90°");
+    expect(angle.aimStickyTarget?.localPoint).toEqual(angle.labelHitbox?.center);
+  });
+
+  it("requires the second selected side to come from a different geodesic", () => {
+    const first = { geodesicId: "g-a", segmentId: "segment-a", yawRadians: 0 };
+    const second = { geodesicId: "g-a", segmentId: "segment-b", yawRadians: Math.PI / 2 };
+
+    expect(protractorSelectionsUseDifferentGeodesics(first, second)).toBe(false);
+    expect(() => createProtractorAngleObject({
+      id: "angle-a",
+      center: resolveProtractorCenterSelection(createEmitter()),
+      first,
+      second,
+    })).toThrow("Cannot create a protractor angle from the same geodesic twice.");
   });
 
   it("uses supplied geodesic labels in the displayed angle measurement", () => {

@@ -13,7 +13,11 @@ import {
   type GeodesicSegmentObject,
 } from "../../src/world-objects/geodesicCannon";
 import { createProtractorAngleObject } from "../../src/world-objects/protractorTool";
-import { getGeodesicEmitterAimCylinderBounds, resolveAimTarget } from "../../src/render/three/aimTarget";
+import {
+  getGeodesicEmitterAimCylinderBounds,
+  getGeodesicEmitterAimSphereCenter,
+  resolveAimTarget,
+} from "../../src/render/three/aimTarget";
 import type { VisiblePortalPath } from "../../src/render/three/visiblePortalPaths";
 import { rigidTransformToThreeMatrix, worldPointToThree } from "../../src/render/three/worldAxes";
 
@@ -77,7 +81,11 @@ describe("resolveAimTarget", () => {
     });
     const registry = createRuntimeObjectRegistry([emitter]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
-    const camera = cameraLookingAt({ x: 0, y: 0, z: 1.08 }, { x: 40, y: 0.18, z: 1.08 });
+    const sphereCenter = getGeodesicEmitterAimSphereCenter(emitter);
+    const camera = cameraLookingAt(
+      { x: 0, y: 0, z: sphereCenter.z },
+      { x: 40, y: 0.18, z: sphereCenter.z },
+    );
 
     const target = resolveAimTarget({
       world,
@@ -89,8 +97,22 @@ describe("resolveAimTarget", () => {
 
     expect(target?.kind).toBe("object");
     expect(target?.object?.id).toBe("emitter-a");
-    expect(target?.localPoint).toEqual({ x: 40, y: 0, z: 1.08 });
+    expect(target?.localPoint).toEqual(sphereCenter);
     expect(target?.distanceMeters).toBeGreaterThan(39);
+  });
+
+  it("lowers the geodesic emitter top aim sphere by 0.3 meters", () => {
+    const emitter = createGeodesicCannonObject({
+      id: "emitter-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 40, y: 0, z: 0 }),
+    });
+
+    expect(getGeodesicEmitterAimSphereCenter(emitter)).toEqual({
+      x: 40,
+      y: 0,
+      z: geodesicRayBeamHeightMeters - 0.3,
+    });
   });
 
   it("uses a halved geodesic emitter aim cylinder radius", () => {
@@ -409,17 +431,18 @@ describe("resolveAimTarget", () => {
 
   it("prioritizes geodesic emitters over overlapping geodesic intersection balloons", () => {
     const world = compileCellComplex(singleRoomWorld());
-    const vertex = createGeodesicIntersection({
-      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 1.08 }),
-    });
     const cannon = createGeodesicCannonObject({
       id: "cannon-a",
       cellId: "room",
       localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
     });
+    const sphereCenter = getGeodesicEmitterAimSphereCenter(cannon);
+    const vertex = createGeodesicIntersection({
+      localPose: yawRigidTransform3(0, sphereCenter),
+    });
     const registry = createRuntimeObjectRegistry([vertex, cannon]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
-    const camera = cameraLookingAt({ x: 0, y: -2, z: 1.08 }, { x: 0, y: 0, z: 1.08 });
+    const camera = cameraLookingAt({ x: 0, y: -2, z: sphereCenter.z }, sphereCenter);
 
     const target = resolveAimTarget({
       world,
@@ -457,16 +480,48 @@ describe("resolveAimTarget", () => {
     expect(target?.rootPoint.z).toBeCloseTo(1.08);
   });
 
-  it("misses protractor angles outside their small aim region", () => {
+  it("resolves protractor angles from the floating label hitbox", () => {
     const world = compileCellComplex(singleRoomWorld());
     const angle = createProtractorAngle({
       centerPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
     });
     const registry = createRuntimeObjectRegistry([angle]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const labelCenter = angle.labelHitbox?.center;
+    if (!labelCenter) {
+      throw new Error("Expected protractor angle label hitbox.");
+    }
     const camera = cameraLookingAt(
-      { x: 0.12, y: -2, z: geodesicRayBeamHeightMeters },
-      { x: 0.12, y: 0, z: geodesicRayBeamHeightMeters },
+      { x: labelCenter.x, y: -2, z: labelCenter.z },
+      labelCenter,
+    );
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera,
+      visiblePortalPaths: [visiblePath(rootPath)],
+    });
+
+    expect(target?.kind).toBe("object");
+    expect(target?.object?.id).toBe("angle-a");
+    expect(target?.localPoint).toEqual(labelCenter);
+  });
+
+  it("misses protractor angles outside their floating label hitbox", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const angle = createProtractorAngle({
+      centerPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    });
+    const registry = createRuntimeObjectRegistry([angle]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+    const labelCenter = angle.labelHitbox?.center;
+    if (!labelCenter) {
+      throw new Error("Expected protractor angle label hitbox.");
+    }
+    const camera = cameraLookingAt(
+      { x: labelCenter.x + 0.5, y: -2, z: labelCenter.z },
+      { x: labelCenter.x + 0.5, y: labelCenter.y, z: labelCenter.z },
     );
 
     const target = resolveAimTarget({
@@ -481,19 +536,27 @@ describe("resolveAimTarget", () => {
 
   it("prioritizes protractor angles over overlapping geodesic emitters", () => {
     const world = compileCellComplex(singleRoomWorld());
+    const angle = createProtractorAngle({
+      centerPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    });
+    const labelCenter = angle.labelHitbox?.center;
+    if (!labelCenter) {
+      throw new Error("Expected protractor angle label hitbox.");
+    }
     const cannon = createGeodesicCannonObject({
       id: "cannon-a",
       cellId: "room",
-      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
-    });
-    const angle = createProtractorAngle({
-      centerPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+      localPose: yawRigidTransform3(0, {
+        x: labelCenter.x,
+        y: labelCenter.y,
+        z: labelCenter.z - (geodesicRayBeamHeightMeters - 0.3),
+      }),
     });
     const registry = createRuntimeObjectRegistry([cannon, angle]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
     const camera = cameraLookingAt(
-      { x: 0, y: -2, z: geodesicRayBeamHeightMeters },
-      { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+      { x: labelCenter.x, y: -2, z: labelCenter.z },
+      labelCenter,
     );
 
     const target = resolveAimTarget({
@@ -509,17 +572,21 @@ describe("resolveAimTarget", () => {
 
   it("prioritizes protractor angles over overlapping geodesic intersection vertices", () => {
     const world = compileCellComplex(singleRoomWorld());
-    const vertex = createGeodesicIntersection({
-      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: geodesicRayBeamHeightMeters }),
-    });
     const angle = createProtractorAngle({
       centerPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    });
+    const labelCenter = angle.labelHitbox?.center;
+    if (!labelCenter) {
+      throw new Error("Expected protractor angle label hitbox.");
+    }
+    const vertex = createGeodesicIntersection({
+      localPose: yawRigidTransform3(0, labelCenter),
     });
     const registry = createRuntimeObjectRegistry([vertex, angle]);
     const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
     const camera = cameraLookingAt(
-      { x: 0, y: -2, z: geodesicRayBeamHeightMeters },
-      { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+      { x: labelCenter.x, y: -2, z: labelCenter.z },
+      labelCenter,
     );
 
     const target = resolveAimTarget({

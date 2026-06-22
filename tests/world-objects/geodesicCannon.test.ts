@@ -63,8 +63,8 @@ describe("geodesic cannon world objects", () => {
 
     expect(cannon.collision).toEqual({
       radius: 0.3,
-      height: 1.25,
-      offset: { x: 0, y: 0, z: 0.625 },
+      height: 0.75,
+      offset: { x: 0, y: 0, z: 0.375 },
     });
     expect(cannon.tooltip?.label).toBe("Geodesic emitter");
     expect(cannon.tooltip?.rangeMeters).toBe(2.5);

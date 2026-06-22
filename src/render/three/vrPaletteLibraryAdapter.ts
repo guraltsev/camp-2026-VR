@@ -81,7 +81,6 @@ const signIconSources: Record<PlacedFlagType, string> = {
   WoodenSign1: publicAssetUrl("WoodenSign1/WoodenSign1.png"),
   WoodenSign2: publicAssetUrl("WoodenSign2/WoodenSign2.png"),
 };
-const rotateIconSource = publicAssetUrl("icons/arrow-circle-inverted.png");
 const aimIconSource = publicAssetUrl("icons/aim-inverted.png");
 const carryIconSource = publicAssetUrl("icons/carry-icon-white.png");
 const lockIconSource = publicAssetUrl("icons/lock.png");
@@ -628,19 +627,6 @@ function buildGeodesicCannonActionsContent(
     }
 
     if (!geodesic.locked) {
-      const rotateButton = createInteractiveSurface({
-        width: 132,
-        height: 42,
-        label: "Rotate",
-        labelFontSize: 16,
-        disabled: false,
-        backgroundColor: actionColor,
-        onClick: () => options.onGeodesicCannonRotateRequested?.(content.cannonId, geodesic.id),
-      });
-      rotateButton.userData.xrPaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
-      rotateButton.userData.scenePaletteItemId = `geodesic-cannon-action:rotate:${geodesic.id}`;
-      rotateButton.add(createGeodesicCannonActionIcon("rotate"));
-
       const aimButton = createInteractiveSurface({
         width: 112,
         height: 42,
@@ -654,7 +640,7 @@ function buildGeodesicCannonActionsContent(
       aimButton.userData.scenePaletteItemId = `geodesic-cannon-action:aim:${geodesic.id}`;
       aimButton.add(createGeodesicCannonActionIcon("aim"));
 
-      row.add(rotateButton, aimButton);
+      row.add(aimButton);
     }
 
     row.add(deleteButton);
@@ -1200,14 +1186,14 @@ function createProtractorIcon(): Component<any> {
   return image;
 }
 
-function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "rotate" | "aim" | "carry"): Component<any> {
+function createGeodesicCannonActionIcon(actionId: "add-geodesic" | "aim" | "carry"): Component<any> {
   if (actionId === "add-geodesic") {
     return createPlusIcon();
   }
 
   const source = actionId === "carry"
     ? carryIconSource
-    : actionId === "rotate" ? rotateIconSource : aimIconSource;
+    : aimIconSource;
   const image = new Image({
     src: source,
     width: 28,

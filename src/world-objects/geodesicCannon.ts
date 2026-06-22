@@ -206,8 +206,8 @@ export interface PlaceGeodesicCannonResult {
 
 const defaultCannonCollision: SimpleCollisionCylinder = {
   radius: 0.3,
-  height: 1.25,
-  offset: { x: 0, y: 0, z: 0.625 },
+  height: 0.75,
+  offset: { x: 0, y: 0, z: 0.375 },
 };
 export const geodesicRayBeamHeightMeters = 1.08;
 export const geodesicRayBeamStartOffsetMeters = 0;

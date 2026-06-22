@@ -1,5 +1,11 @@
 import * as THREE from "three";
-import { formatProtractorAngleLabel, type ProtractorAngleObject } from "../../world-objects/protractorTool";
+import {
+  formatProtractorAngleLabel,
+  protractorAngleLabelBadgeHeightMeters,
+  protractorAngleLabelBadgeWidthMeters,
+  protractorAngleLabelVerticalOffsetMeters,
+  type ProtractorAngleObject,
+} from "../../world-objects/protractorTool";
 import { applyWorldRigidTransform } from "./worldAxes";
 import { createWorldResultBadge } from "./worldResultBadge";
 
@@ -15,7 +21,6 @@ const arcColor = 0xffd166;
 const fillColor = 0x38f2ff;
 const boundaryColor = 0xffffff;
 const arcTubeRadiusMeters = 0.008;
-const angleLabelHeightMeters = 0.3;
 
 export function createProtractorAngleRuntime(object: ProtractorAngleObject): ProtractorAngleRuntime {
   let root = createProtractorAngleRoot(object);
@@ -140,8 +145,8 @@ function createAngleLabel(object: ProtractorAngleObject): THREE.Object3D {
   const badge = createWorldResultBadge({
     text: label,
     variant: "angle",
-    widthMeters: 0.42,
-    heightMeters: 0.1575,
+    widthMeters: protractorAngleLabelBadgeWidthMeters,
+    heightMeters: protractorAngleLabelBadgeHeightMeters,
     pointer: "down",
     doubleFaced: true,
     renderOrder: 57,
@@ -158,7 +163,7 @@ function positionAngleLabelBadge(badge: THREE.Object3D, object: ProtractorAngleO
   const labelAngle = object.angleRadians / 2;
   badge.position.set(
     Math.cos(labelAngle) * object.radiusMeters,
-    angleLabelHeightMeters,
+    protractorAngleLabelVerticalOffsetMeters,
     -Math.sin(labelAngle) * object.radiusMeters,
   );
   badge.rotation.y = labelAngle + Math.PI / 2;

@@ -4,6 +4,7 @@ import type { CompiledPrismCell } from "../../cell-complex/prismCells";
 import { distanceVec3, dotVec3, normalizeVec3, subVec3, type Vec3 } from "../../math/vec3";
 import { getDynamicObjectCollisionBounds, signedDistanceToSide, type SimpleCylinderBounds } from "../../movement/collision";
 import { geodesicRayBeamHeightMeters, geodesicRayBeamStartOffsetMeters } from "../../world-objects/geodesicCannon";
+import { createProtractorAngleLabelHitbox } from "../../world-objects/protractorTool";
 import { runtimeObjectToDynamicObjectState, type RuntimeObjectRegistry, type RuntimeWorldObject } from "../../world-objects/runtimeObjectRegistry";
 import type { VisiblePortalPath } from "./visiblePortalPaths";
 import { threeDirectionToWorld, threePointToWorld, worldPointToThree } from "./worldAxes";
@@ -56,9 +57,9 @@ const aimPointToleranceMeters = 1e-5;
 const aimTargetPriorityDistanceToleranceMeters = 0.4;
 const geodesicSegmentVsEmitterPriorityDistanceToleranceMeters = 3;
 const fallbackObjectRadiusMeters = 0.25;
-const protractorAngleAimRadiusMeters = 0.08;
 const geodesicEmitterAimCylinderRadiusPaddingMeters = 0.08;
 const geodesicEmitterAimCylinderHalfHeightPaddingMeters = 0.1;
+const geodesicEmitterAimSphereOffsetMeters = -0.3;
 const geodesicEmitterGeodesicHandleLengthMeters = 0.65;
 const geodesicEmitterGeodesicHandleRadiusMeters = 0.16 / 2.5;
 const defaultMaxEmitterAimDistanceMeters = 200;
@@ -184,12 +185,7 @@ function resolveObjectAimTargets(
 
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
     const hit = object.kind === "protractor-angle"
-      ? intersectRayWithSphere(
-        ray.origin,
-        ray.direction,
-        object.aimStickyTarget?.localPoint ?? object.localPose.translation,
-        protractorAngleAimRadiusMeters,
-      )
+      ? intersectRayWithProtractorAngleLabelHitbox(object, ray.origin, ray.direction)
       : object.kind === "geodesic-segment"
       ? intersectRayWithSelectableSegment(object, ray.origin, ray.direction)
       : object.kind === "geodesic-cannon"
@@ -204,7 +200,9 @@ function resolveObjectAimTargets(
     }
 
     const localPoint = hit.point ?? pointOnRay(ray.origin, ray.direction, hit.distance);
-    const targetLocalPoint = object.aimStickyTarget?.localPoint ?? hit.targetPoint ?? localPoint;
+    const targetLocalPoint = object.kind === "protractor-angle"
+      ? hit.targetPoint ?? object.aimStickyTarget?.localPoint ?? localPoint
+      : object.aimStickyTarget?.localPoint ?? hit.targetPoint ?? localPoint;
     hits.push({
       kind: "object",
       cellId: cell.id,
@@ -571,7 +569,7 @@ export function getGeodesicEmitterAimSphereCenter(
   return {
     x: emitter.localPose.translation.x,
     y: emitter.localPose.translation.y,
-    z: emitter.localPose.translation.z + geodesicRayBeamHeightMeters,
+    z: emitter.localPose.translation.z + geodesicRayBeamHeightMeters + geodesicEmitterAimSphereOffsetMeters,
   };
 }
 
@@ -615,6 +613,169 @@ function intersectRayWithVerticalCylinder(
   return positiveHits.length > 0
     ? positiveHits.reduce((best, hit) => hit.distance < best.distance ? hit : best)
     : undefined;
+}
+
+function intersectRayWithProtractorAngleLabelHitbox(
+  angle: Extract<RuntimeWorldObject, { readonly kind: "protractor-angle" }>,
+  origin: Vec3,
+  direction: Vec3,
+): ObjectAimHit | undefined {
+  const hitbox = angle.labelHitbox ?? createProtractorAngleLabelHitbox({
+    centerPoint: angle.centerPoint,
+    firstYawRadians: angle.first.yawRadians,
+    angleRadians: angle.angleRadians,
+    radiusMeters: angle.radiusMeters,
+  });
+  return intersectRayWithOrientedBox(origin, direction, {
+    center: hitbox.center,
+    yawRadians: hitbox.yawRadians,
+    halfExtents: {
+      x: hitbox.widthMeters / 2,
+      y: hitbox.depthMeters / 2,
+      z: hitbox.heightMeters / 2,
+    },
+  });
+}
+
+function intersectRayWithOrientedBox(
+  origin: Vec3,
+  direction: Vec3,
+  box: {
+    readonly center: Vec3;
+    readonly yawRadians: number;
+    readonly halfExtents: Vec3;
+  },
+): ObjectAimHit | undefined {
+  const xAxis = { x: Math.cos(box.yawRadians), y: Math.sin(box.yawRadians), z: 0 };
+  const yAxis = { x: -Math.sin(box.yawRadians), y: Math.cos(box.yawRadians), z: 0 };
+  const zAxis = { x: 0, y: 0, z: 1 };
+  const offset = subVec3(origin, box.center);
+  const localOrigin = {
+    x: dotVec3(offset, xAxis),
+    y: dotVec3(offset, yAxis),
+    z: dotVec3(offset, zAxis),
+  };
+  const localDirection = {
+    x: dotVec3(direction, xAxis),
+    y: dotVec3(direction, yAxis),
+    z: dotVec3(direction, zAxis),
+  };
+  const hit = intersectLocalRayWithAxisAlignedBox(localOrigin, localDirection, box.halfExtents);
+  if (!hit) {
+    return undefined;
+  }
+
+  return {
+    distance: hit.distance,
+    normal: normalizeVec3OrFallback({
+      x: xAxis.x * hit.localNormal.x + yAxis.x * hit.localNormal.y + zAxis.x * hit.localNormal.z,
+      y: xAxis.y * hit.localNormal.x + yAxis.y * hit.localNormal.y + zAxis.y * hit.localNormal.z,
+      z: xAxis.z * hit.localNormal.x + yAxis.z * hit.localNormal.y + zAxis.z * hit.localNormal.z,
+    }),
+    point: pointOnRay(origin, direction, hit.distance),
+    targetPoint: box.center,
+  };
+}
+
+function intersectLocalRayWithAxisAlignedBox(
+  origin: Vec3,
+  direction: Vec3,
+  halfExtents: Vec3,
+): { readonly distance: number; readonly localNormal: Vec3 } | undefined {
+  let tMin = -Infinity;
+  let tMax = Infinity;
+  let enterNormal: Vec3 = { x: 0, y: 0, z: 1 };
+  let exitNormal: Vec3 = { x: 0, y: 0, z: 1 };
+
+  const x = updateBoxSlabInterval(tMin, tMax, enterNormal, exitNormal, origin.x, direction.x, halfExtents.x, { x: 1, y: 0, z: 0 });
+  if (!x) {
+    return undefined;
+  }
+  tMin = x.tMin;
+  tMax = x.tMax;
+  enterNormal = x.enterNormal;
+  exitNormal = x.exitNormal;
+
+  const y = updateBoxSlabInterval(tMin, tMax, enterNormal, exitNormal, origin.y, direction.y, halfExtents.y, { x: 0, y: 1, z: 0 });
+  if (!y) {
+    return undefined;
+  }
+  tMin = y.tMin;
+  tMax = y.tMax;
+  enterNormal = y.enterNormal;
+  exitNormal = y.exitNormal;
+
+  const z = updateBoxSlabInterval(tMin, tMax, enterNormal, exitNormal, origin.z, direction.z, halfExtents.z, { x: 0, y: 0, z: 1 });
+  if (!z) {
+    return undefined;
+  }
+  tMin = z.tMin;
+  tMax = z.tMax;
+  enterNormal = z.enterNormal;
+  exitNormal = z.exitNormal;
+
+  if (tMax <= aimPointToleranceMeters) {
+    return undefined;
+  }
+
+  return tMin > aimPointToleranceMeters
+    ? { distance: tMin, localNormal: enterNormal }
+    : { distance: tMax, localNormal: exitNormal };
+}
+
+function updateBoxSlabInterval(
+  tMin: number,
+  tMax: number,
+  enterNormal: Vec3,
+  exitNormal: Vec3,
+  origin: number,
+  direction: number,
+  halfExtent: number,
+  axis: Vec3,
+): {
+  readonly tMin: number;
+  readonly tMax: number;
+  readonly enterNormal: Vec3;
+  readonly exitNormal: Vec3;
+} | undefined {
+  if (Math.abs(direction) <= aimPointToleranceMeters) {
+    return Math.abs(origin) <= halfExtent + aimPointToleranceMeters
+      ? { tMin, tMax, enterNormal, exitNormal }
+      : undefined;
+  }
+
+  const nearNormal = scaleVec3Like(axis, direction > 0 ? -1 : 1);
+  const farNormal = scaleVec3Like(axis, direction > 0 ? 1 : -1);
+  let near = (-halfExtent - origin) / direction;
+  let far = (halfExtent - origin) / direction;
+  let nextEnterNormal = nearNormal;
+  let nextExitNormal = farNormal;
+  if (near > far) {
+    [near, far] = [far, near];
+    nextEnterNormal = farNormal;
+    nextExitNormal = nearNormal;
+  }
+
+  if (near > tMin) {
+    tMin = near;
+    enterNormal = nextEnterNormal;
+  }
+  if (far < tMax) {
+    tMax = far;
+    exitNormal = nextExitNormal;
+  }
+
+  return tMin <= tMax + aimPointToleranceMeters
+    ? { tMin, tMax, enterNormal, exitNormal }
+    : undefined;
+}
+
+function scaleVec3Like(vector: Vec3, scale: number): Vec3 {
+  return {
+    x: vector.x * scale,
+    y: vector.y * scale,
+    z: vector.z * scale,
+  };
 }
 
 function intersectRayWithGeodesicEmitterAimCylinder(

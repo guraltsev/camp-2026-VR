@@ -69,7 +69,7 @@ describe("desktopToolPalette", () => {
     expect(view.content.disabledGeodesicActions).toEqual([]);
   });
 
-  it("describes locked geodesics without rotate or aim actions", () => {
+  it("describes locked geodesics without aim actions", () => {
     const definition = createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(createRuntimeMenuState({
       selectedWorldId: "cube",
       debugOverlayEnabled: true,
@@ -84,7 +84,7 @@ describe("desktopToolPalette", () => {
     if (view.content.kind !== "geodesic-cannon-actions") {
       throw new Error("Expected geodesic cannon actions content.");
     }
-    expect(view.content.disabledGeodesicActions).toEqual(["rotate:g-a", "aim:g-a"]);
+    expect(view.content.disabledGeodesicActions).toEqual(["aim:g-a"]);
   });
 
   it("describes the geometry computer action menu", () => {

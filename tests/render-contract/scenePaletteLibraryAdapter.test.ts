@@ -58,7 +58,7 @@ describe("scenePaletteLibraryAdapter", () => {
     adapter.dispose();
   });
 
-  it("renders geodesic ray emitter actions and enables aim", () => {
+  it("renders geodesic ray emitter actions with aim only for unlocked geodesics", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
     adapter.setDefinition(createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(
       createRuntimeMenuState({ selectedWorldId: "cube" }),
@@ -74,16 +74,15 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("geodesic-cannon-action:add-geodesic");
     expect(itemIds).toContain("geodesic-cannon-action:carry");
     expect(itemIds).toContain("geodesic-cannon-action:tie-and-detach");
-    expect(itemIds).toContain("geodesic-cannon-action:rotate:g-a");
+    expect(itemIds).not.toContain("geodesic-cannon-action:rotate:g-a");
     expect(itemIds).toContain("geodesic-cannon-action:aim:g-a");
     expect(itemIds).toContain("geodesic-cannon-action:delete:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:add-geodesic");
     expect(actionIds).toContain("geodesic-cannon-action:carry");
     expect(actionIds).toContain("geodesic-cannon-action:tie-and-detach");
-    expect(actionIds).toContain("geodesic-cannon-action:rotate:g-a");
+    expect(actionIds).not.toContain("geodesic-cannon-action:rotate:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:aim:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:delete:g-a");
-    expect(imageSources).toContain(publicAssetUrl("icons/arrow-circle-inverted.png"));
     expect(imageSources).toContain(publicAssetUrl("icons/aim-inverted.png"));
     expect(imageSources).toContain(publicAssetUrl("icons/carry-icon-white.png"));
     expect(imageSources).toContain(publicAssetUrl("icons/unlink-inverted.png"));

@@ -103,7 +103,7 @@ export function createWorldFocusMessageDefinition(
     case "protractor-angle":
       return withObjectHelp(options.object, {
         title,
-        actions: [primaryAction("remove-angle", "Remove")],
+        actions: [primaryAction("remove-angle", "Delete measurement")],
         helpTopicId: "protractor-angle",
       });
     case "geodesci-marmot":

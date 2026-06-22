@@ -10,6 +10,11 @@ import {
 import type { RuntimeObjectRegistry, RuntimeWorldObjectBase } from "./runtimeObjectRegistry";
 
 export const protractorAngleRadiusMeters = 0.3;
+export const protractorAngleLabelBadgeWidthMeters = 0.42;
+export const protractorAngleLabelBadgeHeightMeters = 0.1575;
+export const protractorAngleLabelVerticalOffsetMeters = 0.3;
+export const protractorAngleLabelAimPaddingMeters = 0.04;
+export const protractorAngleLabelAimDepthMeters = 0.12;
 
 export interface ProtractorAngleObject extends RuntimeWorldObjectBase {
   readonly kind: "protractor-angle";
@@ -20,6 +25,15 @@ export interface ProtractorAngleObject extends RuntimeWorldObjectBase {
   readonly angleRadians: number;
   readonly angleDegrees: number;
   readonly radiusMeters: number;
+  readonly labelHitbox?: ProtractorAngleLabelHitbox;
+}
+
+export interface ProtractorAngleLabelHitbox {
+  readonly center: Vec3;
+  readonly yawRadians: number;
+  readonly widthMeters: number;
+  readonly heightMeters: number;
+  readonly depthMeters: number;
 }
 
 export interface ProtractorCenterSelection {
@@ -127,9 +141,19 @@ export function createProtractorAngleObject(options: {
   readonly first: ProtractorDirectedGeodesic;
   readonly second: ProtractorDirectedGeodesic;
 }): ProtractorAngleObject {
+  if (!protractorSelectionsUseDifferentGeodesics(options.first, options.second)) {
+    throw new Error("Cannot create a protractor angle from the same geodesic twice.");
+  }
+
   const angleRadians = normalizePositiveRadians(options.second.yawRadians - options.first.yawRadians);
   const angleDegrees = angleRadians * 180 / Math.PI;
   const label = formatProtractorAngleLabel(options.first, options.second, angleDegrees);
+  const labelHitbox = createProtractorAngleLabelHitbox({
+    centerPoint: options.center.point,
+    firstYawRadians: options.first.yawRadians,
+    angleRadians,
+    radiusMeters: protractorAngleRadiusMeters,
+  });
 
   return {
     id: options.id,
@@ -137,7 +161,7 @@ export function createProtractorAngleObject(options: {
     cellId: options.center.cellId,
     localPose: yawRigidTransform3(options.first.yawRadians, options.center.point),
     aimStickyTarget: {
-      localPoint: options.center.point,
+      localPoint: labelHitbox.center,
     },
     portalRenderable: true,
     displayHelpMessage: "A persistent angle result between two selected geodesic sides. Use the primary action to remove it.",
@@ -152,6 +176,34 @@ export function createProtractorAngleObject(options: {
     angleRadians,
     angleDegrees,
     radiusMeters: protractorAngleRadiusMeters,
+    labelHitbox,
+  };
+}
+
+export function protractorSelectionsUseDifferentGeodesics(
+  first: Pick<ProtractorDirectedGeodesic, "geodesicId">,
+  second: Pick<ProtractorDirectedGeodesic, "geodesicId">,
+): boolean {
+  return first.geodesicId !== second.geodesicId;
+}
+
+export function createProtractorAngleLabelHitbox(options: {
+  readonly centerPoint: Vec3;
+  readonly firstYawRadians: number;
+  readonly angleRadians: number;
+  readonly radiusMeters: number;
+}): ProtractorAngleLabelHitbox {
+  const bisectorYawRadians = normalizeSignedRadians(options.firstYawRadians + options.angleRadians / 2);
+  return {
+    center: {
+      x: options.centerPoint.x + Math.cos(bisectorYawRadians) * options.radiusMeters,
+      y: options.centerPoint.y + Math.sin(bisectorYawRadians) * options.radiusMeters,
+      z: options.centerPoint.z + protractorAngleLabelVerticalOffsetMeters,
+    },
+    yawRadians: normalizeSignedRadians(bisectorYawRadians + Math.PI / 2),
+    widthMeters: protractorAngleLabelBadgeWidthMeters + protractorAngleLabelAimPaddingMeters * 2,
+    heightMeters: protractorAngleLabelBadgeHeightMeters + protractorAngleLabelAimPaddingMeters * 2,
+    depthMeters: protractorAngleLabelAimDepthMeters,
   };
 }
 

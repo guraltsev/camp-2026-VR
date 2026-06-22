@@ -122,7 +122,9 @@ import {
   refreshMeasuredGeodesicLengthObject,
 } from "../../world-objects/measureLengthTool";
 import {
+  createProtractorAngleLabelHitbox,
   createProtractorAngleObject,
+  protractorSelectionsUseDifferentGeodesics,
   refreshProtractorAngleObject,
   resolveProtractorCenterSelection,
   resolveProtractorDirectedGeodesicSelection,
@@ -3337,7 +3339,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const material = new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
-      depthTest: false,
+      depthTest: true,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -3739,6 +3741,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         first: selected,
       };
       syncDesktopPalette();
+      return;
+    }
+
+    if (!protractorSelectionsUseDifferentGeodesics(activeProtractorToolState.first, selected)) {
       return;
     }
 
@@ -5102,11 +5108,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const hoverSelection = activeProtractorToolState.center
       ? resolveProtractorDirectedSelectionFromAimTarget(usableTarget, activeProtractorToolState.center)
       : undefined;
+    const validHoverSelection = hoverSelection && activeProtractorToolState.first &&
+        !protractorSelectionsUseDifferentGeodesics(activeProtractorToolState.first, hoverSelection)
+      ? undefined
+      : hoverSelection;
     const feedback = createProtractorToolFeedback({
       center,
       centerLocked: Boolean(activeProtractorToolState.center),
       first: activeProtractorToolState.first,
-      hover: hoverSelection,
+      hover: validHoverSelection,
     });
     if (!feedback) {
       clearProtractorToolFeedback();
@@ -5746,6 +5756,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return buildGeodesicSegmentSelectableHitboxDebugMesh(object);
     }
 
+    if (object.kind === "protractor-angle") {
+      return buildProtractorAngleLabelBoxDebugMesh(
+        object,
+        "selectable-hitbox:protractor-angle-label",
+        createSelectableHitboxDebugMaterial(selectableObjectHitboxDebugColor),
+        selectableHitboxDebugRenderOrder,
+      );
+    }
+
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
     return bounds ? buildCylinderSelectableHitboxDebugMesh(bounds, selectableObjectHitboxDebugColor) : undefined;
   }
@@ -5762,6 +5781,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     if (object.kind === "geodesic-cannon") {
       const bounds = getGeodesicEmitterAimCylinderBounds(object);
       return bounds ? buildGeodesicEmitterAimCollisionOutlineDebugMesh(object, bounds) : undefined;
+    }
+
+    if (object.kind === "protractor-angle") {
+      return buildProtractorAngleLabelBoxDebugMesh(
+        object,
+        "aim-collision-outline:protractor-angle-label",
+        createAimCollisionOutlineDebugMaterial(),
+        aimCollisionOutlineDebugRenderOrder,
+      );
     }
 
     const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(object));
@@ -6459,6 +6487,28 @@ function buildSphereAimCollisionOutlineDebugMesh(
   mesh.name = name;
   mesh.position.copy(worldPointToThree(center));
   mesh.renderOrder = aimCollisionOutlineDebugRenderOrder;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+function buildProtractorAngleLabelBoxDebugMesh(
+  object: Extract<RuntimeWorldObject, { readonly kind: "protractor-angle" }>,
+  name: string,
+  material: THREE.Material,
+  renderOrder: number,
+): THREE.Mesh {
+  const hitbox = object.labelHitbox ?? createProtractorAngleLabelHitbox({
+    centerPoint: object.centerPoint,
+    firstYawRadians: object.first.yawRadians,
+    angleRadians: object.angleRadians,
+    radiusMeters: object.radiusMeters,
+  });
+  const geometry = new THREE.BoxGeometry(hitbox.widthMeters, hitbox.heightMeters, hitbox.depthMeters);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = name;
+  mesh.position.copy(worldPointToThree(hitbox.center));
+  mesh.rotation.y = hitbox.yawRadians;
+  mesh.renderOrder = renderOrder;
   mesh.frustumCulled = false;
   return mesh;
 }
