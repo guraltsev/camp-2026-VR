@@ -3,6 +3,7 @@ import { debugOptionDefinitions, type DebugOptionId } from "./debugOptions";
 import { parseDebugLevel, type DebugLevelId } from "./debugLevels";
 import { parsePortalPanelMode, type PortalPanelModeId } from "./portalPanelMode";
 import type { RuntimeDebugOverlayItemId, RuntimeToolId } from "../runtime/runtimeMenuState";
+import { publicUrl } from "./assetUrls";
 
 export type ConfigurableToolId = "place-flag" | "geodesic-cannon" | "measure-length" | "protractor";
 
@@ -110,7 +111,7 @@ export function normalizeAppConfigName(rawValue: string | null | undefined): str
 }
 
 export function buildAppConfigUrl(configName: string): string {
-  return `/${normalizeAppConfigName(configName)}.config.js`;
+  return publicUrl(`${normalizeAppConfigName(configName)}.config.js`);
 }
 
 export function readAppConfigForwardName(rawConfig: unknown): string | undefined {

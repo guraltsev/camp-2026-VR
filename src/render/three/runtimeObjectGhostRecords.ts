@@ -6,15 +6,19 @@ import {
   projectPointAlongSide,
   signedDistanceToSide,
 } from "../../movement/collision";
-import { runtimeObjectToDynamicObjectState, type RuntimeWorldObject } from "../../world-objects/runtimeObjectRegistry";
+import type { DynamicObjectState } from "../../movement/dynamicObject";
 import { rigidTransformToThreeMatrix } from "./worldAxes";
 import type { RuntimeObjectRenderRecord } from "./runtimeObjectRenderRecords";
 
 export const defaultPortalGhostActivationClearanceMeters = 0.02;
 
+export type PortalGhostRenderableObject = DynamicObjectState & {
+  readonly id: string;
+};
+
 export interface PortalGhostRuntimeObjectRenderRecordRequest {
   readonly world: CompiledCellComplex;
-  readonly object: RuntimeWorldObject;
+  readonly object: PortalGhostRenderableObject;
   readonly archetypeKeys: Iterable<string>;
   readonly activationClearanceMeters?: number;
 }
@@ -28,7 +32,7 @@ export function collectPortalGhostRuntimeObjectRenderRecords(
     return [];
   }
 
-  const bounds = getDynamicObjectCollisionBounds(runtimeObjectToDynamicObjectState(request.object));
+  const bounds = getDynamicObjectCollisionBounds(request.object);
 
   if (!bounds) {
     return [];

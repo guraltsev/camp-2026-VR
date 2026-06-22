@@ -1,5 +1,6 @@
 import { Component, Container, Image, Text } from "@pmndrs/uikit";
 import { ArrowLeft, ChevronLeft, ChevronRight, House, RotateCw, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
+import { publicAssetUrl } from "../../glue/assetUrls";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -76,17 +77,17 @@ const mutedTextColor = "#e2e8f0";
 const scrollbarColor = "#38bdf8";
 const scrollbarBorderColor = "#0f172a";
 const signIconSources: Record<PlacedFlagType, string> = {
-  WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
-  WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
+  WoodenSign1: publicAssetUrl("WoodenSign1/WoodenSign1.png"),
+  WoodenSign2: publicAssetUrl("WoodenSign2/WoodenSign2.png"),
 };
-const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
-const aimIconSource = "/assets/icons/aim-inverted.png";
-const carryIconSource = "/assets/icons/carry-icon-white.png";
-const lockIconSource = "/assets/icons/lock.png";
-const unlinkIconSource = "/assets/icons/unlink-inverted.png";
-const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
-const protractorToolIconSource = "/assets/icons/protractor.png";
-const measureLengthToolIconSource = "/assets/icons/Ruler.png";
+const rotateIconSource = publicAssetUrl("icons/arrow-circle-inverted.png");
+const aimIconSource = publicAssetUrl("icons/aim-inverted.png");
+const carryIconSource = publicAssetUrl("icons/carry-icon-white.png");
+const lockIconSource = publicAssetUrl("icons/lock.png");
+const unlinkIconSource = publicAssetUrl("icons/unlink-inverted.png");
+const rayToolIconSource = publicAssetUrl("flashlight/Lightsaber.png");
+const protractorToolIconSource = publicAssetUrl("icons/protractor.png");
+const measureLengthToolIconSource = publicAssetUrl("icons/Ruler.png");
 const signTypeLabels: Record<PlacedFlagType, string> = {
   WoodenSign1: "Wooden Sign 1",
   WoodenSign2: "Wooden Sign 2",

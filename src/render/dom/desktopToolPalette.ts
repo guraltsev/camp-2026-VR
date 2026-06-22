@@ -1,4 +1,5 @@
 import type { PaletteDefinition, PaletteHeaderAction } from "../../ui/paletteDefinition";
+import { publicAssetUrl } from "../../glue/assetUrls";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import type { ConfigurableToolId } from "../../glue/appConfig";
 import type {
@@ -8,14 +9,14 @@ import type {
 } from "../../runtime/runtimeMenuState";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
 
-const rotateIconSource = "/assets/icons/arrow-circle-inverted.png";
-const aimIconSource = "/assets/icons/aim-inverted.png";
-const lockIconSource = "/assets/icons/lock.png";
-const carryIconSource = "/assets/icons/carry-icon-white.png";
-const unlinkIconSource = "/assets/icons/unlink-inverted.png";
-const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
-const protractorToolIconSource = "/assets/icons/protractor.png";
-const measureLengthToolIconSource = "/assets/icons/Ruler.png";
+const rotateIconSource = publicAssetUrl("icons/arrow-circle-inverted.png");
+const aimIconSource = publicAssetUrl("icons/aim-inverted.png");
+const lockIconSource = publicAssetUrl("icons/lock.png");
+const carryIconSource = publicAssetUrl("icons/carry-icon-white.png");
+const unlinkIconSource = publicAssetUrl("icons/unlink-inverted.png");
+const rayToolIconSource = publicAssetUrl("flashlight/Lightsaber.png");
+const protractorToolIconSource = publicAssetUrl("icons/protractor.png");
+const measureLengthToolIconSource = publicAssetUrl("icons/Ruler.png");
 
 export interface DesktopPaletteView {
   readonly pageId: PaletteDefinition["pageId"];
@@ -1194,19 +1195,19 @@ function createInlineInputIcon(label: string): HTMLImageElement {
 function inlineInputIconSrcByLabel(label: string): string {
   switch (label) {
     case "Arrow keys":
-      return "/assets/icons/arrowkeys.png";
+      return publicAssetUrl("icons/arrowkeys.png");
     case "Left click":
-      return "/assets/icons/left-click-icon.png";
+      return publicAssetUrl("icons/left-click-icon.png");
     case "Right click":
-      return "/assets/icons/right-click-icon.png";
+      return publicAssetUrl("icons/right-click-icon.png");
     case "F":
-      return "/assets/icons/f-alphabet-round-icon.png";
+      return publicAssetUrl("icons/f-alphabet-round-icon.png");
     case "B":
-      return "/assets/icons/b-alphabet-round-icon.png";
+      return publicAssetUrl("icons/b-alphabet-round-icon.png");
     case "H":
-      return "/assets/icons/h-alphabet-round-icon.png";
+      return publicAssetUrl("icons/h-alphabet-round-icon.png");
     default:
-      return "/assets/icons/h-alphabet-round-icon.png";
+      return publicAssetUrl("icons/h-alphabet-round-icon.png");
   }
 }
 

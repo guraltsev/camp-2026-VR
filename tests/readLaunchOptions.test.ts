@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeAppConfig,
   normalizeAppConfigName,
+  buildAppConfigUrl,
   readAppConfigForwardName,
   readAppConfigName,
 } from "../src/glue/appConfig";
@@ -179,6 +180,7 @@ describe("readLaunchOptions", () => {
     expect(normalizeAppConfigName("classroom.config.js")).toBe("classroom");
     expect(normalizeAppConfigName("../secret")).toBe("default");
     expect(normalizeAppConfigName("")).toBe("default");
+    expect(buildAppConfigUrl("classroom")).toBe("/classroom.config.js");
   });
 
   it("reads safe app config forward targets", () => {

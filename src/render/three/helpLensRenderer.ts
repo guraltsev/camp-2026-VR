@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { publicAssetUrl } from "../../glue/assetUrls";
 import type { HelpLensDefinition, HelpLensRow } from "../../ui/helpLensDefinition";
 
 export interface HelpLensRenderer {
@@ -127,19 +128,19 @@ function createInlineHintIcon(label: string): HTMLImageElement {
 function inlineIconSrcByLabel(label: string): string {
   switch (label) {
     case "Arrow keys":
-      return "/assets/icons/arrowkeys.png";
+      return publicAssetUrl("icons/arrowkeys.png");
     case "Left click":
-      return "/assets/icons/left-click-icon.png";
+      return publicAssetUrl("icons/left-click-icon.png");
     case "Right click":
-      return "/assets/icons/right-click-icon.png";
+      return publicAssetUrl("icons/right-click-icon.png");
     case "F":
-      return "/assets/icons/f-alphabet-round-icon.png";
+      return publicAssetUrl("icons/f-alphabet-round-icon.png");
     case "B":
-      return "/assets/icons/b-alphabet-round-icon.png";
+      return publicAssetUrl("icons/b-alphabet-round-icon.png");
     case "H":
-      return "/assets/icons/h-alphabet-round-icon.png";
+      return publicAssetUrl("icons/h-alphabet-round-icon.png");
     case "Y":
-      return "/assets/icons/y-alphabet-round-icon.png";
+      return publicAssetUrl("icons/y-alphabet-round-icon.png");
   }
 
   return "";

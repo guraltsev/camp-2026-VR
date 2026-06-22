@@ -31,6 +31,7 @@ const handSideSplitEpsilon = 1e-5;
 const wristToolIndicatorLocalOffset = new THREE.Vector3(0, 0.18, -0.06);
 const wristToolIndicatorScaleMeters = 0.082;
 const wristToolIndicatorRenderOrder = 1004;
+const wristToolIndicatorCarryIconSource = publicAssetUrl("icons/carry-icon.png");
 
 type XrFrameWithJointPose = XRFrame & {
   getJointPose?(jointSpace: XRSpace, baseSpace: XRReferenceSpace): Pick<XRPose, "transform"> | undefined;
@@ -136,14 +137,14 @@ export interface WristToolIndicatorVisual {
 }
 
 const wristToolIndicatorSignIconSources: Record<PlacedFlagType, string> = {
-  WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
-  WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
+  WoodenSign1: publicAssetUrl("WoodenSign1/WoodenSign1.png"),
+  WoodenSign2: publicAssetUrl("WoodenSign2/WoodenSign2.png"),
 };
-const wristToolIndicatorRotateIconSource = "/assets/icons/arrow-circle-inverted.png";
-const wristToolIndicatorAimIconSource = "/assets/icons/aim-inverted.png";
-const wristToolIndicatorRayIconSource = "/assets/flashlight/Lightsaber.png";
-const wristToolIndicatorProtractorIconSource = "/assets/icons/protractor.png";
-const wristToolIndicatorMeasureLengthIconSource = "/assets/icons/Ruler.png";
+const wristToolIndicatorRotateIconSource = publicAssetUrl("icons/arrow-circle-inverted.png");
+const wristToolIndicatorAimIconSource = publicAssetUrl("icons/aim-inverted.png");
+const wristToolIndicatorRayIconSource = publicAssetUrl("flashlight/Lightsaber.png");
+const wristToolIndicatorProtractorIconSource = publicAssetUrl("icons/protractor.png");
+const wristToolIndicatorMeasureLengthIconSource = publicAssetUrl("icons/Ruler.png");
 
 export function resolveWristToolIndicatorVisual(
   toolId: RuntimeToolId,
@@ -190,7 +191,7 @@ export function resolveWristToolIndicatorVisual(
     case "geodesic-cannon-carry":
       return {
         icon: "image",
-        imageSource: "/assets/icons/carry-icon.png",
+        imageSource: wristToolIndicatorCarryIconSource,
         color: "#fb7ac8",
         label: "Carry",
       };

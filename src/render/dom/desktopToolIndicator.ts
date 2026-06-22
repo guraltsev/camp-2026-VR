@@ -1,14 +1,15 @@
+import { publicAssetUrl } from "../../glue/assetUrls";
 import type { RuntimeDesktopToolId } from "../../runtime/runtimeMenuState";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
 
 const signIconSources: Record<PlacedFlagType, string> = {
-  WoodenSign1: "/assets/WoodenSign1/WoodenSign1.png",
-  WoodenSign2: "/assets/WoodenSign2/WoodenSign2.png",
+  WoodenSign1: publicAssetUrl("WoodenSign1/WoodenSign1.png"),
+  WoodenSign2: publicAssetUrl("WoodenSign2/WoodenSign2.png"),
 };
-const rayToolIconSource = "/assets/flashlight/Lightsaber.png";
-const carryToolIconSource = "/assets/icons/carry-icon.png";
-const protractorToolIconSource = "/assets/icons/protractor.png";
-const measureLengthToolIconSource = "/assets/icons/Ruler.png";
+const rayToolIconSource = publicAssetUrl("flashlight/Lightsaber.png");
+const carryToolIconSource = publicAssetUrl("icons/carry-icon.png");
+const protractorToolIconSource = publicAssetUrl("icons/protractor.png");
+const measureLengthToolIconSource = publicAssetUrl("icons/Ruler.png");
 
 export interface DesktopToolIndicator {
   readonly root: HTMLDivElement;

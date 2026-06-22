@@ -2610,7 +2610,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return playerRoverRenderModel
       ? [
           ...records,
-          ...playerRoverRenderModel.collectRecords(playerPose, runtimeObjectRenderSourcesByKey.keys()),
+          ...playerRoverRenderModel.collectRecords(playerPose, runtimeObjectRenderSourcesByKey.keys(), {
+            ghostWorld: activeWorld(),
+            collision: createPlayerCollisionState(playerPose).collision,
+          }),
         ]
       : records;
   }
