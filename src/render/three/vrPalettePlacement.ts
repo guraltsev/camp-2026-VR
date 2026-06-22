@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-export type VrPaletteAnchorKind = "head";
+export type VrPaletteAnchorKind = "world";
 
 export interface VrPoseSample {
   readonly position: THREE.Vector3;
@@ -21,13 +21,15 @@ export interface VrPalettePlacement {
   readonly quaternion: THREE.Quaternion;
 }
 
+export const VR_PALETTE_AUTO_CLOSE_DISTANCE_METERS = 1;
+
 const upAxis = new THREE.Vector3(0, 1, 0);
 const headOffset = new THREE.Vector3(0, -0.12, -0.72);
 const lookAtMatrix = new THREE.Matrix4();
 const positiveZFacingFlip = new THREE.Quaternion().setFromAxisAngle(upAxis, Math.PI);
 
 export function resolveVrPalettePlacement(options: ResolveVrPalettePlacementOptions): VrPalettePlacement {
-  const anchorKind: VrPaletteAnchorKind = "head";
+  const anchorKind: VrPaletteAnchorKind = "world";
   const targetPosition = options.head.position.clone().add(applyLocalOffset(headOffset, options.head.quaternion));
   const targetQuaternion = resolveFacingQuaternion(targetPosition, options.head.position);
 
@@ -52,6 +54,16 @@ export function resolveVrPalettePlacement(options: ResolveVrPalettePlacementOpti
     position,
     quaternion,
   };
+}
+
+export function shouldAutoCloseVrPalette(request: {
+  readonly headPosition: THREE.Vector3;
+  readonly palettePosition: THREE.Vector3;
+  readonly maxDistanceMeters?: number;
+}): boolean {
+  const maxDistanceMeters = request.maxDistanceMeters ?? VR_PALETTE_AUTO_CLOSE_DISTANCE_METERS;
+
+  return request.headPosition.distanceTo(request.palettePosition) > maxDistanceMeters;
 }
 
 function applyLocalOffset(offset: THREE.Vector3, quaternion?: THREE.Quaternion): THREE.Vector3 {

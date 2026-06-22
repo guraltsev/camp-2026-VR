@@ -114,13 +114,13 @@ export function createXrPlayerRig(camera: THREE.PerspectiveCamera, options: Part
     resolveCameraYawRadians(headLocalYawRadians = 0) {
       return root.rotation.y + headLocalYawRadians;
     },
-    consumePhysicalInput(headLocalMeters, _yawRadians) {
+    consumePhysicalInput(headLocalMeters, yawRadians) {
       const physical = computePhysicalRoomScaleDisplacement({
         previousHeadLocalMeters: previousAcceptedHeadLocalMeters,
         currentHeadLocalMeters: headLocalMeters,
         maxPhysicalStepMeters: comfort.maxPhysicalStepMeters,
       });
-      const localDisplacement = physical.localDisplacement;
+      const localDisplacement = globalHorizontalDeltaToPlayerLocal(physical.localDisplacement, yawRadians);
 
       return {
         localDisplacement,

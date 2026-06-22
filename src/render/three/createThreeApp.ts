@@ -269,7 +269,7 @@ import { createXrControllerHandModels } from "./xrControllerHandModels";
 import { createXrEntryUi } from "./xrEntryUi";
 import { resolveXrPortalEyeRenderRoot, type XrPortalEyeRenderRoot } from "./xrPortalEye";
 import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose, xrRigidTransformLocalMatrix } from "./xrPlayerRig";
-import { resolveFrontFacingQuaternion, resolveVrPalettePlacement } from "./vrPalettePlacement";
+import { resolveFrontFacingQuaternion, resolveVrPalettePlacement, shouldAutoCloseVrPalette } from "./vrPalettePlacement";
 import { createXrScenePaletteInput } from "./xrScenePaletteInput";
 import {
   createXrSessionState,
@@ -421,8 +421,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     debugOverlayItems: options.debugOverlayItems,
   });
   let previousDesktopPalettePlacement: ReturnType<typeof resolveDesktopScenePalettePlacement> | undefined;
-  let previousXrPalettePosition: THREE.Vector3 | undefined;
-  let previousXrPaletteQuaternion: THREE.Quaternion | undefined;
+  let fixedXrPalettePlacement: ReturnType<typeof resolveVrPalettePlacement> | undefined;
   let geodesicCannonRotationHeadHeightMeters: number | undefined;
   let geodesicCannonRotationTargetLengthMeters: number | undefined;
   let aimTargetCycleState: { readonly signature: string; readonly index: number } | undefined;
@@ -500,6 +499,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       syncDesktopPalette();
     },
     onCloseRequested() {
+      fixedXrPalettePlacement = undefined;
       cancelRuntimeMenuAndSelectedTool();
     },
     onShowSettingsRequested() {
@@ -1703,6 +1703,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         xrRig.reset();
         xrScenePaletteInput.reset();
         xrControllerHandModels.reset();
+        fixedXrPalettePlacement = undefined;
         scenePaletteController.setVisible(false);
         xrEntryUi.update(xrSessionState);
         syncXrDebugState("desktop");
@@ -1729,20 +1730,28 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   ): void {
     if (xrActive && xrFrame && xrReferenceSpace) {
       const inputSources = [...(renderer.xr.getSession()?.inputSources ?? [])];
-      const headPosition = xrHeadWorldPose?.position;
-      const headQuaternion = xrHeadWorldPose?.quaternion;
-      const placement = resolveVrPalettePlacement({
+      const headPosition = xrHeadWorldPose?.position ?? camera.getWorldPosition(new THREE.Vector3());
+      const headQuaternion = xrHeadWorldPose?.quaternion ?? camera.getWorldQuaternion(new THREE.Quaternion());
+
+      if (!menuState.isOpen) {
+        fixedXrPalettePlacement = undefined;
+      } else if (
+        fixedXrPalettePlacement &&
+        shouldAutoCloseVrPalette({
+          headPosition,
+          palettePosition: fixedXrPalettePlacement.position,
+        })
+      ) {
+        cancelRuntimeMenuAndSelectedTool();
+        fixedXrPalettePlacement = undefined;
+      }
+
+      const placement = fixedXrPalettePlacement ?? resolveVrPalettePlacement({
         head: {
-          position: headPosition ?? camera.getWorldPosition(new THREE.Vector3()),
-          quaternion: headQuaternion ?? camera.getWorldQuaternion(new THREE.Quaternion()),
+          position: headPosition,
+          quaternion: headQuaternion,
         },
-        previousPosition: previousXrPalettePosition,
-        previousQuaternion: previousXrPaletteQuaternion,
-        smoothing: 0.22,
-        freeze: frame.paletteSelectPressed === true,
       });
-      previousXrPalettePosition = placement.position.clone();
-      previousXrPaletteQuaternion = placement.quaternion.clone();
       scenePaletteController.update({
         input: xrScenePaletteInput.update({
           deltaSeconds,
@@ -1754,6 +1763,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         definition: createPaletteDefinition(menuState, appConfig, "xr"),
         placement,
       });
+      if (menuState.isOpen && !fixedXrPalettePlacement) {
+        fixedXrPalettePlacement = {
+          anchorKind: placement.anchorKind,
+          position: placement.position.clone(),
+          quaternion: placement.quaternion.clone(),
+        };
+      }
       xrControllerHandModels.update({
         inputSources,
         xrFrame,
