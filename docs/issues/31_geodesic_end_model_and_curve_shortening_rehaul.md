@@ -90,9 +90,16 @@ where `endRole` is `start` or `end`. Two selections with the same `geodesicId`
 are valid if they refer to different endpoint roles. Two selections are invalid
 only if they refer to the same `(geodesicId, endRole)` pair.
 
+`start` and `end` are logical endpoint roles of one geodesic interval. They are
+not physical source/incoming emitters, and they are not cloned emitter objects.
+Each role attaches to one existing anchor object. That anchor may be a visible
+geodesic emitter or an invisible free endpoint object. If both roles attach to
+the same emitter, the registry still contains exactly one emitter object;
+reverse lookup returns two endpoint attachments for that same anchor.
+
 ## Invariants
 
-- A geodesic always has exactly two endpoint attachments.
+- A geodesic interval always has exactly two endpoint attachments.
 - Every endpoint attachment points to an anchor object with
   `canAttachGeodesics: true`.
 - A locked geodesic has two emitter anchors. The two endpoints may attach to
@@ -106,17 +113,26 @@ only if they refer to the same `(geodesicId, endRole)` pair.
   `FreeGeodesicEndObject`.
 - A geodesic segment object never spans a portal. Portal crossing remains a
   chain of segment objects.
-- A geodesic may carry a portal word, lift transform, or equivalent path
-  metadata. Same visible emitter coordinates do not imply same global endpoint
-  lift.
+- A geodesic interval carries `startCellId` and `portalWord` as its path/lift
+  source of truth. The end cell id, endpoint tangents, lifted endpoint
+  coordinates, and angles are computed quantities.
+- Given an initial position in `startCellId`, `portalWord` determines the
+  Euclidean coordinates of the reached endpoint in the unfolded source-cell
+  coordinate system, even when those coordinates are outside the visible polygon
+  of the source cell.
+- Rendering still uses real per-cell segment objects. The unfolded coordinates
+  are for identity and rebuild math only; they are not fake renderable objects
+  outside the portal traversal code.
 - Homotopically distinct locked geodesics between the same emitters are allowed.
   Duplicate pruning must compare endpoint roles and portal words, not only
   emitter ids and local coordinates.
+- Same-emitter intervals with zero lifted endpoint displacement are degenerate
+  and should be rejected or deleted, even if the stored portal word is nonempty.
 
 ## Proposed Domain Model
 
-Introduce geodesic anchor objects and explicit geodesic records in the existing
-runtime object registry.
+Introduce geodesic anchor objects and explicit geodesic interval records in the
+existing runtime object registry.
 
 An anchor is any runtime object that can host geodesic endpoints. Geodesic
 emitters are visible anchors. Invisible free ends are anchors used for open
@@ -133,19 +149,18 @@ interface GeodesicAnchorObject {
 interface FreeGeodesicEndObject extends RuntimeWorldObjectBase {
   readonly kind: "free-geodesic-end";
   readonly canAttachGeodesics: true;
-  readonly localPoint: Vec3;
   readonly faceId?: string;
 }
 ```
 
 `FreeGeodesicEndObject` is not rendered as a user-facing object. It is a
-topological anchor. It may have one attached geodesic endpoint for an ordinary
-free ray, or two attached geodesic endpoints for a curve-shortening glued
-point.
+topological anchor. Its position is `localPose.translation`. It may have one
+attached geodesic endpoint for an ordinary free ray, or two attached geodesic
+endpoints for a curve-shortening glued point.
 
 Free-end lifecycle:
 
-- creating an aimable geodesic creates one `GeodesicObject` and one
+- creating an aimable geodesic creates one `GeodesicIntervalObject` and one
   `FreeGeodesicEndObject`;
 - the `start` endpoint attaches to the emitter and the `end` endpoint attaches
   to the free end;
@@ -156,18 +171,23 @@ Free-end lifecycle:
 - deleting a geodesic deletes any free-end anchor that no remaining geodesic
   endpoint uses.
 
-A geodesic is the source of truth for its two endpoint identities and path
-word. The segment chain remains drawable/cache output derived from this record.
+A geodesic interval is the source of truth for its two endpoint identities and
+portal word. The segment chain remains drawable/cache output derived from this
+record. The interval object itself is invisible and noncollidable: it exists to
+own identity, attachments, and lift data, not to render geometry.
+
 Exact naming can adapt to the codebase, but the model should be equivalent to:
 
 ```ts
 type GeodesicEndRole = "start" | "end";
+type GeodesicHalfRole = "start" | "end";
 
-interface GeodesicObject extends RuntimeWorldObjectBase {
-  readonly kind: "geodesic";
+interface GeodesicIntervalObject extends RuntimeWorldObjectBase {
+  readonly kind: "geodesic-interval";
   readonly start: GeodesicEndpointAttachment;
   readonly end: GeodesicEndpointAttachment;
-  readonly pathWord: readonly GeodesicPortalTraversal[];
+  readonly startCellId: string;
+  readonly portalWord: readonly GeodesicPortalTraversal[];
   readonly motionState: "stable" | "moving";
 }
 
@@ -175,15 +195,32 @@ interface GeodesicEndpointAttachment {
   readonly geodesicId: string;
   readonly role: GeodesicEndRole;
   readonly anchorObjectId: string;
-  readonly tangentYawRadians?: number;
+}
+
+interface GeodesicSegmentObject extends RuntimeWorldObjectBase {
+  readonly kind: "geodesic-segment";
+  readonly geodesicId: string;
+  readonly segmentIndex: number;
+  readonly halfRole: GeodesicHalfRole;
 }
 ```
 
 The source of truth is therefore:
 
 - anchor objects own positions and can host endpoint attachments;
-- geodesic objects own endpoint identities and path words;
-- segment objects are derived visual traces and never define identity.
+- geodesic interval objects own endpoint identities, `startCellId`, and
+  `portalWord`;
+- segment objects are derived visual traces and never define endpoint identity;
+- end cell id, endpoint tangents, angles, and lifted endpoint coordinates are
+  computed from anchor poses, `startCellId`, and `portalWord`.
+
+Segment chains must be split into two half-geodesics for interaction and
+highlighting. Every `GeodesicSegmentObject` belongs entirely to either the
+`start` half or the `end` half. If the half boundary falls inside a traced cell
+segment, derived segment creation splits that trace into two segment objects at
+total arclength / 2. A hit exactly at the midpoint resolves to the `start` half.
+The half role is stored on each segment and refreshed whenever the derived chain
+is rebuilt.
 
 Required helper APIs:
 
@@ -202,17 +239,24 @@ function collectEmitterGeodesicEndpointSelections(
   registry: RuntimeObjectRegistry,
   emitterId: string,
 ): readonly GeodesicEndpointSelection[];
+
+function resolveGeodesicEndpointSelectionFromSegmentHit(
+  registry: RuntimeObjectRegistry,
+  segmentId: string,
+): GeodesicEndpointSelection | undefined;
 ```
 
 Reverse lookup is the public way to answer:
 
 - which geodesic endpoints are attached to this emitter?
 - which geodesic endpoints are attached to this free end?
-- which tangent does an endpoint present at its anchor?
-- which portal word/lift distinguishes this endpoint from another one?
+- which endpoint role does a hit segment select?
+- which computed tangent does an endpoint present at its anchor?
+- which portal word/lift distinguishes this interval from another one?
 
-Do not turn a portal-wrapped geodesic into one renderer object. A geodesic owns a
-path word and a derived segment chain. Segment objects still never span portals.
+Do not turn a portal-wrapped geodesic into one renderer object. A geodesic
+interval owns a portal word and a derived segment chain. Segment objects still
+never span portals.
 
 An aimable free geodesic is a special case of this model: one endpoint is
 attached to an emitter, the other endpoint is attached to a
@@ -220,7 +264,7 @@ attached to an emitter, the other endpoint is attached to a
 and the geodesic is not `moving`. This condition should be checked through
 reverse lookup, not encoded as a separate object kind.
 
-Visual state is derived from the geodesic record:
+Visual state is derived from the geodesic interval:
 
 - locked geodesic: both endpoint anchors are emitters; render derived segments
   with the locked color;
@@ -233,11 +277,16 @@ Visual state is derived from the geodesic record:
 
 ### Selection
 
-Selecting a geodesic at an emitter should select an endpoint role, not only a
-geodesic id.
+Selecting a geodesic in the world should resolve to an endpoint role, not only
+a geodesic id.
 
-Palette rows may still display `G1`, `G2`, and so on, but action callbacks
-should carry enough information to identify the selected endpoint:
+Palette rows should still display exactly one entry per geodesic interval:
+`G1`, `G2`, and so on. Do not show separate menu rows for `G1 start` and
+`G1 end`. Endpoint-specific identity comes from world hits on half-segments and
+from reverse lookup at anchors, not from duplicating menu entries.
+
+Action callbacks that operate on a selected endpoint should carry enough
+information to identify that endpoint:
 
 ```ts
 interface GeodesicEndpointSelection {
@@ -247,8 +296,16 @@ interface GeodesicEndpointSelection {
 }
 ```
 
-This also lets the same geodesic appear twice at one emitter when it arrives in
-two different ways.
+This lets the same geodesic interval expose two endpoint selections at one
+emitter when both logical endpoint roles attach to the same anchor. That still
+does not duplicate the emitter or duplicate the geodesic's menu row.
+
+For world aiming and highlighting, the derived segment chain is split into two
+half-geodesics by arclength. A hit on a segment whose `halfRole` is `start`
+selects the interval's `start` endpoint role. A hit on a segment whose
+`halfRole` is `end` selects the interval's `end` endpoint role. Because the
+midpoint is physically split into two segment objects, every hit has a stable
+endpoint-role interpretation.
 
 ### Protractor
 
@@ -280,12 +337,13 @@ Tie/release at an emitter should:
 1. Resolve the two selected endpoint roles at that emitter.
 2. Verify they are two different endpoint selections.
 3. Identify the two opposite endpoint attachments.
-4. Remove or replace the old geodesic records that used the detached endpoints.
+4. Remove or replace the old geodesic interval records that used the detached
+   endpoints.
 5. Create a `FreeGeodesicEndObject` at the detached point.
 6. Create a curve-shortening pair from the opposite emitter-attached endpoints
    to the shared free end.
 7. Mark the two temporary geodesics as `moving`.
-8. Preserve portal/lift metadata from both incoming arcs.
+8. Preserve portal/lift metadata from both incident arcs.
 
 Special case that must be valid:
 
@@ -312,6 +370,11 @@ replaced by a portal-aware initialization:
 
 ## Curve Shortening Regime
 
+This section describes the target model, but it is not greenlit for
+implementation until a complete curve-shortening algorithm note exists. Phases
+A through E should land first. Phase F should not be started from this section
+alone.
+
 Curve shortening is a state over two geodesic halves, not a special state of one
 ordinary locked geodesic.
 
@@ -335,7 +398,6 @@ interface CurveShorteningPairObject extends RuntimeWorldObjectBase {
 interface FreeGeodesicEndObject extends RuntimeWorldObjectBase {
   readonly kind: "free-geodesic-end";
   readonly canAttachGeodesics: true;
-  readonly localPoint: Vec3;
   readonly liftFromFirstEndpoint?: readonly GeodesicPortalTraversal[];
 }
 ```
@@ -346,10 +408,10 @@ attachments in the shortening pair.
 
 Creation:
 
-- tie/release deletes or replaces the detached locked geodesic records;
+- tie/release deletes or replaces the detached locked geodesic interval records;
 - it creates one shared `FreeGeodesicEndObject` at the detached emitter point;
-- it creates two moving `GeodesicObject`s whose free endpoints attach to the
-  shared free end;
+- it creates two moving `GeodesicIntervalObject`s whose free endpoints attach
+  to the shared free end;
 - each moving geodesic keeps the portal word/lift metadata for the corresponding
   surviving half;
 - it creates one `CurveShorteningPairObject` referencing the two moving
@@ -410,8 +472,8 @@ It must not assume the result is one segment. Instead:
    halves.
 2. Trace the final locally straight path through the cell complex.
 3. Create a segment chain, with one segment per cell traversal.
-4. Create one stable geodesic record whose two endpoint attachments point to
-   the final emitter anchors.
+4. Create one stable geodesic interval record whose two endpoint attachments
+   point to the final emitter anchors.
 5. Preserve distinct endpoint roles, even when both endpoint attachments point
    to the same emitter.
 6. Mark the resulting geodesic `stable`.
@@ -437,8 +499,7 @@ Portal state needs to become part of geodesic identity.
 
 Minimum requirement:
 
-- every locked geodesic can report the ordered portal word along its segment
-  chain;
+- every locked geodesic interval can report its ordered `portalWord`;
 - every endpoint selection can report the tangent in the local emitter cell;
 - rebuilding a locked geodesic preserves its intended portal word unless an
   operation explicitly changes homotopy class;
@@ -467,25 +528,36 @@ pair when either straightening half enters a forbidden zone.
 ## Rehaul Plan
 
 This is a breaking rehaul. Do not preserve the old cannon connection model as a
-parallel source of truth. During intermediate phases, later features may be
-temporarily disabled rather than kept alive through compatibility shims.
+parallel source of truth. `geodesicConnectionsById` must be removed or ignored
+by new code in Phase A. Cannon fields such as `geodesicIds`,
+`activeGeodesicId`, and `geodesicEmitterYawRadiansById` must not own geodesic
+identity; if any transitional UI field remains, it must be derived from
+`GeodesicIntervalObject`s and anchor reverse lookup.
+
+Old tests that assert private fields such as `geodesicIds`,
+`geodesicConnectionsById`, or segment `connectionState` should be rewritten as
+behavior tests as the phases migrate. During intermediate phases, later
+features may be temporarily disabled rather than kept alive through
+compatibility shims.
 
 Each phase must leave the app in a coherent state and should be shippable on its
 own.
 
 ### A. Aiming Works
 
-Replace open geodesics with explicit `GeodesicObject` records and free-end
+Replace open geodesics with explicit `GeodesicIntervalObject` records and free-end
 anchors.
 
 Scope:
 
-- add `GeodesicObject`, `FreeGeodesicEndObject`, and anchor reverse-lookup
+- add `GeodesicIntervalObject`, `FreeGeodesicEndObject`, and anchor reverse-lookup
   helpers;
 - mark geodesic cannons as attachable anchors;
 - create a free-end anchor whenever a new aimable geodesic is created;
 - move the free-end anchor when aiming or extending the geodesic;
-- derive segment chains from the geodesic record;
+- derive segment chains from the geodesic interval;
+- split the derived chain at total arclength / 2 and store `halfRole` on every
+  segment;
 - keep renderer state derived from segment chains and geodesic motion state.
 
 Acceptance:
@@ -495,6 +567,11 @@ Acceptance:
 - the free end has exactly one attached endpoint;
 - deleting the geodesic deletes its unshared free end;
 - reverse lookup from the emitter and free end returns endpoint attachments.
+- every derived segment has a `halfRole`;
+- a midpoint split produces two segment objects when the midpoint falls inside
+  a traced segment;
+- a world hit on a `start` half segment resolves to the `start` endpoint role,
+  and a hit on an `end` half segment resolves to the `end` endpoint role.
 
 ### B. Cutting With New Emitter Works
 
@@ -504,7 +581,7 @@ records.
 Scope:
 
 - split a geodesic by endpoint role and segment-chain position;
-- create or update geodesic records for both resulting halves;
+- create or update geodesic interval records for both resulting halves;
 - give each new open half its own free-end anchor unless it immediately locks;
 - rebuild derived segments without using old cannon connection state.
 
@@ -524,7 +601,7 @@ Scope:
 - when tracing reaches an emitter, change the free-end attachment to that
   emitter;
 - delete the now-unattached free-end object;
-- store the portal word represented by the traced segment chain;
+- store the `portalWord` represented by the traced segment chain;
 - allow `start` and `end` to attach to the same emitter when the portal word is
   nonempty.
 
@@ -535,6 +612,8 @@ Acceptance:
 - locked geodesics have two emitter endpoints;
 - final derived segments still never span a portal;
 - duplicate detection does not remove same-emitter wrapped loops.
+- same-emitter intervals with zero lifted endpoint displacement are rejected as
+  degenerate.
 
 ### D. Measuring Angles Works
 
@@ -553,8 +632,8 @@ Acceptance:
 - selecting the same endpoint twice is rejected;
 - selecting `start` and `end` of the same geodesic is allowed;
 - angles refresh after segment rebuilds;
-- an emitter menu can expose two rows for the same geodesic id when both
-  endpoints attach there.
+- the emitter menu still exposes one row per geodesic interval, even when both
+  endpoint roles attach to the same emitter.
 
 ### E. Carrying Emitters Works
 
@@ -563,7 +642,8 @@ move.
 
 Scope:
 
-- replace source/incoming connection rebuild with endpoint-role rebuild;
+- replace the old source/incoming connection rebuild with endpoint-role
+  rebuild;
 - preserve the geodesic's portal word unless the carry operation explicitly
   crosses a portal and updates the lift;
 - update endpoint tangents after rebuild;
@@ -580,6 +660,9 @@ Acceptance:
 ### F. Tie And Release Works
 
 Introduce curve-shortening pairs and portal-aware final fusion.
+
+This phase is blocked until a complete curve-shortening algorithm note exists.
+Do not implement Phase F from the target description alone.
 
 Scope:
 
@@ -641,8 +724,14 @@ World-object tests:
 - protractor rejects selecting the exact same endpoint role twice;
 - a geodesic can be locked from an emitter back to the same emitter through a
   nonempty portal word;
+- a same-emitter interval with zero lifted endpoint displacement is rejected as
+  degenerate;
 - a locked same-emitter loop exposes two selectable endpoint roles at that
   emitter;
+- derived segment chains are split at total arclength / 2;
+- a derived segment belongs entirely to either the `start` half or the `end`
+  half;
+- a midpoint hit resolves to the `start` endpoint role;
 - tie/release can detach the two endpoint roles of a locked same-emitter loop;
 - tie/release at one emitter in a two-emitter torus loop creates a shortening
   pair whose moving geodesics share one free-end anchor and whose remaining
@@ -667,10 +756,12 @@ Portal tests:
 
 Palette/interaction tests:
 
-- emitter menu can show two rows for the same geodesic id when both endpoint
-  roles are present;
+- emitter menu shows exactly one row for a geodesic interval, even when both
+  endpoint roles attach to the same emitter;
+- world hits on `start` half segments select the `start` endpoint role;
+- world hits on `end` half segments select the `end` endpoint role;
 - tie/release action sends `(geodesicId, endRole)` selections;
-- tie/release highlights endpoint selections, not whole geodesic ids;
+- tie/release highlights endpoint half selections, not whole geodesic ids;
 - locked same-emitter loop can be deleted from either endpoint role without
   leaving stale segment or connection state.
 
@@ -689,7 +780,8 @@ Computed-object tests:
   payloads.
 - The protractor measures angles between different endpoint roles of the same
   geodesic.
-- Curve shortening is portal-aware and length-monotone.
+- Curve shortening is portal-aware and length-monotone after the separate Phase
+  F algorithm note is written and implemented.
 - Forbidden-zone failures during shortening break only the invalid dynamic pair
   and leave a valid unlocked survivor when possible.
 - Final fusion creates a portal-aware segment chain, not one same-cell segment.
@@ -714,9 +806,10 @@ Treat this as a domain-model migration:
 
 ```text
 anchor objects own positions where geodesics attach
-geodesic objects own two endpoint attachments and one path word
+geodesic interval objects own two endpoint attachments, startCellId, and one portalWord
 reverse lookup finds all endpoint attachments attached to an anchor
-segment chains are visual traces derived from geodesic records
+segment chains are visual traces derived from geodesic intervals
+segment chains are split into start/end half segments for interaction
 endpoint selections are what tools select and measure
 path words distinguish wrapped realizations
 ```
