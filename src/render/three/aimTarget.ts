@@ -802,6 +802,8 @@ function intersectRayWithGeodesicEmitterAimCylinder(
   return {
     ...hit,
     targetPoint: sphereCenter,
+    geodesicEmitterGeodesicId: hit.geodesicEmitterGeodesicId ??
+      resolveDefaultEmitterGeodesicId(emitter, ignoredGeodesicIds),
   };
 }
 
@@ -857,6 +859,17 @@ function intersectRayWithEmitterGeodesicHandles(
   }
 
   return best;
+}
+
+function resolveDefaultEmitterGeodesicId(
+  emitter: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+  ignoredGeodesicIds: ReadonlySet<string>,
+): string | undefined {
+  if (emitter.activeGeodesicId && !ignoredGeodesicIds.has(emitter.activeGeodesicId)) {
+    return emitter.activeGeodesicId;
+  }
+
+  return emitter.geodesicIds.find((geodesicId) => !ignoredGeodesicIds.has(geodesicId));
 }
 
 function chooseEmitterAimHit(

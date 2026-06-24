@@ -339,6 +339,37 @@ describe("resolveAimTarget", () => {
     expect(target?.geodesicEmitterGeodesicId).toBe("g-b");
   });
 
+  it("reports the next available geodesic id when an ignored geodesic is aimed through the emitter body", () => {
+    const world = compileCellComplex(singleRoomWorld());
+    const cannon = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+      activeGeodesicId: "g-a",
+      geodesicIds: ["g-a", "g-b"],
+      geodesicEmitterYawRadiansById: {
+        "g-a": 0,
+        "g-b": Math.PI / 2,
+      },
+    });
+    const registry = createRuntimeObjectRegistry([cannon]);
+    const rootPath = buildPortalPathTables(world, { maxDepth: 0 }).tablesByRootCellId.get("room")!.pathsById.get(0)!;
+
+    const target = resolveAimTarget({
+      world,
+      registry,
+      camera: cameraLookingAt(
+        { x: 0, y: -2, z: geodesicRayBeamHeightMeters - 0.3 },
+        { x: 0, y: 0, z: geodesicRayBeamHeightMeters - 0.3 },
+      ),
+      visiblePortalPaths: [visiblePath(rootPath)],
+      ignoredGeodesicIds: ["g-a"],
+    });
+
+    expect(target?.object?.id).toBe("cannon-a");
+    expect(target?.geodesicEmitterGeodesicId).toBe("g-b");
+  });
+
   it("misses geodesic emitter handle capsules outside the narrowed radius", () => {
     const world = compileCellComplex(singleRoomWorld());
     const cannon = createGeodesicCannonObject({
