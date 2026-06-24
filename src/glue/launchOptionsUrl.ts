@@ -5,8 +5,6 @@ import { defaultAppConfigName } from "./appConfig";
 import { serializeRuntimeDebugOverlayItems } from "../runtime/runtimeMenuState";
 
 const launchOptionSearchParams = [
-  "config",
-  "configName",
   "world",
   "ui",
   "debug",
@@ -21,10 +19,24 @@ const launchOptionSearchParams = [
   "worldPicker",
 ] as const;
 
+const copiedUrlLaunchOptionSearchParams = [
+  "config",
+  "configName",
+  ...launchOptionSearchParams,
+] as const;
+
 export function removeLaunchOptionsFromUrl(href: string): string {
+  return removeSearchParamsFromUrl(href, launchOptionSearchParams);
+}
+
+function removeCopiedUrlLaunchOptionsFromUrl(href: string): string {
+  return removeSearchParamsFromUrl(href, copiedUrlLaunchOptionSearchParams);
+}
+
+function removeSearchParamsFromUrl(href: string, paramsToRemove: readonly string[]): string {
   const url = new URL(href);
 
-  for (const param of launchOptionSearchParams) {
+  for (const param of paramsToRemove) {
     url.searchParams.delete(param);
   }
 
@@ -40,7 +52,7 @@ export function replaceVisibleUrlWithoutLaunchOptions(window: Window): void {
 }
 
 export function buildUrlWithLaunchOptions(href: string, options: LaunchOptions): string {
-  const url = new URL(removeLaunchOptionsFromUrl(href));
+  const url = new URL(removeCopiedUrlLaunchOptionsFromUrl(href));
 
   if (options.appConfigName !== defaultAppConfigName) {
     url.searchParams.set("config", options.appConfigName);
