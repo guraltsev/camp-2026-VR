@@ -19,6 +19,8 @@ Do not start by reorganizing files.
 
 If a required design detail is missing and the code cannot safely proceed, stop and ask the human developer.
 
+If a needed shell tool is reasonably unavailable in the current sandboxed shell, request elevated execution instead of silently skipping the step.
+
 If a reasonable local choice is safe and reversible, make the smallest choice and document it in the relevant stage notes or a tiny decision note.
 
 Never invent mathematical facts, hidden requirements, or unsupported claims.
