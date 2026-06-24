@@ -66,11 +66,13 @@ different incidences of the same geodesic at the same emitter.
 
 ## Design Principle
 
-A geodesic has two ends.
+A geodesic has two endpoint attachments.
 
-Each end may be attached to an emitter, attached to the other straightening
-half's free end, or absent only transiently during an operation that will either
-repair the invariant or delete the geodesic.
+Each endpoint is attached to an anchor object. Emitters are visible anchors.
+Invisible free ends are anchors for free rays, moving curve-shortening vertices,
+and other temporary unattached endpoints. An endpoint may be absent only
+transiently during an operation that will either repair the invariant or delete
+the geodesic.
 
 The important identity for editing and measuring is not just:
 
@@ -90,12 +92,18 @@ the same incidence.
 
 ## Invariants
 
-- A geodesic always has at least one end attached to an emitter.
-- An unlocked geodesic has exactly one emitter-attached end and one open end.
-- A locked geodesic has two emitter-attached ends. The two ends may attach to
+- A geodesic always has exactly two endpoint attachments.
+- Every endpoint attachment points to an anchor object with
+  `canAttachGeodesics: true`.
+- A locked geodesic has two emitter anchors. The two endpoints may attach to
   the same emitter if they are different incidences.
-- A curve-shortening pair contains two geodesics, each with one emitter-attached
-  end and one free end glued to the other's free end.
+- A free geodesic has at least one endpoint attached to a
+  `FreeGeodesicEndObject`.
+- An aimable free geodesic has one emitter endpoint, one free-end endpoint, and
+  the free end has exactly one attached geodesic endpoint total.
+- A curve-shortening pair contains two moving geodesics. Each has one
+  emitter-attached endpoint and one endpoint attached to the same
+  `FreeGeodesicEndObject`.
 - A geodesic segment object never spans a portal. Portal crossing remains a
   chain of segment objects.
 - A geodesic may carry a portal word, lift transform, or equivalent path
@@ -107,47 +115,108 @@ the same incidence.
 
 ## Proposed Domain Model
 
-Introduce explicit end and incidence records. Exact naming can adapt to the
-codebase, but the model should be equivalent to:
+Introduce geodesic anchor objects and explicit geodesic records in the existing
+runtime object registry.
+
+An anchor is any runtime object that can host geodesic endpoints. Geodesic
+emitters are visible anchors. Invisible free ends are anchors used for open
+rays, moving curve-shortening vertices, and other temporary unattached
+endpoints.
+
+```ts
+interface GeodesicAnchorObject {
+  readonly id: string;
+  readonly cellId: string;
+  readonly canAttachGeodesics: true;
+}
+
+interface FreeGeodesicEndObject extends RuntimeWorldObjectBase {
+  readonly kind: "free-geodesic-end";
+  readonly canAttachGeodesics: true;
+  readonly localPoint: Vec3;
+  readonly faceId?: string;
+}
+```
+
+`FreeGeodesicEndObject` is not rendered as a user-facing object. It is a
+topological anchor. It may have one attached geodesic endpoint for an ordinary
+free ray, or two attached geodesic endpoints for a curve-shortening glued
+point.
+
+A geodesic is the source of truth for its two endpoint identities and path
+word. The segment chain remains drawable/cache output derived from this record.
+Exact naming can adapt to the codebase, but the model should be equivalent to:
 
 ```ts
 type GeodesicEndRole = "start" | "end";
 
-interface GeodesicEnd {
+interface GeodesicObject extends RuntimeWorldObjectBase {
+  readonly kind: "geodesic";
+  readonly start: GeodesicEndpointAttachment;
+  readonly end: GeodesicEndpointAttachment;
+  readonly pathWord: readonly GeodesicPortalTraversal[];
+  readonly motionState: "stable" | "moving";
+}
+
+interface GeodesicEndpointAttachment {
   readonly id: string;
   readonly geodesicId: string;
   readonly role: GeodesicEndRole;
-  readonly attachment: GeodesicEndAttachment;
+  readonly anchorObjectId: string;
+  readonly incidenceId: string;
   readonly tangentYawRadians?: number;
-  readonly portalWordFromSegmentChain?: readonly GeodesicPortalTraversal[];
 }
-
-type GeodesicEndAttachment =
-  | {
-      readonly kind: "emitter";
-      readonly emitterId: string;
-      readonly incidenceId: string;
-    }
-  | {
-      readonly kind: "open";
-    }
-  | {
-      readonly kind: "glued-free-end";
-      readonly shorteningPairId: string;
-      readonly mateEndId: string;
-    };
 ```
 
-The source of truth can live on the emitter objects, on new runtime objects, or
-in a derived registry helper. What matters is that all operations can answer:
+The source of truth is therefore:
 
-- which ends does this geodesic have?
-- which end is incident to this emitter?
-- what tangent does that end present at the emitter?
-- what portal word/lift distinguishes this incidence from another one?
+- anchor objects own positions and can host endpoint attachments;
+- geodesic objects own endpoint identities and path words;
+- segment objects are derived visual traces and never define identity.
 
-Keep segment objects as the drawable traced chain. Do not turn a portal-wrapped
-geodesic into one renderer object.
+Required helper APIs:
+
+```ts
+function getGeodesicEndpointAttachmentsForAnchor(
+  registry: RuntimeObjectRegistry,
+  anchorObjectId: string,
+): readonly GeodesicEndpointAttachment[];
+
+function getGeodesicEndpoints(
+  registry: RuntimeObjectRegistry,
+  geodesicId: string,
+): readonly [GeodesicEndpointAttachment, GeodesicEndpointAttachment] | undefined;
+
+function collectEmitterGeodesicIncidences(
+  registry: RuntimeObjectRegistry,
+  emitterId: string,
+): readonly GeodesicIncidentSelection[];
+```
+
+Reverse lookup is the public way to answer:
+
+- which geodesic endpoints are attached to this emitter?
+- which geodesic endpoints are attached to this free end?
+- which tangent does an endpoint present at its anchor?
+- which portal word/lift distinguishes this incidence from another one?
+
+Do not turn a portal-wrapped geodesic into one renderer object. A geodesic owns a
+path word and a derived segment chain. Segment objects still never span portals.
+
+An aimable free geodesic is a special case of this model: one endpoint is
+attached to an emitter, the other endpoint is attached to a
+`FreeGeodesicEndObject`, that free end has exactly one attached endpoint total,
+and the geodesic is not `moving`. This condition should be checked through
+reverse lookup, not encoded as a separate object kind.
+
+Visual state is derived from the geodesic record:
+
+- locked geodesic: both endpoint anchors are emitters; render derived segments
+  with the locked color;
+- free stable geodesic: at least one endpoint anchor is a free end and
+  `motionState === "stable"`; render derived segments with the free color;
+- moving geodesic: `motionState === "moving"`; render derived segments with the
+  moving color.
 
 ## Interaction Semantics
 
@@ -164,7 +233,7 @@ interface GeodesicIncidentSelection {
   readonly geodesicId: string;
   readonly endId: string;
   readonly incidenceId: string;
-  readonly emitterId: string;
+  readonly anchorObjectId: string;
 }
 ```
 
@@ -199,11 +268,13 @@ Tie/release at an emitter should:
 
 1. Resolve the two selected incidences at that emitter.
 2. Verify they are two different incidences.
-3. Identify the two opposite ends.
-4. Remove the detached emitter from those two geodesic relations.
-5. Create a curve-shortening pair from the opposite emitter-attached ends to a
-   shared glued free point.
-6. Preserve portal/lift metadata from both incoming arcs.
+3. Identify the two opposite endpoint attachments.
+4. Remove or replace the old geodesic records that used the detached incidences.
+5. Create a `FreeGeodesicEndObject` at the detached point.
+6. Create a curve-shortening pair from the opposite emitter-attached endpoints
+   to the shared free end.
+7. Mark the two temporary geodesics as `moving`.
+8. Preserve portal/lift metadata from both incoming arcs.
 
 Special case that must be valid:
 
@@ -214,12 +285,18 @@ opposite end A emitter id === opposite end B emitter id
 This is the torus wrapped-loop case. The two opposite ends attach to the same
 emitter but different incidences/lifts.
 
+A locked loop whose start and end anchors are the same emitter must also be
+valid. Reverse lookup on that emitter returns two endpoint attachments for the
+same geodesic. Tie/release may select those two incidences and detach the loop
+from that emitter exactly as it would detach two different geodesics. Same
+`geodesicId` and same anchor object do not imply same incidence.
+
 The current same-cell construction in `tieAndDetachIncidentGeodesics` should be
 replaced by a portal-aware initialization:
 
 - keep each half's existing traced chain up to the detached emitter;
 - reverse or re-orient chains as needed so each half runs from its remaining
-  emitter-attached end to the glued free end;
+  emitter-attached end to the shared free-end anchor;
 - do not collapse to straight same-cell segments at tie time.
 
 ## Curve Shortening Regime
@@ -234,32 +311,38 @@ interface CurveShorteningPair {
   readonly id: string;
   readonly firstGeodesicId: string;
   readonly secondGeodesicId: string;
-  readonly gluedPoint: LiftedPoint;
+  readonly freeEndAnchorId: string;
   readonly previousTotalLengthMeters?: number;
 }
 
-interface LiftedPoint {
-  readonly cellId: string;
+interface FreeGeodesicEndObject extends RuntimeWorldObjectBase {
+  readonly kind: "free-geodesic-end";
+  readonly canAttachGeodesics: true;
   readonly localPoint: Vec3;
-  readonly portalWordFromFirstEnd?: readonly GeodesicPortalTraversal[];
+  readonly liftFromFirstEndpoint?: readonly GeodesicPortalTraversal[];
 }
 ```
 
+The glued point is represented by the shared `FreeGeodesicEndObject`. Reverse
+lookup on `freeEndAnchorId` must return exactly the two moving geodesic endpoint
+attachments in the shortening pair.
+
 Each tick:
 
-1. Compute the two incident tangent directions at the glued point in a common
+1. Resolve the shared free-end anchor and the two attached moving endpoints.
+2. Compute the two incident tangent directions at the free end in a common
    lift.
-2. Move the glued point a small step along the half-angle direction that reduces
-   the smaller angle.
-3. Retrace both halves from their emitter-attached end to the new glued point,
+3. Move the free-end anchor a small step along the half-angle direction that
+   reduces the smaller angle.
+4. Retrace both halves from their emitter-attached end to the moved free end,
    respecting portals and forbidden zones.
-4. Compute total length as `first.length + second.length`.
-5. If a half hits a forbidden zone, break the pair:
+5. Compute total length as `first.length + second.length`.
+6. If a half hits a forbidden zone, break the pair:
    - delete the half that failed;
-   - delete the other straightening relation;
+   - delete the curve-shortening pair relation;
    - leave the surviving emitter-attached path as an unlocked geodesic when it
      is still valid.
-6. If total length suddenly increases past tolerance, stop dynamic motion and
+7. If total length suddenly increases past tolerance, stop dynamic motion and
    start final straightening and fusion.
 
 The length monotonicity check is essential. The current implementation stops
@@ -278,9 +361,13 @@ It must not assume the result is one segment. Instead:
    halves.
 2. Trace the final locally straight path through the cell complex.
 3. Create a segment chain, with one segment per cell traversal.
-4. Attach both geodesic ends to their emitter incidences.
-5. Mark the resulting geodesic `connected`.
-6. Delete the two temporary half-geodesics and the shortening pair.
+4. Create one stable geodesic record whose two endpoint attachments point to
+   the final emitter anchors.
+5. Preserve distinct endpoint ids and incidence ids, even when both endpoint
+   attachments point to the same emitter.
+6. Mark the resulting geodesic `stable`.
+7. Delete the two temporary moving geodesics, the shared free-end anchor, and
+   the shortening pair.
 
 For the torus loop, the result may be:
 
@@ -328,15 +415,25 @@ pair when either straightening half enters a forbidden zone.
 
 ### 1. Add end/incidence helpers without changing UI
 
-Add pure helpers that derive end records from current cannon, connection, and
-segment state.
+Add geodesic anchor helpers, `FreeGeodesicEndObject`, and `GeodesicObject`
+records in the existing runtime object registry. Keep compatibility helpers for
+current cannon connection data during the migration, but make the new public
+helpers return endpoint attachments and incidences.
 
 Tests should cover:
 
-- unlocked geodesic has one emitter end and one open end;
-- connected geodesic has two emitter ends;
-- same-emitter connected loop has two different emitter incidences;
-- incident lookup returns end ids, not only geodesic ids.
+- geodesic emitters report `canAttachGeodesics: true`;
+- free geodesic ends report `canAttachGeodesics: true` and are not rendered as
+  user-facing objects;
+- an aimable free geodesic has one emitter endpoint and one singly-attached
+  free-end endpoint;
+- a locked geodesic has two emitter endpoint attachments;
+- same-emitter locked loop has two different endpoint attachments and
+  incidence ids;
+- reverse lookup from an emitter returns endpoint attachments, not only
+  geodesic ids;
+- reverse lookup from a free end returns all endpoint attachments attached to
+  it.
 
 ### 2. Update protractor identity
 
@@ -356,6 +453,7 @@ Acceptance:
 
 - tie/release can act on two incidences with the same geodesic id when they are
   distinct;
+- tie/release can act on the two incidences of one locked same-emitter loop;
 - tie/release can act when the two opposite ends attach to the same emitter.
 
 ### 4. Introduce curve-shortening pair state
@@ -364,7 +462,10 @@ Separate temporary shortening state from ordinary connected geodesic state.
 
 Acceptance:
 
-- a shortening pair stores two half geodesics and a shared lifted glued point;
+- a shortening pair stores two moving geodesics and a shared
+  `FreeGeodesicEndObject`;
+- reverse lookup on the shared free end returns exactly the two moving
+  endpoints;
 - tick logic uses portal-aware retracing;
 - total length is tracked across ticks.
 
@@ -377,6 +478,8 @@ Acceptance:
 - final fusion may produce multiple segments;
 - final fusion may produce a locked geodesic whose two ends attach to the same
   emitter;
+- final fusion deletes the temporary moving geodesics and shared free-end
+  anchor;
 - portal word is preserved and visible in tests.
 
 ### 6. Rework duplicate detection
@@ -404,15 +507,25 @@ Add tests before or with the implementation.
 
 World-object tests:
 
+- emitters and free geodesic ends are geodesic anchors;
+- reverse lookup returns all geodesic endpoint attachments for an emitter;
+- reverse lookup returns all geodesic endpoint attachments for a free end;
+- aimable free geodesic requires a singly-attached free end and one emitter
+  endpoint;
 - protractor allows two different incidences of the same geodesic;
 - protractor rejects selecting the exact same incidence twice;
 - a geodesic can be locked from an emitter back to the same emitter through a
   nonempty portal word;
+- a locked same-emitter loop exposes two selectable incidences at that emitter;
+- tie/release can detach the two incidences of a locked same-emitter loop;
 - tie/release at one emitter in a two-emitter torus loop creates a shortening
-  pair whose remaining ends both attach to the other emitter;
+  pair whose moving geodesics share one free-end anchor and whose remaining
+  ends both attach to the other emitter;
 - advancing that pair fuses into one connected wrapped geodesic;
 - final fused wrapped geodesic has two emitter ends with distinct incidence ids;
 - final fused wrapped geodesic has a nonempty portal word;
+- final fusion deletes temporary moving geodesics and the shared free-end
+  anchor;
 - same-emitter wrapped loop is not removed as a duplicate;
 - forbidden-zone hit during shortening leaves a valid surviving unlocked
   geodesic when one half remains valid.
@@ -430,6 +543,7 @@ Palette/interaction tests:
 - emitter menu can show two rows for the same geodesic id when two incidences
   are present;
 - tie/release action sends incidence ids;
+- tie/release highlights endpoint incidences, not whole geodesic ids;
 - locked same-emitter loop can be deleted from either incidence without leaving
   stale segment or connection state.
 
@@ -472,10 +586,12 @@ operations need end identity, incidence identity, and portal lift data.
 Treat this as a domain-model migration:
 
 ```text
-geodesic id owns segment chain
-geodesic ends own emitter/open/glued attachments
+anchor objects own positions where geodesics attach
+geodesic objects own two endpoint attachments and one path word
+reverse lookup finds all incidences attached to an anchor
+segment chains are visual traces derived from geodesic records
 incidences are what tools select and measure
-portal words distinguish wrapped realizations
+path words distinguish wrapped realizations
 ```
 
 Once those concepts exist, the torus behavior becomes ordinary instead of a
