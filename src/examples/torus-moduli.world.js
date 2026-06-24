@@ -22,7 +22,7 @@ startingQuestionCube("torus-room", {
   turn: -18,
   goalPages: [{
     title: "Goal",
-    body: "Cross opposite portals in the flat torus room and watch how the room wraps around.",
+    body: "Cross opposite portals in the torus room and watch how the room wraps around. Then use the computer to change the torus skew.",
   }],
 });
 
@@ -52,9 +52,16 @@ torus_flower_group = flower_group("torus-flower-group", {
   turn: 28,
 });
 
+torus_geometry_computer = computer_large("torus-geometry-computer", {
+  position: [-4.8, 0, -3.7],
+  scale: 1.15,
+  turn: 38,
+});
+
 OnFace("torus-room", [
   torus_mouse,
   torus_bench,
   torus_traffic_cone,
   torus_flower_group,
+  torus_geometry_computer,
 ]);

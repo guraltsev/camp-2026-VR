@@ -229,8 +229,10 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("config:full");
     expect(itemIds).toContain("config:001");
     expect(itemIds).toContain("config:002");
+    expect(itemIds).toContain("config:003");
     expect(itemIds).toContain("world:cube");
     expect(itemIds).toContain("world:torus");
+    expect(itemIds).toContain("world:torus-moduli");
 
     adapter.dispose();
   });

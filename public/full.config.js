@@ -4,7 +4,7 @@
 // Restart or refresh the app after changing it.
 
 export default {
-  // Available worlds: "001-basic-cube", "002-basic-tetrahedron", "cube", "dodecahedron", "icosahedron", "octahedron", "tetrahedron", "torus".
+  // Available worlds: "001-basic-cube", "002-basic-tetrahedron", "cube", "dodecahedron", "icosahedron", "octahedron", "tetrahedron", "torus", "torus-moduli".
   startingWorld: "cube",
 
   optionsMenu: {

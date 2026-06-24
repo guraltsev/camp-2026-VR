@@ -93,6 +93,7 @@ describe("readLaunchOptions", () => {
   it.each([
     ["001", "001-basic-cube"],
     ["002", "002-basic-tetrahedron"],
+    ["003", "torus"],
   ] as const)("supports the starter %s config shape", (configName, startingWorld) => {
     const config = normalizeAppConfig({
       startingWorld,

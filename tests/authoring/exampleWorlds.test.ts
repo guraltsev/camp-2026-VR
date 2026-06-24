@@ -9,6 +9,7 @@ import {
   octahedron,
   tetrahedron,
   torus,
+  torusModuli,
 } from "../../src/authoring/exampleWorlds";
 import {
   defaultStartingQuestionCubeMessage,
@@ -31,6 +32,7 @@ const exampleWorlds = [
   ["octahedron", octahedron],
   ["tetrahedron", tetrahedron],
   ["torus", torus],
+  ["torus-moduli", torusModuli],
 ] as const;
 
 describe("example worlds", () => {
@@ -48,11 +50,19 @@ describe("example worlds", () => {
       "octahedron",
       "tetrahedron",
       "torus",
+      "torus-moduli",
     ]);
   });
 
-  it("places a geometry computer in the torus room", () => {
+  it("keeps the standard torus flat without a geometry computer", () => {
     const torusRoom = torus.cells.find((cell) => cell.id === "torus-room");
+    const computer = torusRoom?.visuals?.objects?.find((object) => object.id === "torus-geometry-computer");
+
+    expect(computer).toBeUndefined();
+  });
+
+  it("places a geometry computer in the torus moduli room", () => {
+    const torusRoom = torusModuli.cells.find((cell) => cell.id === "torus-room");
     const computer = torusRoom?.visuals?.objects?.find((object) => object.id === "torus-geometry-computer");
 
     expect(computer).toMatchObject({
