@@ -62,6 +62,48 @@ export const floorTextureDefinitions = {
     defaultTileSizeMeters: 60,
     colorTexturePath: "textures/snow_02_4k/runtime/snow_02_color.ktx2",
   },
+  wood_floor: {
+    name: "wood_floor",
+    floorColor: "#8b6845",
+    defaultTileSizeMeters: 22,
+    colorTexturePath: "textures/WoodFloor064_4K-JPG/runtime/WoodFloor064_color.ktx2",
+  },
+  fabric: {
+    name: "fabric",
+    floorColor: "#806f75",
+    defaultTileSizeMeters: 20,
+    colorTexturePath: "textures/Fabric022_4K-JPG/runtime/Fabric022_color.ktx2",
+  },
+  paving_stones: {
+    name: "paving_stones",
+    floorColor: "#777872",
+    defaultTileSizeMeters: 32,
+    colorTexturePath: "textures/PavingStones138_4K-JPG/runtime/PavingStones138_color.ktx2",
+  },
+  paving_blocks: {
+    name: "paving_blocks",
+    floorColor: "#8a8379",
+    defaultTileSizeMeters: 28,
+    colorTexturePath: "textures/PavingStones114_4K-JPG/runtime/PavingStones114_color.ktx2",
+  },
+  tile_grid: {
+    name: "tile_grid",
+    floorColor: "#90918a",
+    defaultTileSizeMeters: 24,
+    colorTexturePath: "textures/Tiles118_4K-JPG/runtime/Tiles118_color.ktx2",
+  },
+  warm_tiles: {
+    name: "warm_tiles",
+    floorColor: "#9c8c74",
+    defaultTileSizeMeters: 24,
+    colorTexturePath: "textures/Tiles132A_4K-JPG/runtime/Tiles132A_color.ktx2",
+  },
+  brushed_metal: {
+    name: "brushed_metal",
+    floorColor: "#777b7f",
+    defaultTileSizeMeters: 18,
+    colorTexturePath: "textures/Metal048C_4K-JPG/runtime/Metal048C_color.ktx2",
+  },
 } satisfies Record<string, FloorTextureDefinition>;
 
 export type FloorTextureName = keyof typeof floorTextureDefinitions;

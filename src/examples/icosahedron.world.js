@@ -11,6 +11,13 @@ floors = [
   floorTexture("gravelly_sand"),
   floorTexture("red_mud_stones"),
   floorTexture("snow"),
+  floorTexture("wood_floor"),
+  floorTexture("fabric"),
+  floorTexture("paving_stones"),
+  floorTexture("paving_blocks"),
+  floorTexture("tile_grid"),
+  floorTexture("warm_tiles"),
+  floorTexture("brushed_metal"),
 ];
 
 faces = [
@@ -86,3 +93,109 @@ runner = geo_mouse("icosahedron-runner", {
 });
 
 OnFace("face-00", [runner]);
+
+OnFace("face-01", [
+  tree("face-01-tree", {
+    position: [-2.8, 0, -1.5],
+    scale: 1.35,
+    turn: -24,
+  }),
+]);
+
+OnFace("face-02", [
+  bench("face-02-bench", {
+    position: [2.6, 0, -2.2],
+    scale: 1.15,
+    turn: 58,
+  }),
+]);
+
+OnFace("face-03", [
+  flower_group("face-03-flower-group", {
+    position: [-1.9, 0, 0.3],
+    scale: 1.25,
+    turn: 12,
+  }),
+]);
+
+OnFace("face-04", [
+  traffic_cone("face-04-traffic-cone", {
+    position: [2.2, 0, 0.8],
+    scale: 1.05,
+    turn: -18,
+  }),
+]);
+
+OnFace("face-06", [
+  tree_swirl("face-06-tree-swirl", {
+    position: [0.2, 0, -2.9],
+    scale: 1.15,
+    turn: 35,
+  }),
+]);
+
+OnFace("face-07", [
+  bicycle("face-07-bicycle", {
+    position: [-2.4, 0, -0.7],
+    scale: 1,
+    turn: 102,
+  }),
+]);
+
+OnFace("face-08", [
+  campfire("face-08-campfire", {
+    position: [1.8, 0, -1.3],
+    scale: 1.15,
+    turn: -8,
+  }),
+]);
+
+OnFace("face-10", [
+  rocks("face-10-rocks", {
+    position: [-0.6, 0, -2.4],
+    scale: 1.25,
+    turn: 70,
+  }),
+]);
+
+OnFace("face-11", [
+  flower_pot("face-11-flower-pot", {
+    position: [2.4, 0, -0.4],
+    scale: 1.4,
+    turn: -42,
+  }),
+]);
+
+OnFace("face-12", [
+  stop_sign("face-12-stop-sign", {
+    position: [-2.2, 0, -1.0],
+    scale: 0.9,
+    turn: 22,
+  }),
+]);
+
+OnFace("face-14", [
+  clock("face-14-clock", {
+    position: [0.1, 0, -2.6],
+    scale: 0.75,
+    turn: -66,
+  }),
+]);
+
+OnFace("face-16", [
+  emergency_button("face-16-emergency-button", {
+    position: [2.0, 0, -1.8],
+    scale: 1.4,
+    turn: 45,
+  }),
+]);
+
+flutter = geo_butterfly("face-18-butterfly", {
+  position: [-1.2, 1.8, -0.8],
+  turn: -132,
+  speed: 0.85,
+  oscillationRate: 1.35,
+  oscillationMagnitude: 0.22,
+});
+
+OnFace("face-18", [flutter]);
