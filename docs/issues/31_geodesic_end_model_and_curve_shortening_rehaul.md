@@ -403,6 +403,10 @@ function geodesicHasNonzeroLiftedDisplacement(input: {
 
 `portalWord` is ordered from the interval's `start` endpoint toward its `end`
 endpoint. Reversing the endpoint order must reverse and invert the portal word.
+For `sourceRole === "start"`, compose portal transforms in portal-word order
+from start toward end, then apply the inverse composed transform to the end
+anchor point to express it in the start cell. For `sourceRole === "end"`, use
+the reversed/inverted word symmetrically.
 `liftGeodesicEndpoint(interval, "start")` computes the `end` endpoint position
 in the Euclidean coordinates of the `start` endpoint's cell. Calling it with
 `"end"` computes the `start` endpoint position in the Euclidean coordinates of
@@ -473,9 +477,12 @@ There are two rebuild regimes:
   derived segments.
 - Aiming rebuild: one endpoint is an emitter and the other is a singly-attached
   free end. `aimFreeGeodesicFromEndpoint` uses the crosshair point in the
-  emitter endpoint's cell to determine yaw and length, traces the ray, updates
-  the free-end anchor to the terminal cell and local position, rewrites the
-  interval's `portalWord` from the trace, and replaces derived segments.
+  emitter endpoint's cell to determine yaw/direction only. It traces along that
+  direction for the interval's previous length budget. If the trace hits a
+  forbidden zone before that length is exhausted, the free end is placed at the
+  truncated hit endpoint. The trace updates the free-end anchor terminal cell
+  and local position, rewrites the interval's `portalWord`, and replaces
+  derived segments.
 
 The free-end anchor always lives in its actual terminal cell. Lifted target
 coordinates are computed values for geometry math, not registry positions.
@@ -551,9 +558,19 @@ function rebuildLockedGeodesicFromEndpointsAndPortalWord(input: {
 }): GeodesicTraceBuildResult | undefined;
 ```
 
-Splitting must split both the segment chain and the portal word at the hit
-position. Carrying must preserve the existing portal word unless the carried
-anchor explicitly crosses a portal and the carry operation updates the lift.
+Splitting with a newly placed emitter does not copy a suffix portal word. The
+source geodesic id stays on the prefix, which becomes locked from its original
+emitter endpoint to the placed emitter. The prefix portal word is the trace
+prefix up to the hit. A new continuation interval is created with
+`createContinuationGeodesicId(...)`; it starts at the placed emitter and uses
+the forward tangent at the hit plus the remaining length budget. The
+continuation is retraced from the placed emitter, and its portal word is
+recomputed from that retrace. If retracing hits a forbidden zone before the
+remaining length is exhausted, the continuation free end is placed at the
+truncated hit endpoint.
+
+Carrying must preserve the existing portal word unless the carried anchor
+explicitly crosses a portal and the carry operation updates the lift.
 
 ## Interaction Semantics
 
@@ -853,8 +870,8 @@ Phase readiness:
 
 - Phase A removes the legacy geodesic identity model and restores only aimable
   emitter-to-free-end geodesics.
-- Phase A may remove or temporarily disable cutting, locking, carrying,
-  protractor selection, measurements, and tie/release until they are rebuilt on
+- Phase A keeps cutting, locking, carrying, protractor selection, measurements,
+  and tie/release controls visible but disabled until they are rebuilt on
   interval/end-role identity.
 - Phase B may keep locking disabled until Phase C.
 - Phase C restores locking and the minimum duplicate policy needed for locked
@@ -884,9 +901,10 @@ Scope:
 - create a geodesic interval whose emitter endpoint attaches to the cannon and
   whose opposite endpoint attaches to the free end;
 - implement `aimFreeGeodesicFromEndpoint` for the emitter-to-free-end case:
-  the crosshair point in the emitter endpoint's cell determines yaw and length,
-  the trace determines the terminal cell/local free-end position and portal
-  word, and the derived segment chain is rebuilt from that trace;
+  the crosshair point in the emitter endpoint's cell determines yaw/direction,
+  the previous length budget determines how far to trace, a forbidden-zone hit
+  may truncate that length, and the trace determines the terminal cell/local
+  free-end position and portal word;
 - keep the free-end anchor in the actual terminal cell reached by the trace;
 - implement anchored `rebuildDerivedGeodesicSegments` only as needed for stable
   free geodesics whose interval already has a portal word;
@@ -902,6 +920,8 @@ Acceptance:
 - every aimable geodesic has one emitter endpoint and one free-end endpoint;
 - the free end has exactly one attached endpoint;
 - aiming rewrites the interval portal word from the traced path;
+- aiming preserves the prior length budget unless the trace is truncated by a
+  forbidden-zone hit;
 - aiming moves the free-end anchor to the trace terminal cell and local
   position;
 - deleting the geodesic deletes its unshared free end;
@@ -914,31 +934,50 @@ Acceptance:
 - the old `geodesicConnectionsById`, source/incoming connection model,
   segment `connectionState`, and cannon yaw maps are not read by the new
   aiming/extension code;
+- unreimplemented geodesic controls remain visible but disabled;
 - if `geodesicIds`, `activeGeodesicId`, or `geodesicEmitterYawRadiansById`
   still exist in the file during this phase, deleting them must not lose
   endpoint identity or endpoint tangent information.
 
 ### B. Cutting With New Emitter Works
 
-Rebuild emitter placement on an existing geodesic using explicit endpoint
-records.
+Placing an emitter on an aimable free geodesic locks the prefix and creates a
+new aimable continuation geodesic.
 
 Scope:
 
 - implement `splitGeodesicIntervalAtSegmentHit`;
-- split the segment chain and portal word at the hit position;
-- split a geodesic by endpoint role and segment-chain position, preserving the
-  correct half identity on both resulting intervals;
-- create or update geodesic interval records for both resulting halves;
-- give each new open half its own free-end anchor unless it immediately locks;
-- rebuild derived segments without using old cannon connection state.
+- preserve the source geodesic id for the prefix from the original emitter
+  endpoint to the placed emitter;
+- replace the source interval's free-end attachment with the placed emitter so
+  the source interval becomes locked;
+- compute and store the prefix portal word from the trace up to the hit;
+- create one continuation geodesic with
+  `createContinuationGeodesicId(...)`;
+- attach the continuation start endpoint to the placed emitter and its opposite
+  endpoint to the old free-end anchor, which remains singly attached to the
+  continuation;
+- retrace the continuation from the placed emitter using the forward tangent at
+  the hit and the remaining length budget;
+- recompute the continuation portal word from that retrace instead of copying a
+  suffix from the old portal word;
+- if the continuation retrace hits a forbidden zone before the remaining length
+  is exhausted, place the continuation free end at the truncated hit endpoint;
+- rebuild derived segments and half roles without using old cannon connection
+  state.
 
 Acceptance:
 
 - placing an emitter on a free geodesic cuts it cleanly;
-- old segments and stale endpoint attachments are removed;
+- the source geodesic keeps its id and becomes locked to the placed emitter;
+- the continuation geodesic gets the new id and remains aimable from the placed
+  emitter;
+- old segments and stale endpoint attachments are removed or replaced;
 - each resulting geodesic satisfies the two-endpoint invariant;
-- portal words on the resulting intervals match the two traced halves;
+- the source portal word matches the traced prefix up to the hit;
+- the continuation portal word is recomputed from the cut tangent and remaining
+  length budget;
+- the old free-end anchor is attached only to the continuation after the cut;
 - midpoint/half-role splitting is recomputed for both resulting intervals;
 - measurements/intersections referencing deleted geodesics are cleaned up.
 
@@ -1094,6 +1133,10 @@ World-object tests:
 - a derived segment belongs entirely to either the `start` half or the `end`
   half;
 - a midpoint hit resolves to the `start` endpoint role;
+- placing an emitter on a free geodesic keeps the source geodesic id for the
+  locked prefix and creates a new id for the continuation geodesic;
+- the continuation geodesic after a cut recomputes its portal word from the cut
+  tangent and remaining length budget;
 - tie/release can detach the two endpoint roles of a locked same-emitter loop;
 - tie/release at one emitter in a two-emitter torus loop creates a shortening
   pair whose moving geodesics share one free-end anchor and whose remaining
