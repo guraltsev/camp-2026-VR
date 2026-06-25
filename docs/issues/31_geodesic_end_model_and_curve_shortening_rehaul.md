@@ -42,12 +42,12 @@ end and therefore aimable.
 
 Phases A through E are greenlit only after the Core Implementation Contracts
 below are implemented or stubbed with tests in the same phase that first uses
-them. Phase F is explicitly not greenlit by this document. It remains blocked
-until a separate curve-shortening algorithm note specifies the portal/lift
-shortening step, monotonicity tolerance, failure behavior, and final-fusion
-trace construction in implementation-level detail. See
-`docs/issues/32_phase_f_curve_shortening_algorithm_note.md` for the proposed
-Phase F greenlight details.
+them. Phase F is greenlit only through the separate curve-shortening algorithm
+note, which specifies the portal/lift shortening step, monotonicity tolerance,
+failure behavior, rollback-safe retracing, and final-fusion trace construction
+in implementation-level detail. See
+`docs/issues/32_phase_f_curve_shortening_algorithm_note.md` for the Phase F
+greenlight contract.
 
 Do not start by relaxing the same-geodesic rejection in tie/release or the
 protractor. Those local fixes hide the identity problem and make the later
@@ -67,8 +67,10 @@ Status as of 2026-06-25:
   updates during carry, same-cell portal transitions, out-of-bounds carried
   endpoint preview, release-time portal normalization, geometry commit rebuilds,
   and refresh of dependent measurements/protractor angles/intersections.
-- Phase F remains blocked and incomplete. Tie/release, curve-shortening pairs,
-  monotone shortening, and final fusion are not implemented by this document.
+- Phase F is greenlit for implementation through
+  `docs/issues/32_phase_f_curve_shortening_algorithm_note.md`, but remains
+  incomplete. Tie/release, curve-shortening pairs, monotone shortening, and
+  final fusion are not implemented by this document.
 
 What is now true in the codebase:
 
@@ -117,7 +119,7 @@ What is intentionally still disabled or deferred:
 
 - tie/detach remains visible but disabled until it is rebuilt on endpoint-role
   selections and curve-shortening pair ownership;
-- curve-shortening/fusion is not done and remains blocked by a separate
+- curve-shortening/fusion is not done and must follow the separate Phase F
   algorithm note;
 - the old straightening implementation is not a compatibility target and should
   not be revived for Phase F;
@@ -811,10 +813,10 @@ replaced by a portal-aware initialization:
 
 ## Curve Shortening Regime
 
-This section describes the target model, but it is not greenlit for
-implementation until a complete curve-shortening algorithm note exists. Phases
-A through E should land first. Phase F should not be started from this section
-alone.
+This section describes the target model. Phase F is greenlit only through the
+complete curve-shortening algorithm note in
+`docs/issues/32_phase_f_curve_shortening_algorithm_note.md`, so implementation
+should not start from this section alone.
 
 Curve shortening is a state over two endpoint roles at one shared free end, not
 a special state of one ordinary locked geodesic. The two endpoint roles may
@@ -1027,7 +1029,7 @@ Current phase status:
   anchored rebuilds.
 - Phase D restored protractor behavior on endpoint selections.
 - Phase E restored carrying and geometry-commit rebuilds for locked intervals.
-- Phase F remains blocked by a separate algorithm note and is the main remaining
+- Phase F is greenlit by the separate algorithm note and is the main remaining
   work for tie/release, curve shortening, and final fusion.
 
 ### A. Aiming Works
@@ -1220,8 +1222,9 @@ Acceptance:
 
 Introduce curve-shortening pairs and portal-aware final fusion.
 
-This phase is blocked until a complete curve-shortening algorithm note exists.
-Do not implement Phase F from the target description alone.
+This phase must be implemented from
+`docs/issues/32_phase_f_curve_shortening_algorithm_note.md`, not from the target
+description alone.
 
 Scope:
 

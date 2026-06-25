@@ -10,6 +10,16 @@ endpoint-role tie/release, curve-shortening ownership, monotone advancement,
 final fusion, free-loop support, and cleanup. It does not greenlight a global
 shortest-path solver or arbitrary homotopy minimization.
 
+## Greenlight Status
+
+Phase F is greenlit for implementation as the vertical slices listed in this
+note. The implementation should proceed from tests and should retire, not
+extend, the old same-cell straightening path.
+
+The implementation must satisfy the role-aware portal-word, rollback-safe
+retracing, wall-hit failure, and cleanup contracts in this note before enabling
+the tie/detach palette action in normal play.
+
 ## Key Decision
 
 Curve shortening is owned by one `CurveShorteningPairObject`, but the pair owns
@@ -132,6 +142,48 @@ function fuseCurveShorteningPair(input: {
 `tieAndDetachIncidentGeodesics` and `advanceStraighteningGeodesics` should not
 be extended. They should be replaced or retired as Phase F lands.
 
+Add small internal helpers with these contracts. Exact names may adapt to the
+codebase, but the behavior should be explicit and covered by tests:
+
+```ts
+function getPortalWordBetweenEndpointRoles(input: {
+  readonly interval: GeodesicIntervalObject;
+  readonly sourceRole: GeodesicEndRole;
+  readonly targetRole: GeodesicEndRole;
+}): readonly GeodesicPortalTraversal[];
+
+function updatePortalWordForMovedEndpoint(input: {
+  readonly interval: GeodesicIntervalObject;
+  readonly movedRole: GeodesicEndRole;
+  readonly traversal: GeodesicPortalTraversal;
+}): readonly GeodesicPortalTraversal[];
+
+function previewRebuildGeodesicInterval(input: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly interval: GeodesicIntervalObject;
+  readonly candidateAnchorsById?: ReadonlyMap<string, RuntimeWorldObject>;
+}): GeodesicTraceBuildResult | undefined;
+```
+
+`getPortalWordBetweenEndpointRoles` returns `interval.portalWord` for
+`start -> end`, returns `reverseGeodesicPortalWord(interval.portalWord)` for
+`end -> start`, and returns an empty word only when source and target are the
+same endpoint role.
+
+`updatePortalWordForMovedEndpoint` is used when the shared free end crosses a
+portal during shortening. If the moved endpoint is the interval's `end`, append
+the traversal to the interval word. If the moved endpoint is the interval's
+`start`, prepend the reversed traversal. Always reduce adjacent inverse
+traversals and reject words whose first/last cells no longer match the current
+endpoint anchor cells.
+
+`previewRebuildGeodesicInterval` must validate and construct the would-be trace
+from the supplied candidate interval and candidate anchors without deleting the
+registry interval, replacing existing segments, rewriting endpoint attachments,
+or changing the interval's portal word. A later commit step may replace the
+segments after monotonicity succeeds.
+
 ## Tie And Detach
 
 Tie/release accepts only endpoint selections from segment hits. Validation:
@@ -196,17 +248,44 @@ If `step < curveShorteningMinStepMeters`, do not jitter the free end. Mark the
 pair `ready-to-fuse` when the turn angle is within
 `curveShorteningFuseAngleToleranceRadians`; otherwise leave it moving.
 
+The proposed free-end movement uses the normal dynamic-object portal crossing
+rules for an autonomous anchor. If the shared free end crosses a portal, update
+each affected interval's stored portal word with
+`updatePortalWordForMovedEndpoint` before retracing. This is the only homotopy
+change permitted during a shortening tick, and it represents the moving glued
+point crossing a portal. Do not search for alternate portal words.
+
+If the shared free end does not cross a portal, its cell id remains unchanged
+and all affected interval portal words remain unchanged for the candidate
+rebuild.
+
 ## Retracing
 
 After proposing a shared free-end move:
 
-1. Update the shared free end to the candidate cell and local point.
-2. Rebuild every distinct affected interval from its endpoint anchors and
-   stored portal word.
-3. Reject unexpected portal words.
-4. Treat a forbidden-zone hit as a half failure.
-5. Treat a wall hit before the shared free end as a half failure.
-6. Treat inability to realize a stored portal word as a half failure.
+1. Save the previous pair object, shared free end, affected intervals, and
+   current derived segment chains.
+2. Compute the candidate shared-free-end cell, local point, and any portal-word
+   updates caused by the free end crossing a portal.
+3. Preview-rebuild every distinct affected interval from its candidate endpoint
+   anchors and stored candidate portal word.
+4. Reject unexpected portal words.
+5. Treat a forbidden-zone hit as a half failure.
+6. Treat a wall hit before the shared free end as a half failure.
+7. Treat inability to realize a stored portal word as a half failure.
+
+Preview rebuilds must be rollback-safe. In particular, do not call a helper that
+can delete a short interval, remove computed objects, or replace existing
+segments until the tick is known to commit. The existing destructive locked
+rebuild helpers may be reused only behind a wrapper that restores all affected
+objects and segment chains on monotonicity rejection or half failure.
+
+An anchored preview succeeds only when the traced path reaches the lifted target
+endpoint with the expected portal word and no earlier terminal. A terminal
+`wall-hit`, `forbidden-zone-hit`, or unexpected `portal-hit` before the target
+is a failure for that interval. A terminal `open` is valid only when it is the
+normal representation of reaching the anchored target and the traced length is
+the requested lifted length.
 
 For ordinary two-interval pairs, there are two distinct affected intervals. For
 a free loop, there is one affected interval; rebuild it once.
@@ -228,16 +307,23 @@ nextTotal <= previous + curveShorteningLengthIncreaseToleranceMeters
 
 commit the tick:
 
-- keep the rebuilt segments;
+- replace the affected segment chains with the previewed rebuilt segments;
+- update affected intervals with any candidate portal words caused by a
+  shared-free-end portal crossing;
 - update `previousTotalLengthMeters` to `nextTotal`;
 - update `lastGoodFreeEndCellId` and `lastGoodFreeEndPoint`.
 
 If `nextTotal` increases past tolerance:
 
 - restore the shared free end to the last good point;
-- rebuild affected intervals at the last good point;
+- restore affected intervals and segment chains to the saved pre-tick state,
+  then rebuild affected intervals at the last good point only if their current
+  segments no longer match that state;
 - set pair state to `ready-to-fuse`;
 - do not update `previousTotalLengthMeters`.
+
+If a candidate free-end portal crossing happened during a rejected tick, the
+candidate portal-word updates are discarded with the rest of the preview state.
 
 ## Failure Cleanup
 
@@ -267,15 +353,31 @@ For ordinary two-interval pairs:
 1. Identify each interval's non-free endpoint.
 2. If both non-free endpoints are emitters, create one stable locked interval.
 3. Reuse the lower geodesic id among the moving intervals for the fused result.
-4. Construct the fused portal word by composing the first interval's word with
-   the reversed second interval word, oriented from fused `start` to fused
-   `end`.
+4. Construct the fused portal word role-aware from the two non-free endpoints:
+   use the first kept interval's non-free endpoint as fused `start`, travel from
+   that endpoint to the shared free end along the first interval, then travel
+   from the shared free end to the second interval's non-free endpoint along
+   the second interval. In formula form:
+
+   ```text
+   fusedWord =
+     getPortalWordBetweenEndpointRoles(firstInterval, firstNonFreeRole, firstFreeRole)
+     + getPortalWordBetweenEndpointRoles(secondInterval, secondFreeRole, secondNonFreeRole)
+   ```
+
+   Then reduce adjacent inverse traversals.
 5. Rebuild derived segments from endpoint anchors and fused portal word.
 6. On success, delete the other moving interval, the shared free end, and the
    pair object.
 
 If the two non-free endpoints are the same emitter, same-emitter fusion is valid
 when the fused lifted displacement is at least `GEODESIC_MIN_LENGTH_METERS`.
+
+The fused interval keeps two explicit endpoint roles even when both roles attach
+to the same emitter. It must be rebuilt with the ordinary anchored rebuild path
+from endpoint anchors plus the fused portal word. Fusion must fail if that
+rebuild would cross a forbidden zone, hit a wall early, consume a different
+portal word, or create a degenerate lifted displacement.
 
 For a free loop:
 
@@ -291,6 +393,10 @@ For a free loop:
 If fusion fails for any reason, delete the moving geodesics owned by the pair,
 the shared free end, and the pair object. Failure must not leave a stuck
 `ready-to-fuse` object.
+
+Fusion should not infer endpoint order from segment ids or visual segment
+orientation. Endpoint roles and `getPortalWordBetweenEndpointRoles` are the
+source of truth.
 
 ## Renderer And UI
 
@@ -330,6 +436,13 @@ Implement Phase F in these vertical slices:
 11. Verify final fusion never creates a segment spanning a portal.
 12. Verify measurements, protractor angles, and intersections refresh or clean
     up after pair deletion and fusion.
+13. Verify a shared free end crossing a portal updates affected portal words by
+    endpoint role and rolls those updates back when monotonicity rejects the
+    tick.
+14. Verify a wall hit before the candidate shared free end is treated as a half
+    failure and does not silently commit a shortened wrong-homotopy trace.
+15. Verify fused portal-word composition is role-aware by fusing a pair where
+    the selected free roles are not both `end`.
 
 Do not unskip the old straightening tests as-is. Replace them with endpoint and
 pair behavior tests.
