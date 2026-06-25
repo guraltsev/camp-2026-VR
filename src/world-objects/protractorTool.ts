@@ -1,8 +1,11 @@
 import { yawRigidTransform3 } from "../math/rigidTransform3";
 import { dotVec3, type Vec3 } from "../math/vec3";
 import {
+  getGeodesicEndpointAttachmentsForAnchor,
   geodesicRayBeamHeightMeters,
   getRememberedGeodesicIntersectionObject,
+  resolveEndpointTangentAtAnchor,
+  type GeodesicEndRole,
   type GeodesicCannonObject,
   type GeodesicIntersectionObject,
   type GeodesicSegmentObject,
@@ -45,6 +48,7 @@ export interface ProtractorCenterSelection {
 
 export interface ProtractorDirectedGeodesic {
   readonly geodesicId: string;
+  readonly endRole?: GeodesicEndRole;
   readonly label?: string;
   readonly segmentId: string;
   readonly yawRadians: number;
@@ -104,6 +108,7 @@ export function resolveProtractorDirectedGeodesicSelection(options: {
 
   return {
     geodesicId: segment.geodesicId,
+    endRole: segment.halfRole,
     segmentId: segment.id,
     yawRadians,
     directionSign: sign,
@@ -113,7 +118,9 @@ export function resolveProtractorDirectedGeodesicSelection(options: {
 export function resolveProtractorEmitterGeodesicSelection(options: {
   readonly center: ProtractorCenterSelection;
   readonly emitter: GeodesicCannonObject;
+  readonly registry?: RuntimeObjectRegistry;
   readonly geodesicId?: string;
+  readonly endRole?: GeodesicEndRole;
 }): ProtractorDirectedGeodesic | undefined {
   const { center, emitter } = options;
   if (center.cellId !== emitter.cellId) {
@@ -127,10 +134,26 @@ export function resolveProtractorEmitterGeodesicSelection(options: {
     return undefined;
   }
 
+  const selectedEndRole = options.registry
+    ? selectEmitterEndpointRole({
+      registry: options.registry,
+      emitterId: emitter.id,
+      geodesicId,
+      endRole: options.endRole,
+    })
+    : options.endRole;
+  const tangent = options.registry && selectedEndRole
+    ? resolveEndpointTangentAtAnchor({
+      registry: options.registry,
+      geodesicId,
+      endRole: selectedEndRole,
+    })
+    : undefined;
   return {
     geodesicId,
+    ...(selectedEndRole ? { endRole: selectedEndRole } : {}),
     segmentId: `${emitter.id}:${geodesicId}:emitter`,
-    yawRadians: normalizeSignedRadians(emitter.geodesicEmitterYawRadiansById?.[geodesicId] ?? emitter.aimYawRadians),
+    yawRadians: normalizeSignedRadians(tangent?.yawRadians ?? emitter.geodesicEmitterYawRadiansById?.[geodesicId] ?? emitter.aimYawRadians),
     directionSign: 1,
   };
 }
@@ -142,7 +165,7 @@ export function createProtractorAngleObject(options: {
   readonly second: ProtractorDirectedGeodesic;
 }): ProtractorAngleObject {
   if (!protractorSelectionsUseDifferentGeodesics(options.first, options.second)) {
-    throw new Error("Cannot create a protractor angle from the same geodesic twice.");
+    throw new Error("Cannot create a protractor angle from the same geodesic endpoint twice.");
   }
 
   const angleRadians = normalizePositiveRadians(options.second.yawRadians - options.first.yawRadians);
@@ -181,10 +204,10 @@ export function createProtractorAngleObject(options: {
 }
 
 export function protractorSelectionsUseDifferentGeodesics(
-  first: Pick<ProtractorDirectedGeodesic, "geodesicId">,
-  second: Pick<ProtractorDirectedGeodesic, "geodesicId">,
+  first: Pick<ProtractorDirectedGeodesic, "geodesicId" | "endRole">,
+  second: Pick<ProtractorDirectedGeodesic, "geodesicId" | "endRole">,
 ): boolean {
-  return first.geodesicId !== second.geodesicId;
+  return first.geodesicId !== second.geodesicId || first.endRole !== second.endRole;
 }
 
 export function createProtractorAngleLabelHitbox(options: {
@@ -259,7 +282,9 @@ function resolveLiveProtractorDirectedGeodesic(
     const selected = resolveProtractorEmitterGeodesicSelection({
       center,
       emitter,
+      registry,
       geodesicId: previous.geodesicId,
+      endRole: previous.endRole,
     });
     return selected ? { ...selected, label: previous.label } : undefined;
   }
@@ -271,6 +296,7 @@ function resolveLiveProtractorDirectedGeodesic(
 
   return {
     geodesicId: segment.geodesicId,
+    endRole: previous.endRole ?? segment.halfRole,
     label: previous.label,
     segmentId: segment.id,
     yawRadians: resolveSegmentYawFromCenter(segment, center, previous),
@@ -291,19 +317,41 @@ function resolveEmitterSelectionObject(
   return object?.kind === "geodesic-cannon" ? object : undefined;
 }
 
+function selectEmitterEndpointRole(options: {
+  readonly registry: RuntimeObjectRegistry;
+  readonly emitterId: string;
+  readonly geodesicId: string;
+  readonly endRole?: GeodesicEndRole;
+}): GeodesicEndRole | undefined {
+  const attachments = getGeodesicEndpointAttachmentsForAnchor(options.registry, options.emitterId)
+    .filter((attachment) => attachment.geodesicId === options.geodesicId);
+  if (options.endRole && attachments.some((attachment) => attachment.role === options.endRole)) {
+    return options.endRole;
+  }
+  return attachments[0]?.role;
+}
+
 function resolveSegmentSelectionObject(
   registry: RuntimeObjectRegistry,
   center: ProtractorCenterSelection,
   previous: ProtractorDirectedGeodesic,
 ): GeodesicSegmentObject | undefined {
   const current = registry.get(previous.segmentId);
-  if (current?.kind === "geodesic-segment" && segmentCanAnchorProtractorSelection(center, current)) {
+  if (
+    current?.kind === "geodesic-segment" &&
+    (previous.endRole === undefined || current.halfRole === previous.endRole) &&
+    segmentCanAnchorProtractorSelection(center, current)
+  ) {
     return current;
   }
 
   return registry.getAll()
     .filter((object): object is GeodesicSegmentObject => object.kind === "geodesic-segment")
-    .filter((segment) => segment.geodesicId === previous.geodesicId && segmentCanAnchorProtractorSelection(center, segment))
+    .filter((segment) =>
+      segment.geodesicId === previous.geodesicId &&
+      (previous.endRole === undefined || segment.halfRole === previous.endRole) &&
+      segmentCanAnchorProtractorSelection(center, segment)
+    )
     .sort((left, right) =>
       Math.abs(getDistanceAlongSegment(left, center.point)) -
       Math.abs(getDistanceAlongSegment(right, center.point))

@@ -99,9 +99,9 @@ describe("protractor tool objects", () => {
     expect(angle.aimStickyTarget?.localPoint).toEqual(angle.labelHitbox?.center);
   });
 
-  it("requires the second selected side to come from a different geodesic", () => {
-    const first = { geodesicId: "g-a", segmentId: "segment-a", yawRadians: 0 };
-    const second = { geodesicId: "g-a", segmentId: "segment-b", yawRadians: Math.PI / 2 };
+  it("requires the second selected side to come from a different geodesic endpoint", () => {
+    const first = { geodesicId: "g-a", endRole: "start" as const, segmentId: "segment-a", yawRadians: 0 };
+    const second = { geodesicId: "g-a", endRole: "start" as const, segmentId: "segment-b", yawRadians: Math.PI / 2 };
 
     expect(protractorSelectionsUseDifferentGeodesics(first, second)).toBe(false);
     expect(() => createProtractorAngleObject({
@@ -109,7 +109,18 @@ describe("protractor tool objects", () => {
       center: resolveProtractorCenterSelection(createEmitter()),
       first,
       second,
-    })).toThrow("Cannot create a protractor angle from the same geodesic twice.");
+    })).toThrow("Cannot create a protractor angle from the same geodesic endpoint twice.");
+  });
+
+  it("allows measuring different endpoint roles of the same geodesic", () => {
+    const center = resolveProtractorCenterSelection(createEmitter());
+    const first = { geodesicId: "g-a", endRole: "start" as const, segmentId: "segment-a", yawRadians: 0 };
+    const second = { geodesicId: "g-a", endRole: "end" as const, segmentId: "segment-b", yawRadians: Math.PI / 2 };
+
+    const angle = createProtractorAngleObject({ id: "angle-a", center, first, second });
+
+    expect(protractorSelectionsUseDifferentGeodesics(first, second)).toBe(true);
+    expect(angle.angleDegrees).toBeCloseTo(90);
   });
 
   it("uses supplied geodesic labels in the displayed angle measurement", () => {

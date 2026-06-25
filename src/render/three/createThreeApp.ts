@@ -129,6 +129,7 @@ import {
   resolveProtractorCenterSelection,
   resolveProtractorDirectedGeodesicSelection,
   resolveProtractorEmitterGeodesicSelection,
+  type ProtractorAngleObject,
   type ProtractorCenterSelection,
   type ProtractorDirectedGeodesic,
 } from "../../world-objects/protractorTool";
@@ -4444,6 +4445,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     if (lockedIncidentGeodesicIds.length > 0) {
+      const rebuiltGeodesicIds: string[] = [];
       for (const incidentGeodesicId of lockedIncidentGeodesicIds) {
         updateCarriedGeodesicPortalWord(cannon, previousCannon, incidentGeodesicId);
         const carriedPortalWord = activeGeodesicCannonToolState.carryPortalWordsByGeodesicId?.[incidentGeodesicId] ??
@@ -4459,9 +4461,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           carriedEmitterPortalTransition: latestPlayerPortalTransition,
           carriedPortalWord,
         });
-        refreshProtractorAnglesForGeodesic(incidentGeodesicId);
+        rebuiltGeodesicIds.push(incidentGeodesicId);
         refreshMeasuredGeodesicLengthsForGeodesic(incidentGeodesicId);
       }
+      refreshProtractorAnglesForGeodesics(rebuiltGeodesicIds);
     } else if (geodesicId && isGeodesicLocked(runtimeObjectRegistry, geodesicId)) {
       updateCarriedGeodesicPortalWord(cannon, previousCannon, geodesicId);
       rebuildConnectedGeodesicBetweenEmitters({
@@ -5143,6 +5146,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       const selected = resolveProtractorEmitterGeodesicSelection({
         center,
         emitter: target.object,
+        registry: runtimeObjectRegistry,
         geodesicId: target.geodesicEmitterGeodesicId,
       });
       return selected ? withProtractorGeodesicLabel(selected) : undefined;
@@ -5622,14 +5626,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function refreshProtractorAnglesForGeodesic(geodesicId: string): void {
-    for (const object of runtimeObjectRegistry.getAll()) {
-      if (
-        object.kind !== "protractor-angle" ||
-        (object.first.geodesicId !== geodesicId && object.second.geodesicId !== geodesicId)
-      ) {
-        continue;
-      }
+    refreshProtractorAnglesForGeodesics([geodesicId]);
+  }
 
+  function refreshProtractorAnglesForGeodesics(geodesicIds: readonly string[]): void {
+    const affectedGeodesicIds = new Set(geodesicIds);
+    const angles = runtimeObjectRegistry.getAll().filter((object): object is ProtractorAngleObject =>
+      object.kind === "protractor-angle" &&
+      (affectedGeodesicIds.has(object.first.geodesicId) || affectedGeodesicIds.has(object.second.geodesicId))
+    );
+    for (const object of angles) {
       const refreshed = refreshProtractorAngleObject({
         registry: runtimeObjectRegistry,
         angle: object,

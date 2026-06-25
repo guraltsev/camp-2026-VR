@@ -16,6 +16,7 @@ import {
   createProtractorAngleObject,
   protractorAngleRadiusMeters,
   resolveProtractorCenterSelection,
+  resolveProtractorDirectedGeodesicSelection,
   resolveProtractorEmitterGeodesicSelection,
   type ProtractorAngleObject,
 } from "../../src/world-objects/protractorTool";
@@ -153,6 +154,100 @@ describe("world geometry computed object policy", () => {
       expect(angle.centerPoint.z).toBeCloseTo(geodesicRayBeamHeightMeters);
     }
   });
+
+  it("keeps segment-selected angles while shared locked endpoints are rebuilt", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const leftSource = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, vec3(-1.5, 0, 0)),
+    });
+    const lowerSource = createGeodesicCannonObject({
+      id: "cannon-c",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI / 2, vec3(1, -2, 0)),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, vec3(1, 0, 0)),
+    });
+    registry.add(leftSource);
+    registry.add(lowerSource);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: leftSource, geodesicId: "g-a", maxLengthMeters: 4 });
+    shootGeodesic({ world, registry, cannon: lowerSource, geodesicId: "g-b", maxLengthMeters: 4 });
+    registry.add(createIncomingSegmentAngle(registry.get("cannon-b"), registry));
+    const movedIncoming = registry.get("cannon-b");
+    if (movedIncoming?.kind !== "geodesic-cannon") {
+      throw new Error("Expected incoming emitter.");
+    }
+    registry.update({
+      ...movedIncoming,
+      localPose: yawRigidTransform3(Math.PI, vec3(1, 1, 0)),
+    });
+
+    const result = applyGeometryCommitComputedObjectPolicy({
+      world,
+      registry,
+      playerCellId: "a",
+      playerPoint: vec3(0, 0, geodesicRayBeamHeightMeters),
+    });
+
+    expect(result.removedProtractorAngleIds).toEqual([]);
+    expect(result.refreshedProtractorAngleIds).toEqual(["angle-segment-incoming"]);
+    expect(registry.get("angle-segment-incoming")?.kind).toBe("protractor-angle");
+  });
+
+  it("rebuilds locked interval geodesics even without legacy cannon-owned ids", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, vec3(-1.5, 0, 0)),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, vec3(1, 0, 0)),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 4 });
+    for (const object of registry.getAll()) {
+      if (object.kind === "geodesic-cannon") {
+        registry.update({
+          ...object,
+          activeGeodesicId: undefined,
+          geodesicIds: [],
+          geodesicEmitterYawRadiansById: {},
+          geodesicConnectionsById: {},
+        });
+      }
+    }
+    const movedIncoming = registry.get("cannon-b");
+    if (movedIncoming?.kind !== "geodesic-cannon") {
+      throw new Error("Expected incoming emitter.");
+    }
+    registry.update({
+      ...movedIncoming,
+      localPose: yawRigidTransform3(Math.PI, vec3(1, 1, 0)),
+    });
+
+    const result = applyGeometryCommitComputedObjectPolicy({
+      world,
+      registry,
+      playerCellId: "a",
+      playerPoint: vec3(0, 0, geodesicRayBeamHeightMeters),
+    });
+
+    expect(result.rebuiltGeodesicIds).toEqual(["g-a"]);
+    expect(result.removedGeodesicIds).toEqual([]);
+    expect(isGeodesicLocked(registry, "g-a")).toBe(true);
+    expect(getGeodesicTail(registry, "g-a")?.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-b" });
+  });
 });
 
 function compileLargeWorld() {
@@ -220,6 +315,43 @@ function createIncomingEmitterAngle(object: RuntimeWorldObject | undefined): Pro
 
   return createProtractorAngleObject({
     id: "angle-incoming",
+    center,
+    first,
+    second,
+  });
+}
+
+function createIncomingSegmentAngle(
+  object: RuntimeWorldObject | undefined,
+  registry: ReturnType<typeof createRuntimeObjectRegistry>,
+): ProtractorAngleObject {
+  if (object?.kind !== "geodesic-cannon") {
+    throw new Error("Expected incoming emitter.");
+  }
+
+  const center = resolveProtractorCenterSelection(object);
+  const firstSegment = getGeodesicSegments(registry, "g-a").at(-1);
+  const secondSegment = getGeodesicSegments(registry, "g-b").at(-1);
+  if (!firstSegment || !secondSegment) {
+    throw new Error("Expected incoming segments.");
+  }
+
+  const first = resolveProtractorDirectedGeodesicSelection({
+    center,
+    segment: firstSegment,
+    hitPoint: center.point,
+  });
+  const second = resolveProtractorDirectedGeodesicSelection({
+    center,
+    segment: secondSegment,
+    hitPoint: center.point,
+  });
+  if (!first || !second) {
+    throw new Error("Expected incoming segment selections.");
+  }
+
+  return createProtractorAngleObject({
+    id: "angle-segment-incoming",
     center,
     first,
     second,

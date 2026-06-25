@@ -60,6 +60,7 @@ export function applyGeometryCommitComputedObjectPolicy(
     result.removedGeodesicIds.add(geodesicId);
   }
 
+  const rebuiltLockedGeodesicIds: string[] = [];
   for (const geodesicId of lockedGeodesicIds) {
     const rebuilt = rebuildConnectedGeodesicBetweenEmitters({
       world: options.world,
@@ -75,10 +76,11 @@ export function applyGeometryCommitComputedObjectPolicy(
       continue;
     }
 
-    refreshProtractorAnglesForGeodesic(options, geodesicId, result);
     refreshMeasuredGeodesicLengthsForGeodesic(options, geodesicId, result);
     result.rebuiltGeodesicIds.add(geodesicId);
+    rebuiltLockedGeodesicIds.push(geodesicId);
   }
+  refreshProtractorAnglesForGeodesics(options, rebuiltLockedGeodesicIds, result);
 
   const prunedIntersectionIds = pruneMissingGeodesicIntersectionObjects(options.registry);
   for (const intersectionId of prunedIntersectionIds) {
@@ -91,7 +93,7 @@ export function applyGeometryCommitComputedObjectPolicy(
 
 function collectLockedGeodesicIds(registry: RuntimeObjectRegistry): Set<string> {
   return new Set(
-    collectCannonGeodesicIds(registry)
+    [...collectAllGeodesicIds(registry)]
       .filter((geodesicId) => isGeodesicLocked(registry, geodesicId)),
   );
 }
@@ -99,7 +101,9 @@ function collectLockedGeodesicIds(registry: RuntimeObjectRegistry): Set<string> 
 function collectAllGeodesicIds(registry: RuntimeObjectRegistry): Set<string> {
   const geodesicIds = new Set(collectCannonGeodesicIds(registry));
   for (const object of registry.getAll()) {
-    if (object.kind === "geodesic-segment") {
+    if (object.kind === "geodesic-interval") {
+      geodesicIds.add(object.id);
+    } else if (object.kind === "geodesic-segment") {
       geodesicIds.add(object.geodesicId);
     } else if (object.kind === "measured-geodesic-length") {
       geodesicIds.add(object.geodesicId);
@@ -229,19 +233,18 @@ function removeProtractorAnglesForMissingVertices(
   }
 }
 
-function refreshProtractorAnglesForGeodesic(
+function refreshProtractorAnglesForGeodesics(
   options: ApplyGeometryCommitComputedObjectPolicyOptions,
-  geodesicId: string,
+  geodesicIds: readonly string[],
   result: GeometryCommitComputedObjectPolicyResultBuilder,
 ): void {
-  for (const object of options.registry.getAll()) {
-    if (
-      object.kind !== "protractor-angle" ||
-      (object.first.geodesicId !== geodesicId && object.second.geodesicId !== geodesicId)
-    ) {
-      continue;
-    }
-
+  const affectedGeodesicIds = new Set(geodesicIds);
+  const angles = options.registry.getAll()
+    .filter((object): object is ProtractorAngleObject =>
+      object.kind === "protractor-angle" &&
+      (affectedGeodesicIds.has(object.first.geodesicId) || affectedGeodesicIds.has(object.second.geodesicId))
+    );
+  for (const object of angles) {
     const refreshed = refreshProtractorAngleObject({
       registry: options.registry,
       angle: object,

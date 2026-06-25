@@ -78,7 +78,7 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("geodesic-cannon-action:aim:g-a");
     expect(itemIds).toContain("geodesic-cannon-action:delete:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:add-geodesic");
-    expect(actionIds).not.toContain("geodesic-cannon-action:carry");
+    expect(actionIds).toContain("geodesic-cannon-action:carry");
     expect(actionIds).not.toContain("geodesic-cannon-action:tie-and-detach");
     expect(actionIds).not.toContain("geodesic-cannon-action:rotate:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:aim:g-a");
