@@ -45,7 +45,9 @@ below are implemented or stubbed with tests in the same phase that first uses
 them. Phase F is explicitly not greenlit by this document. It remains blocked
 until a separate curve-shortening algorithm note specifies the portal/lift
 shortening step, monotonicity tolerance, failure behavior, and final-fusion
-trace construction in implementation-level detail.
+trace construction in implementation-level detail. See
+`docs/issues/32_phase_f_curve_shortening_algorithm_note.md` for the proposed
+Phase F greenlight details.
 
 Do not start by relaxing the same-geodesic rejection in tie/release or the
 protractor. Those local fixes hide the identity problem and make the later
@@ -226,9 +228,10 @@ reverse lookup returns two endpoint attachments for that same anchor.
   `FreeGeodesicEndObject`.
 - An aimable free geodesic has one emitter endpoint, one free-end endpoint, and
   the free end has exactly one attached geodesic endpoint total.
-- A curve-shortening pair contains two moving geodesics. Each has one
-  emitter-attached endpoint and one endpoint attached to the same
-  `FreeGeodesicEndObject`.
+- A curve-shortening pair contains two moving endpoint roles attached to the
+  same `FreeGeodesicEndObject`. Those endpoint roles may belong to two
+  different geodesics, or they may be the `start` and `end` roles of one
+  geodesic interval when untying a same-emitter loop into a free loop.
 - A geodesic segment object never spans a portal. Portal crossing remains a
   chain of segment objects.
 - A geodesic interval carries `startCellId` and `portalWord` as its path/lift
@@ -771,12 +774,11 @@ Tie/release at an emitter should:
 1. Resolve the two selected endpoint roles at that emitter.
 2. Verify they are two different endpoint selections.
 3. Identify the two opposite endpoint attachments.
-4. Remove or replace the old geodesic interval records that used the detached
-   endpoints.
-5. Create a `FreeGeodesicEndObject` at the detached point.
-6. Create a curve-shortening pair from the opposite emitter-attached endpoints
-   to the shared free end.
-7. Mark the two temporary geodesics as `moving`.
+4. Create a `FreeGeodesicEndObject` at the detached point.
+5. Replace the selected endpoint attachments with that shared free end.
+6. Create a curve-shortening pair that owns the two selected endpoint roles now
+   attached to the shared free end.
+7. Mark every affected geodesic interval as `moving`.
 8. Preserve portal/lift metadata from both incident arcs.
 
 Special case that must be valid:
@@ -790,16 +792,21 @@ emitter but different endpoint roles/lifts.
 
 A locked loop whose start and end anchors are the same emitter must also be
 valid. Reverse lookup on that emitter returns two endpoint attachments for the
-same geodesic. Tie/release may select those two endpoint roles and detach the loop
-from that emitter exactly as it would detach two different geodesics. Same
+same geodesic. Tie/release may select those two endpoint roles and detach the
+loop from that emitter exactly as it would detach two different geodesics. Same
 `geodesicId` and same anchor object do not imply the same selected endpoint.
+After detach, the loop remains one geodesic interval whose `start` and `end`
+roles both attach to the same free end. This is a free loop, and it is a valid
+moving curve-shortening object when its lifted displacement is nondegenerate.
 
 The current same-cell construction in `tieAndDetachIncidentGeodesics` should be
 replaced by a portal-aware initialization:
 
 - keep each half's existing traced chain up to the detached emitter;
-- reverse or re-orient chains as needed so each half runs from its remaining
-  emitter-attached end to the shared free-end anchor;
+- replace the selected endpoint anchors with the shared free-end anchor without
+  moving the visible arcs at detach time;
+- reverse or re-orient portal words only when required to keep each interval's
+  word ordered from `start` to `end`;
 - do not collapse to straight same-cell segments at tie time.
 
 ## Curve Shortening Regime
@@ -809,22 +816,22 @@ implementation until a complete curve-shortening algorithm note exists. Phases
 A through E should land first. Phase F should not be started from this section
 alone.
 
-Curve shortening is a state over two geodesic halves, not a special state of one
-ordinary locked geodesic.
+Curve shortening is a state over two endpoint roles at one shared free end, not
+a special state of one ordinary locked geodesic. The two endpoint roles may
+belong to two different geodesic intervals, or they may be the `start` and
+`end` roles of one interval in the free-loop case.
 
 Represent curve-shortening state as an explicit runtime object. It is not
 rendered, does not collide, and exists only to coordinate the two moving
-geodesics that share one free-end anchor.
+endpoint roles that share one free-end anchor.
 
 ```ts
 interface CurveShorteningPairObject extends RuntimeWorldObjectBase {
   readonly kind: "curve-shortening-pair";
   readonly id: string;
-  readonly firstGeodesicId: string;
-  readonly secondGeodesicId: string;
+  readonly first: GeodesicEndpointAttachment;
+  readonly second: GeodesicEndpointAttachment;
   readonly freeEndAnchorId: string;
-  readonly firstFreeEndRole: GeodesicEndRole;
-  readonly secondFreeEndRole: GeodesicEndRole;
   readonly previousTotalLengthMeters?: number;
   readonly state: "moving" | "ready-to-fuse";
 }
@@ -838,18 +845,21 @@ interface FreeGeodesicEndObject extends RuntimeWorldObjectBase {
 
 The glued point is represented by the shared `FreeGeodesicEndObject`. Reverse
 lookup on `freeEndAnchorId` must return exactly the two moving geodesic endpoint
-attachments in the shortening pair.
+roles owned by the shortening pair. Those endpoint roles may have the same
+`geodesicId` when the pair represents a free loop.
 
 Creation:
 
-- tie/release deletes or replaces the detached locked geodesic interval records;
 - it creates one shared `FreeGeodesicEndObject` at the detached emitter point;
-- it creates two moving `GeodesicIntervalObject`s whose free endpoints attach
-  to the shared free end;
-- each moving geodesic keeps the portal word/lift metadata for the corresponding
-  surviving half;
-- it creates one `CurveShorteningPairObject` referencing the two moving
-  geodesics and the shared free end.
+- it replaces the selected endpoint attachments with the shared free end;
+- each affected geodesic keeps its portal word/lift metadata;
+- when the selections are from two geodesics, both become moving intervals with
+  one endpoint attached to the shared free end;
+- when the selections are the `start` and `end` roles of one same-emitter loop,
+  that one interval becomes a moving free loop with both roles attached to the
+  shared free end;
+- it creates one `CurveShorteningPairObject` referencing the two free-end
+  endpoint roles and the shared free end.
 
 Each tick:
 
@@ -858,11 +868,11 @@ Each tick:
    lift.
 3. Move the free-end anchor a small step along the half-angle direction that
    reduces the smaller angle.
-4. Retrace both halves from their emitter-attached end to the moved free end,
+4. Retrace affected intervals from their endpoint anchors and portal words,
    respecting portals and forbidden zones.
-5. Compute total length as `first.length + second.length`.
-6. If a half hits a forbidden zone, break the pair:
-   - delete the half that failed;
+5. Compute total length over distinct affected geodesic ids.
+6. If an affected interval hits a forbidden zone, break the pair:
+   - delete the interval that failed;
    - delete the curve-shortening pair relation;
    - leave the surviving emitter-attached path as an unlocked geodesic when it
      is still valid.
@@ -871,22 +881,27 @@ Each tick:
 
 Pair invariants:
 
-- both referenced geodesics exist and have `motionState === "moving"`;
-- both referenced geodesics have exactly one endpoint attached to
+- both referenced endpoint roles exist and have `motionState === "moving"`;
+- both referenced endpoint roles attach to `freeEndAnchorId`;
+- the free end has exactly those two attached geodesic endpoint roles;
+- the two referenced endpoint roles may belong to the same geodesic id;
+- in the two-geodesic case, each moving geodesic's other endpoint is usually a
+  geodesic emitter, and those emitter anchors may be the same object;
+- in the free-loop case, both endpoint roles of one moving interval attach to
   `freeEndAnchorId`;
-- the free end has exactly two attached geodesic endpoints;
-- the other endpoint of each moving geodesic is attached to a geodesic emitter;
-- the two emitter anchors may be the same object;
 - `previousTotalLengthMeters` is updated only after a successful monotone tick.
 
 Failure cleanup:
 
-- if both halves fail retracing, delete both moving geodesics, the shared free
-  end, and the pair object;
-- if one half fails, delete the failed moving geodesic and the pair object;
+- if all affected intervals fail retracing, delete the moving geodesics, the
+  shared free end, and the pair object;
+- if one interval fails in a two-geodesic pair, delete the failed moving geodesic
+  and the pair object;
 - the surviving half becomes a stable free geodesic by keeping its emitter
   endpoint and replacing the shared free end with a singly-attached free end at
   the last valid point;
+- if a free loop fails, delete the loop interval, the shared free end, and the
+  pair object because there is no emitter-attached survivor;
 - remove stale measurements, protractor angles, and intersection markers that
   reference deleted geodesics or endpoint selections.
 
@@ -898,7 +913,9 @@ one chord.
 ## Final Straightening And Fusion
 
 Final fusion should take the two shortened halves and produce one locked
-geodesic with two explicit ends.
+geodesic with two explicit ends when the pair has emitter-side endpoints. If the
+pair represents a free loop, finalization keeps one stable free loop or deletes
+it if shortening makes it degenerate.
 
 It must not assume the result is one segment. Instead:
 
@@ -906,13 +923,18 @@ It must not assume the result is one segment. Instead:
    halves.
 2. Trace the final locally straight path through the cell complex.
 3. Create a segment chain, with one segment per cell traversal.
-4. Create one stable geodesic interval record whose two endpoint attachments
-   point to the final emitter anchors.
-5. Preserve distinct endpoint roles, even when both endpoint attachments point
-   to the same emitter.
-6. Mark the resulting geodesic `stable`.
-7. Delete the two temporary moving geodesics, the shared free-end anchor, and
-   the shortening pair.
+4. Reuse the lower geodesic id among the affected moving intervals for the
+   finalized interval.
+5. Create one stable geodesic interval record whose two endpoint attachments
+   point to the final emitter anchors, or keep the free-loop interval with both
+   endpoint roles attached to the same free end.
+6. Preserve distinct endpoint roles, even when both endpoint attachments point
+   to the same emitter or the same free end.
+7. Mark the resulting geodesic `stable`.
+8. Delete the temporary moving geodesics not reused, the pair object, and any
+   free-end anchor that is no longer attached.
+9. If fusion/finalization fails, delete the moving geodesics owned by the pair,
+   the shared free end, and the pair object.
 
 Fusion consumes a `CurveShorteningPairObject`; it should not infer pairs by
 searching for arbitrary moving geodesics that happen to share a free end. The
@@ -926,6 +948,16 @@ E1 -- segment in torus cell -- portal-hit -- segment in torus cell -- E1
 
 The two endpoint anchors may be the same emitter. The two endpoint roles must
 remain distinct.
+
+For a same-emitter loop untied at that same emitter, the result may instead be a
+stable free loop:
+
+```text
+free end -- wrapped G1 -- same free end
+```
+
+Both endpoint roles attach to the same `FreeGeodesicEndObject`. This is valid
+when the interval's lifted displacement is nondegenerate.
 
 ## Portal Requirements
 
@@ -1194,24 +1226,36 @@ Do not implement Phase F from the target description alone.
 Scope:
 
 - change tie/release selection payloads to `(geodesicId, endRole)`;
-- create a shared free-end anchor and two moving geodesics from the detached
-  endpoint selections;
-- create a `CurveShorteningPairObject` to own the two moving geodesics;
-- advance pairs by moving the shared free end and retracing both halves in their
-  portal/lift classes;
-- fuse `ready-to-fuse` pairs into one stable locked geodesic;
-- delete temporary moving geodesics, the pair object, and the shared free end.
+- create a shared free-end anchor and attach the two detached endpoint roles to
+  it;
+- create a `CurveShorteningPairObject` to own the two moving endpoint roles;
+- allow those endpoint roles to come from two different geodesics or from the
+  `start` and `end` roles of one same-emitter loop;
+- advance pairs by moving the shared free end and retracing affected intervals
+  in their portal/lift classes;
+- fuse `ready-to-fuse` pairs into one stable locked geodesic when emitter-side
+  endpoints remain;
+- finalize same-geodesic free loops as stable free loops when nondegenerate;
+- reuse the lower geodesic id for the finalized interval;
+- delete temporary moving geodesics, the pair object, and unused free ends.
 
 Acceptance:
 
 - tie/release can act on `start` and `end` of the same geodesic;
 - tie/release can act when the two remaining endpoints attach to the same
   emitter;
-- reverse lookup on the shared free end returns exactly two moving endpoints;
+- tie/release of a same-emitter loop may create a free loop whose two endpoint
+  roles attach to the same free end;
+- reverse lookup on the shared free end returns exactly two moving endpoint
+  roles;
 - total length is tracked monotonically across ticks;
 - final fusion may produce multiple segments;
 - final fusion may produce a locked geodesic whose two endpoint roles attach to
   the same emitter;
+- finalization may produce a stable free loop whose two endpoint roles attach to
+  the same free end;
+- if final fusion/finalization fails, the moving geodesics owned by the pair are
+  deleted with the pair and shared free end;
 - forbidden-zone failure leaves a valid surviving free geodesic when one half
   remains valid.
 
@@ -1264,11 +1308,17 @@ World-object tests:
 - the continuation geodesic after a cut recomputes its portal word from the cut
   tangent and remaining computed length;
 - tie/release can detach the two endpoint roles of a locked same-emitter loop;
+- detaching a same-emitter loop at its emitter creates a free loop whose two
+  endpoint roles attach to one shared free end;
 - tie/release at one emitter in a two-emitter torus loop creates a shortening
   pair whose moving geodesics share one free-end anchor and whose remaining
   ends both attach to the other emitter;
 - advancing that pair fuses into one connected wrapped geodesic;
+- advancing a nondegenerate free loop keeps it as one stable free loop;
+- advancing a degenerate free loop deletes it and the shared free end;
 - final fused wrapped geodesic has two emitter ends with distinct endpoint
+  roles;
+- final stable free loop has two free-end endpoint roles with distinct endpoint
   roles;
 - final fused wrapped geodesic has a nonempty portal word;
 - final fusion deletes temporary moving geodesics and the shared free-end
