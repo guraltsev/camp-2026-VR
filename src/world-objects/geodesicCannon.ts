@@ -231,6 +231,7 @@ export interface RebuildConnectedGeodesicBetweenEmittersRequest {
   readonly carriedEmitterPortalTransition?: GeodesicCarryPortalTransition;
   readonly carriedPortalWord?: readonly GeodesicPortalTraversal[];
   readonly preserveGeodesicOnRebuildFailure?: boolean;
+  readonly allowOutOfBoundsCarriedEndpoint?: boolean;
 }
 
 export interface TieAndDetachIncidentGeodesicsRequest {
@@ -947,6 +948,7 @@ export function traceGeodesicFromLiftedChord(input: {
   readonly yawRadians: number;
   readonly lengthMeters: number;
   readonly expectedPortalWord?: readonly GeodesicPortalTraversal[];
+  readonly allowUnexpectedPortalWord?: boolean;
 }): GeodesicTraceBuildResult | undefined {
   const interval = input.registry.get(input.geodesicId);
   if (interval?.kind !== "geodesic-interval" || input.lengthMeters < minGeodesicSegmentLengthMeters) {
@@ -965,7 +967,7 @@ export function traceGeodesicFromLiftedChord(input: {
     maxLengthMeters: input.lengthMeters,
   });
   const portalWord = collectPortalWordFromTraces(input.world, traces);
-  if (input.expectedPortalWord && !samePortalWord(portalWord, input.expectedPortalWord)) {
+  if (input.expectedPortalWord && !input.allowUnexpectedPortalWord && !samePortalWord(portalWord, input.expectedPortalWord)) {
     return undefined;
   }
   if (traces.some((trace) => trace.terminal.kind === "forbidden-zone-hit")) {
@@ -1078,6 +1080,7 @@ export function rebuildDerivedGeodesicSegments(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
   readonly geodesicId: string;
+  readonly allowUnexpectedPortalWord?: boolean;
 }): GeodesicTraceBuildResult | undefined {
   const interval = input.registry.get(input.geodesicId);
   if (interval?.kind !== "geodesic-interval") {
@@ -1108,6 +1111,7 @@ export function rebuildDerivedGeodesicSegments(input: {
     yawRadians: Math.atan2(dy, dx),
     lengthMeters,
     expectedPortalWord: lifted.portalWordFromSourceToTarget,
+    allowUnexpectedPortalWord: input.allowUnexpectedPortalWord,
   });
 }
 
@@ -1304,6 +1308,7 @@ export function rebuildLockedGeodesicFromEndpointsAndPortalWord(input: {
   readonly carriedAnchorBeforeMove?: GeodesicCannonObject;
   readonly carriedPortalTransition?: GeodesicCarryPortalTransition;
   readonly carriedPortalWord?: readonly GeodesicPortalTraversal[];
+  readonly allowOutOfBoundsCarriedEndpoint?: boolean;
 }): GeodesicTraceBuildResult | undefined {
   const interval = input.registry.get(input.geodesicId);
   if (interval?.kind !== "geodesic-interval") {
@@ -1334,7 +1339,10 @@ export function rebuildLockedGeodesicFromEndpointsAndPortalWord(input: {
     });
   }
 
-  const result = rebuildDerivedGeodesicSegments(input);
+  const result = rebuildDerivedGeodesicSegments({
+    ...input,
+    allowUnexpectedPortalWord: input.allowOutOfBoundsCarriedEndpoint,
+  });
   if (result) {
     syncLegacyEmitterGeodesicFields(input.registry, input.geodesicId);
     updateGeodesicIntersectionObjects(input.registry);
@@ -2140,6 +2148,7 @@ export function rebuildConnectedGeodesicBetweenEmitters(
       carriedAnchorBeforeMove: request.carriedEmitterBeforeMove,
       carriedPortalTransition: request.carriedEmitterPortalTransition,
       carriedPortalWord: request.carriedPortalWord,
+      allowOutOfBoundsCarriedEndpoint: request.allowOutOfBoundsCarriedEndpoint,
     });
     if (!result) {
       if (request.preserveGeodesicOnRebuildFailure) {

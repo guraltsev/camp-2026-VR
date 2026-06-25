@@ -4480,6 +4480,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           carriedEmitterPortalTransition: latestPlayerPortalTransition,
           carriedPortalWord,
           preserveGeodesicOnRebuildFailure: options.preserveGeodesicOnRebuildFailure,
+          allowOutOfBoundsCarriedEndpoint: options.preserveGeodesicOnRebuildFailure,
         });
         rebuiltGeodesicIds.push(incidentGeodesicId);
         refreshMeasuredGeodesicLengthsForGeodesic(incidentGeodesicId);
@@ -4496,6 +4497,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         carriedEmitterPortalTransition: latestPlayerPortalTransition,
         carriedPortalWord: resolveCarriedGeodesicPortalWordForRebuild(geodesicId),
         preserveGeodesicOnRebuildFailure: options.preserveGeodesicOnRebuildFailure,
+        allowOutOfBoundsCarriedEndpoint: options.preserveGeodesicOnRebuildFailure,
       });
       refreshProtractorAnglesForGeodesic(geodesicId);
       refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);

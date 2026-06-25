@@ -1227,6 +1227,56 @@ describe("geodesic cannon world objects", () => {
     expect(isGeodesicLocked(registry, "g-a")).toBe(true);
   });
 
+  it("rebuilds a live carried geodesic to a formal out-of-bounds emitter without mutating the word", () => {
+    const world = compileLargePortalWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 4, y: 2.5, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 5.2, y: 2.5, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+    registry.add(createGeodesicIntervalObject({
+      id: "g-a",
+      startAnchorObjectId: "cannon-a",
+      endAnchorObjectId: "cannon-b",
+      startCellId: "a",
+    }));
+
+    const strictRebuilt = rebuildConnectedGeodesicBetweenEmitters({
+      world,
+      registry,
+      geodesicId: "g-a",
+      carriedEmitterId: "cannon-b",
+      preserveGeodesicOnRebuildFailure: true,
+    });
+    expect(strictRebuilt).toEqual([]);
+    expect(registry.get("g-a")?.kind).toBe("geodesic-interval");
+
+    const liveRebuilt = rebuildConnectedGeodesicBetweenEmitters({
+      world,
+      registry,
+      geodesicId: "g-a",
+      carriedEmitterId: "cannon-b",
+      preserveGeodesicOnRebuildFailure: true,
+      allowOutOfBoundsCarriedEndpoint: true,
+    });
+
+    expect(liveRebuilt.some((segment) => segment.terminal.kind === "portal-hit")).toBe(true);
+    expect(liveRebuilt.at(-1)).toMatchObject({
+      terminal: { kind: "emitter-hit", emitterId: "cannon-b" },
+      connectionState: "connected",
+    });
+    expect(collectGeodesicPortalWord(world, registry, "g-a")).toEqual([]);
+    expect(registry.get("g-a")?.kind).toBe("geodesic-interval");
+  });
+
   it("preserves a locked interval after a failed live carry rebuild", () => {
     const world = compileLargePortalWorld();
     const registry = createRuntimeObjectRegistry();
