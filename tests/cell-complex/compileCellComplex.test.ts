@@ -45,9 +45,18 @@ describe("compileCellComplex", () => {
 
   it("keeps the tetrahedron example glued as four distinct tetrahedral vertices", () => {
     const vertexClasses = buildVertexClasses(tetrahedron);
+    const quotientFaces = buildQuotientFaces(tetrahedron, vertexClasses);
+    const quotientEdges = buildQuotientEdges(quotientFaces);
 
     expect(vertexClasses).toHaveLength(4);
     expect(vertexClasses.map((vertexClass) => vertexClass.length).sort((a, b) => a - b)).toEqual([3, 3, 3, 3]);
+    expect(quotientFaces.map((face) => face.vertexClassIds).sort(compareStringArrays)).toEqual([
+      ["q0", "q1", "q2"],
+      ["q0", "q1", "q3"],
+      ["q0", "q2", "q3"],
+      ["q1", "q2", "q3"],
+    ]);
+    expect(quotientEdges).toEqual(["q0-q1", "q0-q2", "q0-q3", "q1-q2", "q1-q3", "q2-q3"]);
   });
 
   it("compiles portal lookups, side geometry, and forbidden zones for movement", () => {
@@ -318,4 +327,65 @@ function unionVertex(parent: Map<string, string>, left: string, right: string): 
   if (leftRoot !== rightRoot) {
     parent.set(leftRoot, rightRoot);
   }
+}
+
+function buildQuotientFaces(
+  world: { readonly cells: readonly { readonly id: string; readonly baseVertices: readonly unknown[] }[] },
+  vertexClasses: readonly string[][],
+) {
+  const vertexClassIdByVertex = new Map<string, string>();
+  const sortedVertexClasses = [...vertexClasses]
+    .map((vertexClass) => [...vertexClass].sort())
+    .sort(compareStringArrays);
+
+  sortedVertexClasses.forEach((vertexClass, index) => {
+    const quotientVertexId = `q${index}`;
+
+    for (const vertex of vertexClass) {
+      vertexClassIdByVertex.set(vertex, quotientVertexId);
+    }
+  });
+
+  return world.cells.map((cell) => ({
+    cellId: cell.id,
+    vertexClassIds: cell.baseVertices
+      .map((_, vertexIndex) => {
+        const vertexClassId = vertexClassIdByVertex.get(vertexKey(cell.id, vertexIndex));
+
+        if (!vertexClassId) {
+          throw new Error(`Missing quotient vertex for "${vertexKey(cell.id, vertexIndex)}".`);
+        }
+
+        return vertexClassId;
+      })
+      .sort(),
+  }));
+}
+
+function buildQuotientEdges(quotientFaces: readonly { readonly vertexClassIds: readonly string[] }[]) {
+  const edges = new Set<string>();
+
+  for (const face of quotientFaces) {
+    for (let index = 0; index < face.vertexClassIds.length; index += 1) {
+      const start = face.vertexClassIds[index];
+      const end = face.vertexClassIds[(index + 1) % face.vertexClassIds.length];
+      edges.add([start, end].sort().join("-"));
+    }
+  }
+
+  return [...edges].sort();
+}
+
+function compareStringArrays(left: readonly string[], right: readonly string[]) {
+  const length = Math.min(left.length, right.length);
+
+  for (let index = 0; index < length; index += 1) {
+    const comparison = left[index].localeCompare(right[index]);
+
+    if (comparison !== 0) {
+      return comparison;
+    }
+  }
+
+  return left.length - right.length;
 }
