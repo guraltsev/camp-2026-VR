@@ -140,7 +140,7 @@ reverse lookup returns two endpoint attachments for that same anchor.
   chain of segment objects.
 - A geodesic interval carries `startCellId` and `portalWord` as its path/lift
   source of truth. The end cell id, endpoint tangents, lifted endpoint
-  coordinates, and angles are computed quantities.
+  coordinates, lengths, and angles are computed quantities.
 - Given an initial position in `startCellId`, `portalWord` determines the
   Euclidean coordinates of the reached endpoint in the unfolded source-cell
   coordinate system, even when those coordinates are outside the visible polygon
@@ -151,8 +151,12 @@ reverse lookup returns two endpoint attachments for that same anchor.
 - Homotopically distinct locked geodesics between the same emitters are allowed.
   Duplicate pruning must compare endpoint roles and portal words, not only
   emitter ids and local coordinates.
-- Same-emitter intervals with zero lifted endpoint displacement are degenerate
-  and should be rejected or deleted, even if the stored portal word is nonempty.
+- Geodesics shorter than `GEODESIC_MIN_LENGTH_METERS = 0.2` are degenerate and
+  should be rejected or deleted. This check uses lifted endpoint displacement,
+  not visible same-cell coordinates.
+- Same-emitter intervals with too-small lifted endpoint displacement are
+  degenerate and should be rejected or deleted, even if the stored portal word
+  is nonempty. Geodesics do not stop at portals.
 
 ## Proposed Domain Model
 
@@ -256,8 +260,8 @@ The source of truth is therefore:
 - geodesic interval objects own endpoint identities, `startCellId`, and
   `portalWord`;
 - segment objects are derived visual traces and never define endpoint identity;
-- end cell id, endpoint tangents, angles, and lifted endpoint coordinates are
-  computed from anchor poses, `startCellId`, and `portalWord`.
+- end cell id, endpoint tangents, lengths, angles, and lifted endpoint
+  coordinates are computed from anchor poses, `startCellId`, and `portalWord`.
 
 Segment chains must be split into two half-geodesics for interaction and
 highlighting. Every `GeodesicSegmentObject` belongs entirely to either the
@@ -362,6 +366,17 @@ stale protractor selections for deleted endpoint roles, and any unshared
 `FreeGeodesicEndObject`. Removing one endpoint must not leave a geodesic
 interval with one permanent endpoint.
 
+Computed-object cleanup is dependency-based:
+
+- if a geodesic interval is deleted, remove measurements, protractor selections,
+  intersections, and other computed objects that reference its geodesic id or
+  either endpoint role;
+- if a geodesic interval survives but its derived segments are rebuilt, refresh
+  computed objects by `(geodesicId, endRole)` first and by replacement segment
+  ids only as a fallback;
+- if a computed object references a deleted segment id but cannot resolve a
+  surviving geodesic endpoint role, delete that computed object.
+
 ### Portal And Lift Math
 
 Required APIs:
@@ -403,10 +418,11 @@ function geodesicHasNonzeroLiftedDisplacement(input: {
 
 `portalWord` is ordered from the interval's `start` endpoint toward its `end`
 endpoint. Reversing the endpoint order must reverse and invert the portal word.
-For `sourceRole === "start"`, compose portal transforms in portal-word order
-from start toward end, then apply the inverse composed transform to the end
-anchor point to express it in the start cell. For `sourceRole === "end"`, use
-the reversed/inverted word symmetrically.
+The lift helper must return coordinates such that tracing from `sourcePoint`
+toward `targetPointInSourceCell` consumes exactly
+`portalWordFromSourceToTarget`. For `sourceRole === "start"`, that word is the
+interval's portal word. For `sourceRole === "end"`, that word is the
+reversed/inverted interval word.
 `liftGeodesicEndpoint(interval, "start")` computes the `end` endpoint position
 in the Euclidean coordinates of the `start` endpoint's cell. Calling it with
 `"end"` computes the `start` endpoint position in the Euclidean coordinates of
@@ -478,11 +494,17 @@ There are two rebuild regimes:
 - Aiming rebuild: one endpoint is an emitter and the other is a singly-attached
   free end. `aimFreeGeodesicFromEndpoint` uses the crosshair point in the
   emitter endpoint's cell to determine yaw/direction only. It traces along that
-  direction for the interval's previous length budget. If the trace hits a
-  forbidden zone before that length is exhausted, the free end is placed at the
-  truncated hit endpoint. The trace updates the free-end anchor terminal cell
-  and local position, rewrites the interval's `portalWord`, and replaces
-  derived segments.
+  direction for the interval's current computed length. If the trace hits a
+  wall, forbidden zone, or emitter before that length is exhausted, the free end
+  is temporarily placed at the truncated hit endpoint during aiming preview. On
+  the committing click, an emitter hit converts the interval into a locked
+  geodesic when the computed length is enough to reach that emitter. No
+  continuation is traced beyond the hit emitter. For wall and forbidden-zone
+  hits, the trace updates the free-end anchor terminal cell and local position.
+  For emitter hits on commit, the free-end attachment is replaced by the hit
+  emitter and the now-unattached free-end anchor is deleted. In all cases the
+  interval's `portalWord` is rewritten from the realized trace and derived
+  segments are replaced.
 
 The free-end anchor always lives in its actual terminal cell. Lifted target
 coordinates are computed values for geometry math, not registry positions.
@@ -490,7 +512,9 @@ coordinates are computed values for geometry math, not registry positions.
 When `expectedPortalWord` is supplied, tracing must consume the same portals in
 the same order. If the traced path hits a different portal, wall, forbidden
 zone, or otherwise cannot realize the expected word, the rebuild fails without
-silently changing the interval's homotopy class.
+silently changing the interval's homotopy class. A locked interval that cannot
+be retraced in its stored portal/lift class is invalid and must be removed with
+the dependency-based cleanup above.
 
 `rebuildDerivedGeodesicSegments` deletes and recreates only the segment chain
 for one interval. In anchored rebuild mode it must not mutate endpoint
@@ -563,7 +587,7 @@ source geodesic id stays on the prefix, which becomes locked from its original
 emitter endpoint to the placed emitter. The prefix portal word is the trace
 prefix up to the hit. A new continuation interval is created with
 `createContinuationGeodesicId(...)`; it starts at the placed emitter and uses
-the forward tangent at the hit plus the remaining length budget. The
+the forward tangent at the hit plus the remaining computed length. The
 continuation is retraced from the placed emitter, and its portal word is
 recomputed from that retrace. If retracing hits a forbidden zone before the
 remaining length is exhausted, the continuation free end is placed at the
@@ -584,6 +608,8 @@ Palette rows should still display exactly one entry per geodesic interval:
 `G1 end`. The emitter menu is interval-level only. It may select an aimable free
 geodesic interval for whole-interval actions or aiming, but it must not choose
 which endpoint role of a locked or double-incident geodesic is selected.
+When a geodesic is cut, the source geodesic keeps its existing label and the
+new continuation geodesic receives the next available label.
 
 Endpoint-specific identity for user actions comes from world hits on
 half-segments. Reverse lookup at anchors is for domain logic, validation,
@@ -820,9 +846,9 @@ Minimum requirement:
   operation explicitly changes homotopy class;
 - duplicate detection includes portal word/lift.
 
-Do not use only local emitter coordinates to decide whether a wrapped loop has
-zero length. In a torus, the same emitter coordinate in two lifts can represent
-a nontrivial loop.
+Do not use only local emitter coordinates to decide whether a wrapped loop is
+too short. In a torus, the same emitter coordinate in two lifts can represent a
+nontrivial loop longer than `GEODESIC_MIN_LENGTH_METERS`.
 
 ## Forbidden-Zone Behavior
 
@@ -873,7 +899,9 @@ Phase readiness:
 - Phase A keeps cutting, locking, carrying, protractor selection, measurements,
   and tie/release controls visible but disabled until they are rebuilt on
   interval/end-role identity.
-- Phase B may keep locking disabled until Phase C.
+- Phase B includes only the narrow prefix lock created by placing an emitter on
+  an existing free geodesic. General emitter-collision locking remains disabled
+  until Phase C.
 - Phase C restores locking and the minimum duplicate policy needed for locked
   intervals, including wrapped same-emitter loops.
 - Phase D restores protractor behavior on endpoint selections.
@@ -902,9 +930,10 @@ Scope:
   whose opposite endpoint attaches to the free end;
 - implement `aimFreeGeodesicFromEndpoint` for the emitter-to-free-end case:
   the crosshair point in the emitter endpoint's cell determines yaw/direction,
-  the previous length budget determines how far to trace, a forbidden-zone hit
-  may truncate that length, and the trace determines the terminal cell/local
-  free-end position and portal word;
+  the interval's current computed length determines how far to trace, wall,
+  forbidden-zone, or emitter hits may truncate that length during aiming
+  preview, and the trace determines the terminal cell/local free-end position
+  and portal word;
 - keep the free-end anchor in the actual terminal cell reached by the trace;
 - implement anchored `rebuildDerivedGeodesicSegments` only as needed for stable
   free geodesics whose interval already has a portal word;
@@ -920,8 +949,13 @@ Acceptance:
 - every aimable geodesic has one emitter endpoint and one free-end endpoint;
 - the free end has exactly one attached endpoint;
 - aiming rewrites the interval portal word from the traced path;
-- aiming preserves the prior length budget unless the trace is truncated by a
-  forbidden-zone hit;
+- aiming preserves the current computed length unless the trace is truncated by
+  a wall, forbidden-zone, or emitter hit;
+- an emitter hit during aiming preview truncates the visible free geodesic, and
+  an emitter hit on the committing click converts the interval into a locked
+  geodesic when the computed length is enough to reach that emitter;
+- committing an emitter hit does not create or trace any continuation beyond
+  the hit emitter;
 - aiming moves the free-end anchor to the trace terminal cell and local
   position;
 - deleting the geodesic deletes its unshared free end;
@@ -958,11 +992,12 @@ Scope:
   endpoint to the old free-end anchor, which remains singly attached to the
   continuation;
 - retrace the continuation from the placed emitter using the forward tangent at
-  the hit and the remaining length budget;
+  the hit and the remaining computed length;
 - recompute the continuation portal word from that retrace instead of copying a
   suffix from the old portal word;
-- if the continuation retrace hits a forbidden zone before the remaining length
-  is exhausted, place the continuation free end at the truncated hit endpoint;
+- if the continuation retrace hits a wall or forbidden zone before the
+  remaining length is exhausted, place the continuation free end at the
+  truncated hit endpoint;
 - rebuild derived segments and half roles without using old cannon connection
   state.
 
@@ -976,7 +1011,7 @@ Acceptance:
 - each resulting geodesic satisfies the two-endpoint invariant;
 - the source portal word matches the traced prefix up to the hit;
 - the continuation portal word is recomputed from the cut tangent and remaining
-  length budget;
+  computed length;
 - the old free-end anchor is attached only to the continuation after the cut;
 - midpoint/half-role splitting is recomputed for both resulting intervals;
 - measurements/intersections referencing deleted geodesics are cleaned up.
@@ -1004,8 +1039,8 @@ Acceptance:
 - locked geodesics have two emitter endpoints;
 - final derived segments still never span a portal;
 - duplicate detection does not remove same-emitter wrapped loops;
-- same-emitter intervals with zero lifted endpoint displacement are rejected as
-  degenerate;
+- same-emitter intervals with lifted endpoint displacement shorter than
+  `GEODESIC_MIN_LENGTH_METERS = 0.2` are rejected as degenerate;
 - a same-emitter locked loop exposes two endpoint attachments and two endpoint
   tangents at the same emitter.
 
@@ -1056,7 +1091,8 @@ Acceptance:
 - carrying preserves wrapped same-emitter loops;
 - geometry commits rebuild locked geodesics by explicit endpoints and portal
   word;
-- invalid locked geodesics fail with cleanup of stale computed objects.
+- invalid locked geodesics that cannot be retraced are removed with cleanup of
+  stale computed objects.
 
 ### F. Tie And Release Works
 
@@ -1125,8 +1161,8 @@ World-object tests:
 - protractor rejects selecting the exact same endpoint role twice;
 - a geodesic can be locked from an emitter back to the same emitter through a
   nonempty portal word;
-- a same-emitter interval with zero lifted endpoint displacement is rejected as
-  degenerate;
+- a same-emitter interval with lifted endpoint displacement shorter than
+  `GEODESIC_MIN_LENGTH_METERS = 0.2` is rejected as degenerate;
 - a locked same-emitter loop exposes two selectable endpoint roles at that
   emitter;
 - derived segment chains are split at total arclength / 2;
@@ -1136,7 +1172,7 @@ World-object tests:
 - placing an emitter on a free geodesic keeps the source geodesic id for the
   locked prefix and creates a new id for the continuation geodesic;
 - the continuation geodesic after a cut recomputes its portal word from the cut
-  tangent and remaining length budget;
+  tangent and remaining computed length;
 - tie/release can detach the two endpoint roles of a locked same-emitter loop;
 - tie/release at one emitter in a two-emitter torus loop creates a shortening
   pair whose moving geodesics share one free-end anchor and whose remaining
@@ -1154,7 +1190,8 @@ World-object tests:
 Portal tests:
 
 - same local endpoint coordinates with different portal words are not treated as
-  zero length;
+  too short unless their lifted displacement is shorter than
+  `GEODESIC_MIN_LENGTH_METERS`;
 - final fusion never creates a segment spanning a portal;
 - reversed portal words compare equal only when they represent the same
   endpoint pair in reverse orientation.
