@@ -691,6 +691,41 @@ describe("geodesic cannon world objects", () => {
     expect(getCannonGeodesicYaw(registry, "cannon-b", "g-a")).toBeCloseTo(Math.PI);
   });
 
+  it("recomputes an emitter-hit lock so the segment lands on the emitter pole", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    const source = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -1.5, y: 0, z: 0 }),
+    });
+    const incoming = createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0.05, z: 0 }),
+    });
+    registry.add(source);
+    registry.add(incoming);
+
+    shootGeodesic({ world, registry, cannon: source, geodesicId: "g-a", maxLengthMeters: 4 });
+
+    const tail = getGeodesicTail(registry, "g-a");
+    if (!tail) {
+      throw new Error("Expected a locked geodesic tail.");
+    }
+    const endpoint = {
+      x: tail.start.x + tail.direction.x * tail.lengthMeters,
+      y: tail.start.y + tail.direction.y * tail.lengthMeters,
+      z: tail.start.z + tail.direction.z * tail.lengthMeters,
+    };
+
+    expect(tail.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-b" });
+    expect(endpoint.x).toBeCloseTo(1);
+    expect(endpoint.y).toBeCloseTo(0.05);
+    expect(endpoint.z).toBeCloseTo(geodesicRayBeamHeightMeters);
+    expect(totalGeodesicLength(registry, "g-a")).toBeCloseTo(Math.hypot(2.5, 0.05));
+  });
+
   it.skip("rebuilds locked emitter-to-emitter geodesics after moving an endpoint", () => {
     const world = compileLargeWorld();
     const registry = createRuntimeObjectRegistry();

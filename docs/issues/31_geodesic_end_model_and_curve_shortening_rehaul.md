@@ -57,10 +57,16 @@ Status as of 2026-06-25:
 
 - Phase A is implemented.
 - Phase B is implemented.
-- A narrow subset of Phase C is also implemented: aiming preview can truncate on
-  emitter hit, and committing that hit can lock the geodesic to that emitter
-  without tracing continuation beyond the hit.
-- The rest of Phases C through G remain incomplete.
+- Phase C is implemented for interval-based locking, including emitter-hit
+  locking, same-emitter wrapped loops, lifted degenerate rejection, endpoint
+  tangents, portal-word duplicate policy, and post-lock anchored rebuilds.
+- Phase D is implemented for protractor endpoint-role identity and refresh.
+- Phase E is implemented for carrying locked intervals, including portal-word
+  updates during carry, same-cell portal transitions, out-of-bounds carried
+  endpoint preview, release-time portal normalization, geometry commit rebuilds,
+  and refresh of dependent measurements/protractor angles/intersections.
+- Phase F remains blocked and incomplete. Tie/release, curve-shortening pairs,
+  monotone shortening, and final fusion are not implemented by this document.
 
 What is now true in the codebase:
 
@@ -77,15 +83,42 @@ What is now true in the codebase:
 - cutting a free geodesic by placing a new emitter keeps the source geodesic id
   on the locked prefix and creates one continuation interval with a recomputed
   portal word;
+- emitter-hit locking replaces the free-end attachment with the hit emitter,
+  deletes the now-unused free end, stores the realized portal word, and then
+  recomputes the locked segment chain from endpoint anchors plus portal word so
+  the rendered geodesic lands exactly on the emitter pole;
+- locked intervals may attach both endpoint roles to the same emitter when the
+  lifted displacement is nondegenerate; same-emitter wrapped loops expose two
+  endpoint attachments and two endpoint tangents at that emitter;
+- locked rebuilds use lifted endpoint displacement and portal words rather than
+  local same-cell coordinates alone;
+- duplicate handling allows homotopically distinct locked intervals and does not
+  prune wrapped same-emitter loops merely because their anchors match;
+- protractor selections store endpoint roles and reject only identical
+  `(geodesicId, endRole)` selections, so selecting `start` and `end` of one
+  geodesic is valid;
+- protractor angles refresh from endpoint-role identity after segment rebuilds,
+  including rebuilds caused by carrying an emitter;
+- carrying a locked emitter updates incident interval portal words when the
+  player crosses portals, including quotient/same-cell portal crossings;
+- while carrying, a locked geodesic may survive transient rebuild failures from
+  out-of-bounds preview placement, but it is destroyed immediately if the traced
+  geodesic path crosses a forbidden zone;
+- on release, a carried emitter that is formally outside the current cell is
+  normalized through the relevant portal before the final strict rebuild;
+- geometry commits collect and rebuild locked geodesics from interval endpoint
+  metadata and portal words;
 - renderer color now derives consistently from interval state across all
   rebuilt segments of a locked geodesic, including midpoint-split chains.
 
 What is intentionally still disabled or deferred:
 
-- carry and tie/detach controls remain visible but disabled;
-- the protractor has not yet been migrated to endpoint-role identity;
-- general locked-geodesic collision locking, same-emitter wrapped-loop locking,
-  carried locked rebuilds, and curve-shortening/fusion are not done;
+- tie/detach remains visible but disabled until it is rebuilt on endpoint-role
+  selections and curve-shortening pair ownership;
+- curve-shortening/fusion is not done and remains blocked by a separate
+  algorithm note;
+- the old straightening implementation is not a compatibility target and should
+  not be revived for Phase F;
 - several future-phase tests are currently marked skipped until those phases are
   implemented.
 
@@ -93,10 +126,23 @@ Verification currently in place:
 
 - updated world-object tests cover Phase A and B interval behavior, reverse
   lookup, half-role splitting, endpoint-hit resolution, and cut continuation;
-- palette tests assert that deferred controls remain visible but disabled;
+- world-object tests cover Phase C locking to distinct emitters, locking through
+  portals, same-emitter wrapped loops, lifted degenerate rejection, endpoint
+  tangent resolution, post-lock anchored rebuild, and forbidden-zone deletion;
+- protractor tests cover endpoint-role identity, same-geodesic start/end
+  selection, selection refresh after rebuilds, and renderer/hitbox behavior;
+- carry tests cover fixed-face carry, same-cell portal transitions, different
+  cell portal transitions, player traversal word updates, out-of-bounds preview,
+  release-time portal normalization, preserving transient live rebuild failures,
+  deleting forbidden-zone traces during carry, and geometry commit rebuilds;
+- computed-object tests cover refreshing measurements, protractor angles, and
+  intersections after locked geodesic rebuilds;
+- palette tests assert that deferred controls remain visible or enabled
+  according to the currently implemented feature set;
 - a regression test covers the locked-coloring bug where only part of a locked
   split geodesic rendered as locked;
-- `npm.cmd run typecheck` and the current `npm.cmd test -- --run` suite pass.
+- `npm.cmd run typecheck` and `npm.cmd test -- --run` pass with 86 test files,
+  570 passing tests, and 8 skipped future-phase tests.
 
 ## Current Diagnosis
 
@@ -939,21 +985,18 @@ through compatibility shims.
 Each phase must leave the app in a coherent state and should be shippable on its
 own.
 
-Phase readiness:
+Current phase status:
 
-- Phase A removes the legacy geodesic identity model and restores only aimable
-  emitter-to-free-end geodesics.
-- Phase A keeps cutting, locking, carrying, protractor selection, measurements,
-  and tie/release controls visible but disabled until they are rebuilt on
-  interval/end-role identity.
-- Phase B includes only the narrow prefix lock created by placing an emitter on
-  an existing free geodesic. General emitter-collision locking remains disabled
-  until Phase C.
-- Phase C restores locking and the minimum duplicate policy needed for locked
-  intervals, including wrapped same-emitter loops.
-- Phase D restores protractor behavior on endpoint selections.
-- Phase E restores carrying and geometry-commit rebuilds for locked intervals.
-- Phase F remains blocked by a separate algorithm note.
+- Phase A removed the legacy source-of-truth model and restored aimable
+  emitter-to-free-end geodesics on intervals and free-end anchors.
+- Phase B restored cutting by placing a new emitter on an aimable free geodesic.
+- Phase C restored collision locking and the minimum duplicate policy needed
+  for locked intervals, including wrapped same-emitter loops and post-lock
+  anchored rebuilds.
+- Phase D restored protractor behavior on endpoint selections.
+- Phase E restored carrying and geometry-commit rebuilds for locked intervals.
+- Phase F remains blocked by a separate algorithm note and is the main remaining
+  work for tie/release, curve shortening, and final fusion.
 
 ### A. Aiming Works
 

@@ -1058,6 +1058,20 @@ export function aimFreeGeodesicFromEndpoint(input: {
       freeRole,
       tail.terminal.emitterId,
     ) ?? nextInterval;
+    const rebuilt = rebuildDerivedGeodesicSegments({
+      world: input.world,
+      registry: input.registry,
+      geodesicId: input.geodesicId,
+    });
+    if (rebuilt) {
+      syncLegacyEmitterGeodesicFields(input.registry, input.geodesicId);
+      updateGeodesicIntersectionObjects(input.registry);
+      return {
+        interval: rebuilt.interval,
+        segments: rebuilt.segments,
+        terminal: { kind: "emitter-hit", emitterId: tail.terminal.emitterId },
+      };
+    }
   }
 
   const segments = replaceDerivedSegmentsFromTraces({
