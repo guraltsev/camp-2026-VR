@@ -1324,6 +1324,40 @@ describe("geodesic cannon world objects", () => {
     expect(registry.get("g-a")).toBeUndefined();
   });
 
+  it("destroys a locked interval during live carry when the rebuilt path crosses a forbidden zone", () => {
+    const world = compileLargePortalWorld();
+    const registry = createRuntimeObjectRegistry();
+    registry.add(createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 1, y: 2.5, z: 0 }),
+    }));
+    registry.add(createGeodesicCannonObject({
+      id: "cannon-b",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 5, y: 0, z: 0 }),
+    }));
+    registry.add(createGeodesicIntervalObject({
+      id: "g-a",
+      startAnchorObjectId: "cannon-a",
+      endAnchorObjectId: "cannon-b",
+      startCellId: "a",
+    }));
+
+    const liveRebuilt = rebuildConnectedGeodesicBetweenEmitters({
+      world,
+      registry,
+      geodesicId: "g-a",
+      carriedEmitterId: "cannon-b",
+      preserveGeodesicOnRebuildFailure: true,
+      allowOutOfBoundsCarriedEndpoint: true,
+    });
+
+    expect(liveRebuilt).toEqual([]);
+    expect(registry.get("g-a")).toBeUndefined();
+    expect(getGeodesicSegments(registry, "g-a")).toEqual([]);
+  });
+
   it("derives a different-cell portal carry transition from endpoint cells without player transition state", () => {
     const world = compileLargePortalWorld();
     const registry = createRuntimeObjectRegistry();

@@ -1115,6 +1115,46 @@ export function rebuildDerivedGeodesicSegments(input: {
   });
 }
 
+function lockedIntervalRebuildHitsForbiddenZone(input: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly geodesicId: string;
+}): boolean {
+  const interval = input.registry.get(input.geodesicId);
+  if (interval?.kind !== "geodesic-interval") {
+    return false;
+  }
+  const lifted = liftGeodesicEndpoint({
+    world: input.world,
+    registry: input.registry,
+    interval,
+    sourceRole: "start",
+  });
+  if (!lifted) {
+    return false;
+  }
+
+  const dx = lifted.targetPointInSourceCell.x - lifted.sourcePoint.x;
+  const dy = lifted.targetPointInSourceCell.y - lifted.sourcePoint.y;
+  const lengthMeters = Math.hypot(dx, dy);
+  if (lengthMeters < GEODESIC_MIN_LENGTH_METERS - intersectionTolerance) {
+    return false;
+  }
+
+  const traces = traceGeodesicPathForConnectionMode({
+    connectEmitters: false,
+    world: input.world,
+    registry: input.registry,
+    geodesicId: input.geodesicId,
+    sourceEmitterId: interval.start.anchorObjectId,
+    cellId: lifted.sourceCellId,
+    start: lifted.sourcePoint,
+    direction: directionFromYaw(Math.atan2(dy, dx)),
+    maxLengthMeters: lengthMeters,
+  });
+  return traces.some((trace) => trace.terminal.kind === "forbidden-zone-hit");
+}
+
 export function splitDerivedSegmentsIntoEndpointHalves(
   segments: readonly GeodesicSegmentObject[],
 ): readonly GeodesicSegmentObject[] {
@@ -2151,6 +2191,14 @@ export function rebuildConnectedGeodesicBetweenEmitters(
       allowOutOfBoundsCarriedEndpoint: request.allowOutOfBoundsCarriedEndpoint,
     });
     if (!result) {
+      if (lockedIntervalRebuildHitsForbiddenZone({
+        world: request.world,
+        registry: request.registry,
+        geodesicId: request.geodesicId,
+      })) {
+        removeGeodesic(request.registry, request.geodesicId);
+        return [];
+      }
       if (request.preserveGeodesicOnRebuildFailure) {
         return getGeodesicSegments(request.registry, request.geodesicId);
       }
