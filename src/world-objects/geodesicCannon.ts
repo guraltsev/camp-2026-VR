@@ -230,6 +230,7 @@ export interface RebuildConnectedGeodesicBetweenEmittersRequest {
   readonly carriedEmitterBeforeMove?: GeodesicCannonObject;
   readonly carriedEmitterPortalTransition?: GeodesicCarryPortalTransition;
   readonly carriedPortalWord?: readonly GeodesicPortalTraversal[];
+  readonly preserveGeodesicOnRebuildFailure?: boolean;
 }
 
 export interface TieAndDetachIncidentGeodesicsRequest {
@@ -953,7 +954,7 @@ export function traceGeodesicFromLiftedChord(input: {
   }
   const sourceAnchorId = interval.start.anchorObjectId;
   const traces = traceGeodesicPathForConnectionMode({
-    connectEmitters: true,
+    connectEmitters: false,
     world: input.world,
     registry: input.registry,
     geodesicId: input.geodesicId,
@@ -1300,11 +1301,37 @@ export function rebuildLockedGeodesicFromEndpointsAndPortalWord(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly geodesicId: string;
   readonly carriedAnchorObjectId?: string;
+  readonly carriedAnchorBeforeMove?: GeodesicCannonObject;
   readonly carriedPortalTransition?: GeodesicCarryPortalTransition;
+  readonly carriedPortalWord?: readonly GeodesicPortalTraversal[];
 }): GeodesicTraceBuildResult | undefined {
   const interval = input.registry.get(input.geodesicId);
   if (interval?.kind !== "geodesic-interval") {
     return undefined;
+  }
+
+  const carriedPortalWord = resolveCarriedIntervalPortalWord({
+    world: input.world,
+    interval,
+    registry: input.registry,
+    carriedAnchorObjectId: input.carriedAnchorObjectId,
+    carriedAnchorBeforeMove: input.carriedAnchorBeforeMove,
+    carriedPortalTransition: input.carriedPortalTransition,
+    carriedPortalWord: input.carriedPortalWord,
+  });
+  const startAnchor = input.registry.get(interval.start.anchorObjectId);
+  const nextStartCellId = canObjectAttachGeodesics(startAnchor) ? startAnchor.cellId : interval.startCellId;
+  if (
+    (carriedPortalWord && !samePortalWord(interval.portalWord, carriedPortalWord)) ||
+    nextStartCellId !== interval.startCellId ||
+    nextStartCellId !== interval.cellId
+  ) {
+    input.registry.update({
+      ...interval,
+      cellId: nextStartCellId,
+      startCellId: nextStartCellId,
+      portalWord: carriedPortalWord ?? interval.portalWord,
+    });
   }
 
   const result = rebuildDerivedGeodesicSegments(input);
@@ -1313,6 +1340,41 @@ export function rebuildLockedGeodesicFromEndpointsAndPortalWord(input: {
     updateGeodesicIntersectionObjects(input.registry);
   }
   return result;
+}
+
+export function updateLockedGeodesicPortalWordForCarriedAnchorTraversal(input: {
+  readonly registry: RuntimeObjectRegistry;
+  readonly geodesicId: string;
+  readonly carriedAnchorObjectId: string;
+  readonly traversal: GeodesicPortalTraversal;
+}): readonly GeodesicPortalTraversal[] | undefined {
+  const interval = input.registry.get(input.geodesicId);
+  if (interval?.kind !== "geodesic-interval") {
+    return undefined;
+  }
+
+  let portalWord: readonly GeodesicPortalTraversal[] | undefined;
+  if (interval.end.anchorObjectId === input.carriedAnchorObjectId) {
+    portalWord = reduceAdjacentInversePortalTraversals([...interval.portalWord, input.traversal]);
+  } else if (interval.start.anchorObjectId === input.carriedAnchorObjectId) {
+    portalWord = reduceAdjacentInversePortalTraversals([
+      reverseGeodesicPortalWord([input.traversal])[0],
+      ...interval.portalWord,
+    ]);
+  }
+  if (!portalWord || !portalWordMatchesCurrentEndpointCells(input.registry, interval, portalWord)) {
+    return undefined;
+  }
+
+  const startAnchor = input.registry.get(interval.start.anchorObjectId);
+  const nextStartCellId = canObjectAttachGeodesics(startAnchor) ? startAnchor.cellId : interval.startCellId;
+  input.registry.update({
+    ...interval,
+    cellId: nextStartCellId,
+    startCellId: nextStartCellId,
+    portalWord,
+  });
+  return portalWord;
 }
 
 export function collectGeodesicMenuRowsForEmitter(
@@ -1359,6 +1421,194 @@ function samePortalWord(
       entry.targetCellId === other.targetCellId &&
       entry.targetPortalId === other.targetPortalId;
   });
+}
+
+function resolveCarriedIntervalPortalWord(input: {
+  readonly world: CompiledCellComplex;
+  readonly interval: GeodesicIntervalObject;
+  readonly registry: RuntimeObjectRegistry;
+  readonly carriedAnchorObjectId?: string;
+  readonly carriedAnchorBeforeMove?: GeodesicCannonObject;
+  readonly carriedPortalTransition?: GeodesicCarryPortalTransition;
+  readonly carriedPortalWord?: readonly GeodesicPortalTraversal[];
+}): readonly GeodesicPortalTraversal[] | undefined {
+  if (input.carriedPortalWord) {
+    const reduced = reduceAdjacentInversePortalTraversals(input.carriedPortalWord);
+    return portalWordMatchesCurrentEndpointCells(input.registry, input.interval, reduced)
+      ? reduced
+      : undefined;
+  }
+
+  const carriedTraversal = resolveCarriedPortalTraversalFromAnchorMotion(
+    input.world,
+    input.registry,
+    input.carriedAnchorObjectId,
+    input.carriedAnchorBeforeMove,
+  ) ?? (
+    input.carriedAnchorObjectId &&
+    input.carriedPortalTransition &&
+    carriedTransitionMatchesAnchorMove(
+      input.registry,
+      input.carriedAnchorObjectId,
+      input.carriedAnchorBeforeMove,
+      input.carriedPortalTransition,
+    )
+      ? portalTraversalFromCarryTransition(input.carriedPortalTransition)
+      : undefined
+  );
+
+  if (
+    input.carriedAnchorObjectId &&
+    carriedTraversal
+  ) {
+    if (input.interval.end.anchorObjectId === input.carriedAnchorObjectId) {
+      const word = reduceAdjacentInversePortalTraversals([...input.interval.portalWord, carriedTraversal]);
+      return portalWordMatchesCurrentEndpointCells(input.registry, input.interval, word) ? word : undefined;
+    }
+    if (input.interval.start.anchorObjectId === input.carriedAnchorObjectId) {
+      const word = reduceAdjacentInversePortalTraversals([
+        reverseGeodesicPortalWord([carriedTraversal])[0],
+        ...input.interval.portalWord,
+      ]);
+      return portalWordMatchesCurrentEndpointCells(input.registry, input.interval, word) ? word : undefined;
+    }
+  }
+
+  return undefined;
+}
+
+function resolveCarriedPortalTraversalFromAnchorMotion(
+  world: CompiledCellComplex,
+  registry: RuntimeObjectRegistry,
+  carriedAnchorObjectId: string | undefined,
+  carriedAnchorBeforeMove: GeodesicCannonObject | undefined,
+): GeodesicPortalTraversal | undefined {
+  if (!carriedAnchorObjectId || carriedAnchorBeforeMove?.id !== carriedAnchorObjectId) {
+    return undefined;
+  }
+  const current = registry.get(carriedAnchorObjectId);
+  if (current?.kind !== "geodesic-cannon") {
+    return undefined;
+  }
+
+  const previousCell = world.cellsById.get(carriedAnchorBeforeMove.cellId);
+  if (!previousCell) {
+    return undefined;
+  }
+
+  const previousPoint = getGeodesicCannonEmitterPoint(carriedAnchorBeforeMove);
+  const currentPoint = getGeodesicCannonEmitterPoint(current);
+  const toleranceSquared = emitterConnectionToleranceMeters * emitterConnectionToleranceMeters;
+  let best: { readonly distanceSquared: number; readonly traversal: GeodesicPortalTraversal } | undefined;
+
+  for (const portal of previousCell.portals) {
+    if (portal.targetCellId !== current.cellId) {
+      continue;
+    }
+    const transformedPoint = transformPoint3(portal.transformToTarget, previousPoint);
+    const candidateDistanceSquared = distanceSquared(transformedPoint, currentPoint);
+    if (portal.targetCellId === carriedAnchorBeforeMove.cellId && candidateDistanceSquared > toleranceSquared) {
+      continue;
+    }
+    if (!best || candidateDistanceSquared < best.distanceSquared) {
+      best = {
+        distanceSquared: candidateDistanceSquared,
+        traversal: {
+          sourceCellId: carriedAnchorBeforeMove.cellId,
+          sourcePortalId: portal.id,
+          targetCellId: portal.targetCellId,
+          targetPortalId: portal.targetPortalId,
+        },
+      };
+    }
+  }
+
+  return best?.traversal;
+}
+
+function carriedTransitionMatchesAnchorMove(
+  registry: RuntimeObjectRegistry,
+  carriedAnchorObjectId: string,
+  carriedAnchorBeforeMove: GeodesicCannonObject | undefined,
+  transition: GeodesicCarryPortalTransition,
+): boolean {
+  const current = registry.get(carriedAnchorObjectId);
+  if (
+    current?.kind !== "geodesic-cannon" ||
+    carriedAnchorBeforeMove?.id !== carriedAnchorObjectId ||
+    carriedAnchorBeforeMove.cellId !== transition.sourceCellId ||
+    current.cellId !== transition.targetCellId
+  ) {
+    return false;
+  }
+
+  if (transition.sourceCellId !== transition.targetCellId) {
+    return true;
+  }
+
+  const transformedPoint = transformPoint3(
+    transition.transformToTarget,
+    getGeodesicCannonEmitterPoint(carriedAnchorBeforeMove),
+  );
+  return distanceSquared(transformedPoint, getGeodesicCannonEmitterPoint(current)) <=
+    emitterConnectionToleranceMeters * emitterConnectionToleranceMeters;
+}
+
+function portalTraversalFromCarryTransition(
+  transition: GeodesicCarryPortalTransition,
+): GeodesicPortalTraversal {
+  return {
+    sourceCellId: transition.sourceCellId,
+    sourcePortalId: transition.sourcePortalId,
+    targetCellId: transition.targetCellId,
+    targetPortalId: transition.targetPortalId,
+  };
+}
+
+function portalWordMatchesCurrentEndpointCells(
+  registry: RuntimeObjectRegistry,
+  interval: GeodesicIntervalObject,
+  word: readonly GeodesicPortalTraversal[],
+): boolean {
+  const startAnchor = registry.get(interval.start.anchorObjectId);
+  const endAnchor = registry.get(interval.end.anchorObjectId);
+  if (!canObjectAttachGeodesics(startAnchor) || !canObjectAttachGeodesics(endAnchor)) {
+    return false;
+  }
+  if (word.length === 0) {
+    return startAnchor.cellId === endAnchor.cellId;
+  }
+  if (word[0].sourceCellId !== startAnchor.cellId || word.at(-1)?.targetCellId !== endAnchor.cellId) {
+    return false;
+  }
+  return word.every((traversal, index) =>
+    index === 0 || word[index - 1].targetCellId === traversal.sourceCellId
+  );
+}
+
+function reduceAdjacentInversePortalTraversals(
+  word: readonly GeodesicPortalTraversal[],
+): readonly GeodesicPortalTraversal[] {
+  const reduced: GeodesicPortalTraversal[] = [];
+  for (const traversal of word) {
+    const previous = reduced.at(-1);
+    if (previous && portalTraversalsAreInverse(previous, traversal)) {
+      reduced.pop();
+      continue;
+    }
+    reduced.push(traversal);
+  }
+  return reduced;
+}
+
+function portalTraversalsAreInverse(
+  left: GeodesicPortalTraversal,
+  right: GeodesicPortalTraversal,
+): boolean {
+  return left.sourceCellId === right.targetCellId &&
+    left.sourcePortalId === right.targetPortalId &&
+    left.targetCellId === right.sourceCellId &&
+    left.targetPortalId === right.sourcePortalId;
 }
 
 function traceTerminalToBuildTerminal(
@@ -1887,9 +2137,14 @@ export function rebuildConnectedGeodesicBetweenEmitters(
       registry: request.registry,
       geodesicId: request.geodesicId,
       carriedAnchorObjectId: request.carriedEmitterId,
+      carriedAnchorBeforeMove: request.carriedEmitterBeforeMove,
       carriedPortalTransition: request.carriedEmitterPortalTransition,
+      carriedPortalWord: request.carriedPortalWord,
     });
     if (!result) {
+      if (request.preserveGeodesicOnRebuildFailure) {
+        return getGeodesicSegments(request.registry, request.geodesicId);
+      }
       removeGeodesic(request.registry, request.geodesicId);
       return [];
     }

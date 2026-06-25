@@ -18,6 +18,7 @@ import { defaultAppConfig, isRuntimeToolEnabled, type AppConfig } from "../../gl
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import { normalizeVec3, vec3, type Vec3 } from "../../math/vec3";
 import { movePlayer } from "../../movement/movePlayer";
+import { moveDynamicObject } from "../../movement/moveDynamicObject";
 import { createAppCommandDispatcher } from "../../runtime/appCommandDispatcher";
 import type { RuntimeCommand } from "../../runtime/runtimeCommands";
 import { applyGeometryCommitComputedObjectPolicy } from "../../runtime/worldGeometryComputedObjects";
@@ -113,6 +114,7 @@ import {
   resolveGeodesicNumber,
   shootGeodesic,
   tieAndDetachIncidentGeodesics,
+  updateLockedGeodesicPortalWordForCarriedAnchorTraversal,
   geodesicRayBeamHeightMeters,
   type GeodesicCarryPortalTransition,
   type GeodesicPortalTraversal,
@@ -187,6 +189,10 @@ import {
 } from "../../ui/worldInteractionDefinition";
 import { createHelpLensRenderer } from "./helpLensRenderer";
 import { resolveDesktopScenePalettePlacement } from "./desktopScenePalettePlacement";
+import {
+  resolveGeodesicCarryPortalTransitionFromMove,
+  resolveGeodesicCarryPortalTransitionFromPortalMove,
+} from "./geodesicCarryPortalTransition";
 import {
   collectGeodesicCreatureDebugDump,
   type GeodesicCreatureDebugDump,
@@ -2032,43 +2038,22 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function recordCellTransition(previousCellId: string, moveResult: ReturnType<typeof movePlayer>): void {
+    if (moveResult.crossedPortal) {
+      const transition = resolveGeodesicCarryPortalTransitionFromMove(activeWorld(), previousCellId, moveResult);
+      if (transition) {
+        latestPlayerPortalTransition = transition;
+        latestPlayerPortalTransitionSerial += 1;
+      }
+    }
+
     if (playerPose.cellId !== previousCellId) {
-      if (moveResult.crossedPortal) {
-        const transition = resolveLatestPlayerPortalTransition(previousCellId, moveResult);
-        if (transition) {
-          latestPlayerPortalTransition = transition;
-          latestPlayerPortalTransitionSerial += 1;
-        }
         runtimeDiagnostics().recordCellEntered(
           previousCellId,
           playerPose.cellId,
           moveResult.crossedPortalId ?? "unknown-portal",
         );
-      }
       portalDebugRuntime.syncRootCell();
     }
-  }
-
-  function resolveLatestPlayerPortalTransition(
-    previousCellId: string,
-    moveResult: ReturnType<typeof movePlayer>,
-  ): GeodesicCarryPortalTransition | undefined {
-    if (!moveResult.crossedPortal || !moveResult.crossedPortalId) {
-      return undefined;
-    }
-
-    const portal = activeWorld().cellsById.get(previousCellId)?.portalsById.get(moveResult.crossedPortalId);
-    if (!portal || portal.targetCellId !== moveResult.pose.cellId) {
-      return undefined;
-    }
-
-    return {
-      sourceCellId: previousCellId,
-      sourcePortalId: portal.id,
-      targetCellId: portal.targetCellId,
-      targetPortalId: portal.targetPortalId,
-      transformToTarget: portal.transformToTarget,
-    };
   }
 
   function syncXrDebugState(
@@ -4193,7 +4178,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const cannonId = activeGeodesicCannonToolState.selectedCannonId;
     const cannon = cannonId ? runtimeObjectRegistry.get(cannonId) : undefined;
     if (cannon?.kind === "geodesic-cannon") {
-      rebuildCarriedGeodesicFromCannon(cannon);
+      const normalized = normalizeReleasedCarriedGeodesicCannon(cannon);
+      rebuildCarriedGeodesicFromCannon(normalized.cannon, normalized.previousCannon);
       removeProtractorAnglesForMissingVertices(pruneMissingGeodesicIntersectionObjects(runtimeObjectRegistry));
       syncRuntimeObjectPortalInstances();
       syncSelectableHitboxDebug();
@@ -4204,6 +4190,41 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     clearCarriedGeodesicCannonGlow();
     syncDesktopPalette();
     return true;
+  }
+
+  function normalizeReleasedCarriedGeodesicCannon(
+    cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+  ): {
+    readonly cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>;
+    readonly previousCannon?: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>;
+  } {
+    const moveResult = moveDynamicObject({
+      world: activeWorld(),
+      object: runtimeObjectToDynamicObjectState(cannon),
+      displacement: { x: 0, y: 0, z: 0 },
+      ignoreForbiddenZones: true,
+    });
+    if (!moveResult.crossedPortal) {
+      return { cannon };
+    }
+
+    const transition = resolveGeodesicCarryPortalTransitionFromPortalMove(activeWorld(), cannon.cellId, {
+      crossedPortal: moveResult.crossedPortal,
+      crossedPortalId: moveResult.crossedPortalId,
+      pose: { cellId: moveResult.object.cellId },
+    });
+    if (transition) {
+      latestPlayerPortalTransition = transition;
+      latestPlayerPortalTransitionSerial += 1;
+    }
+
+    const nextCannon = {
+      ...cannon,
+      cellId: moveResult.object.cellId,
+      localPose: moveResult.object.localPose,
+    };
+    runtimeObjectRegistry.update(nextCannon);
+    return { cannon: nextCannon, previousCannon: cannon };
   }
 
   function deleteGeodesicFromCannon(cannonId: string, geodesicId: string): void {
@@ -4428,7 +4449,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
 
     runtimeObjectRegistry.update(nextCannon);
-    rebuildCarriedGeodesicFromCannon(nextCannon, cannon);
+    rebuildCarriedGeodesicFromCannon(nextCannon, cannon, { preserveGeodesicOnRebuildFailure: true });
     syncCarriedGeodesicCannonGlow(nextCannon);
     syncRuntimeObjectPortalInstances();
     syncSelectableHitboxDebug();
@@ -4437,6 +4458,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   function rebuildCarriedGeodesicFromCannon(
     cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
     previousCannon?: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+    options: { readonly preserveGeodesicOnRebuildFailure?: boolean } = {},
   ): void {
     const geodesicId = cannon.activeGeodesicId ?? activeGeodesicCannonToolState.activeGeodesicId;
     const lockedIncidentGeodesicIds = collectLockedIncidentGeodesicIdsForEmitter(runtimeObjectRegistry, cannon.id);
@@ -4448,10 +4470,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       const rebuiltGeodesicIds: string[] = [];
       for (const incidentGeodesicId of lockedIncidentGeodesicIds) {
         updateCarriedGeodesicPortalWord(cannon, previousCannon, incidentGeodesicId);
-        const carriedPortalWord = activeGeodesicCannonToolState.carryPortalWordsByGeodesicId?.[incidentGeodesicId] ??
-          (activeGeodesicCannonToolState.activeGeodesicId === incidentGeodesicId
-            ? activeGeodesicCannonToolState.carryPortalWord
-            : undefined);
+        const carriedPortalWord = resolveCarriedGeodesicPortalWordForRebuild(incidentGeodesicId);
         rebuildConnectedGeodesicBetweenEmitters({
           world: activeWorld(),
           registry: runtimeObjectRegistry,
@@ -4460,6 +4479,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           carriedEmitterBeforeMove: previousCannon,
           carriedEmitterPortalTransition: latestPlayerPortalTransition,
           carriedPortalWord,
+          preserveGeodesicOnRebuildFailure: options.preserveGeodesicOnRebuildFailure,
         });
         rebuiltGeodesicIds.push(incidentGeodesicId);
         refreshMeasuredGeodesicLengthsForGeodesic(incidentGeodesicId);
@@ -4474,8 +4494,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         carriedEmitterId: cannon.id,
         carriedEmitterBeforeMove: previousCannon,
         carriedEmitterPortalTransition: latestPlayerPortalTransition,
-        carriedPortalWord: activeGeodesicCannonToolState.carryPortalWordsByGeodesicId?.[geodesicId] ??
-          activeGeodesicCannonToolState.carryPortalWord,
+        carriedPortalWord: resolveCarriedGeodesicPortalWordForRebuild(geodesicId),
+        preserveGeodesicOnRebuildFailure: options.preserveGeodesicOnRebuildFailure,
       });
       refreshProtractorAnglesForGeodesic(geodesicId);
       refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);
@@ -4484,6 +4504,17 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       refreshProtractorAnglesForGeodesic(geodesicId);
       refreshMeasuredGeodesicLengthsForGeodesic(geodesicId);
     }
+  }
+
+  function resolveCarriedGeodesicPortalWordForRebuild(geodesicId: string): readonly GeodesicPortalTraversal[] | undefined {
+    if (runtimeObjectRegistry.get(geodesicId)?.kind === "geodesic-interval") {
+      return collectGeodesicPortalWord(activeWorld(), runtimeObjectRegistry, geodesicId);
+    }
+
+    return activeGeodesicCannonToolState.carryPortalWordsByGeodesicId?.[geodesicId] ??
+      (activeGeodesicCannonToolState.activeGeodesicId === geodesicId
+        ? activeGeodesicCannonToolState.carryPortalWord
+        : undefined);
   }
 
   function updateCarriedGeodesicPortalWord(
@@ -4500,6 +4531,39 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       previousCannon.cellId !== transition.sourceCellId ||
       cannon.cellId !== transition.targetCellId
     ) {
+      return;
+    }
+
+    const intervalWord = updateLockedGeodesicPortalWordForCarriedAnchorTraversal({
+      registry: runtimeObjectRegistry,
+      geodesicId,
+      carriedAnchorObjectId: cannon.id,
+      traversal: transition,
+    });
+    if (intervalWord) {
+      activeGeodesicCannonToolState = {
+        ...activeGeodesicCannonToolState,
+        carryPortalWordsByGeodesicId: {
+          ...activeGeodesicCannonToolState.carryPortalWordsByGeodesicId,
+          [geodesicId]: intervalWord,
+        },
+        carryPortalWord: activeGeodesicCannonToolState.activeGeodesicId === geodesicId
+          ? intervalWord
+          : activeGeodesicCannonToolState.carryPortalWord,
+        carryPortalTransitionSerial: latestPlayerPortalTransitionSerial,
+        carryPortalTransitionSerialByGeodesicId: {
+          ...activeGeodesicCannonToolState.carryPortalTransitionSerialByGeodesicId,
+          [geodesicId]: latestPlayerPortalTransitionSerial,
+        },
+      };
+      if (debugLevel === "verbose") {
+        console.info("[noneuclid] carried geodesic interval portal word", {
+          geodesicId,
+          carriedEmitterId: cannon.id,
+          word: formatGeodesicPortalWord(intervalWord),
+          transition,
+        });
+      }
       return;
     }
 
