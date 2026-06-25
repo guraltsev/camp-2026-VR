@@ -2,7 +2,13 @@ import type { RigidTransform3 } from "../math/rigidTransform3";
 import type { DynamicObjectState, SimpleCollisionCylinder } from "../movement/dynamicObject";
 import type { AssetObjectSpec, TutorialPageSpec } from "../cell-complex/specs";
 import { yawRigidTransform3 } from "../math/rigidTransform3";
-import type { GeodesicCannonObject, GeodesicIntersectionObject, GeodesicSegmentObject } from "./geodesicCannon";
+import type {
+  FreeGeodesicEndObject,
+  GeodesicCannonObject,
+  GeodesicIntersectionObject,
+  GeodesicIntervalObject,
+  GeodesicSegmentObject,
+} from "./geodesicCannon";
 import type { MeasuredGeodesicLengthObject } from "./measureLengthTool";
 import type { PlacedFlagObject } from "./placedFlags";
 import type { ProtractorAngleObject } from "./protractorTool";
@@ -54,6 +60,8 @@ export type RuntimeWorldObject =
   | RuntimeStaticAssetObject
   | PlacedFlagObject
   | GeodesicCannonObject
+  | GeodesicIntervalObject
+  | FreeGeodesicEndObject
   | GeodesicSegmentObject
   | GeodesicIntersectionObject
   | MeasuredGeodesicLengthObject

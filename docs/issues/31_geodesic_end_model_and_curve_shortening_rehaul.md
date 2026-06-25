@@ -51,6 +51,53 @@ Do not start by relaxing the same-geodesic rejection in tie/release or the
 protractor. Those local fixes hide the identity problem and make the later
 migration harder.
 
+## Current Implementation Status
+
+Status as of 2026-06-25:
+
+- Phase A is implemented.
+- Phase B is implemented.
+- A narrow subset of Phase C is also implemented: aiming preview can truncate on
+  emitter hit, and committing that hit can lock the geodesic to that emitter
+  without tracing continuation beyond the hit.
+- The rest of Phases C through G remain incomplete.
+
+What is now true in the codebase:
+
+- geodesic intervals and free-end anchors exist as runtime objects and are part
+  of the runtime object union;
+- geodesic cannons are attachable anchors;
+- aiming and extending a free geodesic uses interval endpoint attachments and a
+  free-end anchor instead of the old emitter-connection model;
+- derived segment chains are rebuilt from interval data and split into
+  `start`/`end` half segments for interaction;
+- reverse lookup helpers exist for anchor attachments, endpoint pairs, segment
+  hit to endpoint selection, endpoint tangents, portal words, and locked
+  rebuilds;
+- cutting a free geodesic by placing a new emitter keeps the source geodesic id
+  on the locked prefix and creates one continuation interval with a recomputed
+  portal word;
+- renderer color now derives consistently from interval state across all
+  rebuilt segments of a locked geodesic, including midpoint-split chains.
+
+What is intentionally still disabled or deferred:
+
+- carry and tie/detach controls remain visible but disabled;
+- the protractor has not yet been migrated to endpoint-role identity;
+- general locked-geodesic collision locking, same-emitter wrapped-loop locking,
+  carried locked rebuilds, and curve-shortening/fusion are not done;
+- several future-phase tests are currently marked skipped until those phases are
+  implemented.
+
+Verification currently in place:
+
+- updated world-object tests cover Phase A and B interval behavior, reverse
+  lookup, half-role splitting, endpoint-hit resolution, and cut continuation;
+- palette tests assert that deferred controls remain visible but disabled;
+- a regression test covers the locked-coloring bug where only part of a locked
+  split geodesic rendered as locked;
+- `npm.cmd run typecheck` and the current `npm.cmd test -- --run` suite pass.
+
 ## Current Diagnosis
 
 The current code has useful building blocks, but the identity model is too
