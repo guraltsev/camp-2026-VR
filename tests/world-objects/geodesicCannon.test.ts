@@ -32,6 +32,7 @@ import {
   pruneMissingGeodesicIntersectionObjects,
   rebuildConnectedGeodesicBetweenEmitters,
   rebuildGeodesicToLength,
+  replaceGeodesicEndpointAttachment,
   removeGeodesic,
   removeUnlockedGeodesicsFromCannon,
   resolveGeodesicCannonAimYawRadians,
@@ -2312,6 +2313,75 @@ describe("geodesic cannon world objects", () => {
     removeGeodesic(registry, "g-a");
     expect(registry.getAll().filter((object) => object.kind === "geodesic-segment")).toHaveLength(0);
     expect(registry.get("cannon-a")?.kind).toBe("geodesic-cannon");
+  });
+
+  it("clears the old emitter legacy attachment when an interval endpoint is detached", () => {
+    const registry = createRuntimeObjectRegistry([
+      createGeodesicCannonObject({
+        id: "cannon-a",
+        cellId: "a",
+        localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+        activeGeodesicId: "g-a",
+        geodesicIds: ["g-a"],
+      }),
+      createGeodesicCannonObject({
+        id: "cannon-b",
+        cellId: "a",
+        localPose: yawRigidTransform3(Math.PI, { x: 1, y: 0, z: 0 }),
+        activeGeodesicId: "g-a",
+        geodesicIds: ["g-a"],
+      }),
+      createFreeGeodesicEndObject({
+        id: "free-a",
+        cellId: "a",
+        point: { x: 0.5, y: 0, z: geodesicRayBeamHeightMeters },
+      }),
+      createGeodesicIntervalObject({
+        id: "g-a",
+        startAnchorObjectId: "cannon-a",
+        endAnchorObjectId: "cannon-b",
+        startCellId: "a",
+        motionState: "stable",
+      }),
+    ]);
+
+    replaceGeodesicEndpointAttachment(registry, "g-a", "start", "free-a");
+
+    expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual([]);
+    expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual(["g-a"]);
+  });
+
+  it("clears stale active emitter state when a deleted interval is no longer in geodesicIds", () => {
+    const registry = createRuntimeObjectRegistry([
+      createGeodesicCannonObject({
+        id: "cannon-a",
+        cellId: "a",
+        localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+        activeGeodesicId: "g-a",
+        geodesicIds: [],
+        geodesicEmitterYawRadiansById: { "g-a": 0 },
+        geodesicConnectionsById: { "g-a": { outgoingEmitterId: "cannon-a", state: "open" } },
+      }),
+      createFreeGeodesicEndObject({
+        id: "free-a",
+        cellId: "a",
+        point: { x: 1, y: 0, z: geodesicRayBeamHeightMeters },
+      }),
+      createGeodesicIntervalObject({
+        id: "g-a",
+        startAnchorObjectId: "cannon-a",
+        endAnchorObjectId: "free-a",
+        startCellId: "a",
+        motionState: "stable",
+      }),
+    ]);
+
+    removeGeodesic(registry, "g-a");
+
+    const cannon = registry.get("cannon-a");
+    expect(cannon?.kind === "geodesic-cannon" ? cannon.activeGeodesicId : undefined).toBeUndefined();
+    expect(cannon?.kind === "geodesic-cannon" ? cannon.geodesicEmitterYawRadiansById : undefined).toEqual({});
+    expect(cannon?.kind === "geodesic-cannon" ? cannon.geodesicConnectionsById : undefined).toEqual({});
   });
 
   it("creates a vertex balloon where two geodesics intersect outside an emitter", () => {

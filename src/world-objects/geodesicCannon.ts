@@ -496,6 +496,7 @@ export function replaceGeodesicEndpointAttachment(
   if (interval?.kind !== "geodesic-interval" || !canObjectAttachGeodesics(registry.get(nextAnchorObjectId))) {
     return undefined;
   }
+  const previousAnchorObjectId = interval[endRole].anchorObjectId;
 
   const next: GeodesicIntervalObject = {
     ...interval,
@@ -506,6 +507,12 @@ export function replaceGeodesicEndpointAttachment(
     },
   };
   registry.update(next);
+  if (
+    previousAnchorObjectId !== nextAnchorObjectId &&
+    !(["start", "end"] as const).some((role) => next[role].anchorObjectId === previousAnchorObjectId)
+  ) {
+    removeGeodesicAssociationFromEmitter(registry, previousAnchorObjectId, geodesicId);
+  }
   removeUnusedFreeGeodesicEnds(registry);
   return next;
 }
@@ -4405,21 +4412,43 @@ function removeGeodesicSegments(registry: RuntimeObjectRegistry, geodesicId: str
 
 function removeGeodesicAssociations(registry: RuntimeObjectRegistry, geodesicId: string): void {
   for (const object of registry.getAll()) {
-    if (object.kind !== "geodesic-cannon" || !object.geodesicIds.includes(geodesicId)) {
+    if (object.kind !== "geodesic-cannon") {
       continue;
     }
-
-    const { [geodesicId]: _removedYaw, ...remainingYaws } = object.geodesicEmitterYawRadiansById ?? {};
-    const { [geodesicId]: _removedConnection, ...remainingConnections } = object.geodesicConnectionsById ?? {};
-    const geodesicIds = object.geodesicIds.filter((id) => id !== geodesicId);
-    registry.update({
-      ...object,
-      activeGeodesicId: object.activeGeodesicId === geodesicId ? geodesicIds[0] : object.activeGeodesicId,
-      geodesicIds,
-      geodesicEmitterYawRadiansById: remainingYaws,
-      geodesicConnectionsById: remainingConnections,
-    });
+    removeGeodesicAssociationFromEmitter(registry, object.id, geodesicId);
   }
+}
+
+function removeGeodesicAssociationFromEmitter(
+  registry: RuntimeObjectRegistry,
+  emitterId: string,
+  geodesicId: string,
+): void {
+  const object = registry.get(emitterId);
+  if (object?.kind !== "geodesic-cannon") {
+    return;
+  }
+  const hasYaw = geodesicId in (object.geodesicEmitterYawRadiansById ?? {});
+  const hasConnection = geodesicId in (object.geodesicConnectionsById ?? {});
+  if (
+    !object.geodesicIds.includes(geodesicId) &&
+    object.activeGeodesicId !== geodesicId &&
+    !hasYaw &&
+    !hasConnection
+  ) {
+    return;
+  }
+
+  const { [geodesicId]: _removedYaw, ...remainingYaws } = object.geodesicEmitterYawRadiansById ?? {};
+  const { [geodesicId]: _removedConnection, ...remainingConnections } = object.geodesicConnectionsById ?? {};
+  const geodesicIds = object.geodesicIds.filter((id) => id !== geodesicId);
+  registry.update({
+    ...object,
+    activeGeodesicId: object.activeGeodesicId === geodesicId ? geodesicIds[0] : object.activeGeodesicId,
+    geodesicIds,
+    geodesicEmitterYawRadiansById: remainingYaws,
+    geodesicConnectionsById: remainingConnections,
+  });
 }
 
 function markGeodesicConnected(
