@@ -94,8 +94,11 @@ describe("desktopToolPalette", () => {
     }), {
       computerId: "torus-geometry-computer",
       available: true,
+      widthMeters: 15,
       currentSkewXMeters: 0,
+      currentDepthMeters: 15,
       targetSkewXMeters: 2,
+      targetDepthMeters: 15,
     }));
     const view = describeDesktopPaletteView(definition);
 
@@ -105,7 +108,7 @@ describe("desktopToolPalette", () => {
       throw new Error("Expected geometry computer actions content.");
     }
     expect(view.content.available).toBe(true);
-    expect(view.content.statusLabel).toBe("Current 0 m / target 2 m");
+    expect(view.content.statusLabel).toBe("Current (0 m, 15 m) / target (2 m, 15 m)");
   });
 
   it("describes the tutorial page controls", () => {

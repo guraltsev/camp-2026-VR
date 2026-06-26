@@ -127,7 +127,7 @@ describe("runtimeObjectRegistry", () => {
       rangeMeters: 3,
     });
     expect(computer.interactable).toEqual({
-      label: "Set torus skew",
+      label: "World deformation",
       action: "open-geometry-computer",
       rangeMeters: 3,
     });

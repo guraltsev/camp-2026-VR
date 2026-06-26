@@ -211,7 +211,7 @@ const staticLibraryDefinitions = {
   computer_large: {
     assetPath: "computerlarge/ComputerLarge.glb",
     class: "geometry-computer",
-    displayHelpMessage: "Use this computer to change the torus skew when the current world supports live geometry changes.",
+    displayHelpMessage: "Use this computer to change world deformation when the current world supports live geometry changes.",
     visualScale: 0.9,
     modelOffset: (scale) => [0, 0, scale * 0.05],
     collision: (scale) => ({

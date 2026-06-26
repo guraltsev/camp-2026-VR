@@ -60,7 +60,7 @@ export function createTorusSkewDeformationFamily(): WorldDeformationFamily<Torus
     applyToSpec(baseSpec, state) {
       const errors = validateTorusSkewBaseSpec(baseSpec);
       if (errors.length > 0) {
-        throw new Error(`Cannot apply torus skew deformation:\n${errors.map((error) => `- ${error}`).join("\n")}`);
+        throw new Error(`Cannot apply world deformation:\n${errors.map((error) => `- ${error}`).join("\n")}`);
       }
 
       const normalized = normalizeTorusSkewState(state);
@@ -148,17 +148,20 @@ export function nextTorusSkewStep(
 ): TorusSkewDeformationState {
   const maxStepMeters = Math.max(0, options.maxStepMeters);
   const snapToleranceMeters = options.snapToleranceMeters ?? 1e-9;
-  const delta = target.skewXMeters - current.skewXMeters;
+  const deltaA = target.skewXMeters - current.skewXMeters;
+  const deltaB = target.depthMeters - current.depthMeters;
+  const distance = Math.hypot(deltaA, deltaB);
 
-  if (Math.abs(delta) <= Math.max(maxStepMeters, snapToleranceMeters)) {
+  if (distance <= Math.max(maxStepMeters, snapToleranceMeters)) {
     return normalizeTorusSkewState(target);
   }
 
+  const stepScale = maxStepMeters / distance;
   return normalizeTorusSkewState({
     ...current,
     widthMeters: target.widthMeters,
-    depthMeters: target.depthMeters,
-    skewXMeters: current.skewXMeters + Math.sign(delta) * maxStepMeters,
+    depthMeters: current.depthMeters + deltaB * stepScale,
+    skewXMeters: current.skewXMeters + deltaA * stepScale,
   });
 }
 
@@ -171,7 +174,7 @@ export function validateTorusSkewBaseSpec(baseSpec: CellComplexSpec): readonly s
   }
 
   if (baseSpec.cells.length !== 1) {
-    errors.push(`Expected torus skew to apply to one cell, found ${baseSpec.cells.length}.`);
+    errors.push(`Expected world deformation to apply to one cell, found ${baseSpec.cells.length}.`);
   }
 
   if (cell.baseVertices.length !== 4) {
@@ -223,7 +226,7 @@ function validateCompiledTorusSkewSnapshot(world: CompiledCellComplex): readonly
   const errors: string[] = [];
   const cell = world.cellsById.get(torusCellId);
   if (!cell) {
-    return [`Compiled torus skew world is missing "${torusCellId}".`];
+    return [`Compiled world deformation is missing "${torusCellId}".`];
   }
 
   const oppositePairs = [
@@ -234,7 +237,7 @@ function validateCompiledTorusSkewSnapshot(world: CompiledCellComplex): readonly
     const left = cell.sides[leftIndex];
     const right = cell.sides[rightIndex];
     if (!left || !right) {
-      errors.push(`Compiled torus skew world is missing side ${leftIndex} or ${rightIndex}.`);
+      errors.push(`Compiled world deformation is missing side ${leftIndex} or ${rightIndex}.`);
       continue;
     }
 
@@ -248,19 +251,31 @@ function validateCompiledTorusSkewSnapshot(world: CompiledCellComplex): readonly
 
 function normalizeTorusSkewState(state: TorusSkewDeformationState): TorusSkewDeformationState {
   if (state.cellId !== torusCellId) {
-    throw new Error(`Torus skew only supports cell "${torusCellId}".`);
+    throw new Error(`World deformation only supports cell "${torusCellId}".`);
   }
 
   if (!(state.widthMeters > 0) || !Number.isFinite(state.widthMeters)) {
-    throw new Error(`Torus skew widthMeters must be finite and positive; received ${state.widthMeters}.`);
+    throw new Error(`World deformation widthMeters must be finite and positive; received ${state.widthMeters}.`);
   }
 
   if (!(state.depthMeters > 0) || !Number.isFinite(state.depthMeters)) {
-    throw new Error(`Torus skew depthMeters must be finite and positive; received ${state.depthMeters}.`);
+    throw new Error(`World deformation depthMeters must be finite and positive; received ${state.depthMeters}.`);
   }
 
   if (!Number.isFinite(state.skewXMeters)) {
-    throw new Error(`Torus skew skewXMeters must be finite; received ${state.skewXMeters}.`);
+    throw new Error(`World deformation A must be finite; received ${state.skewXMeters}.`);
+  }
+
+  if (state.depthMeters < state.widthMeters / 2 || state.depthMeters > state.widthMeters * 2) {
+    throw new Error(
+      `World deformation B must be between ${state.widthMeters / 2}m and ${state.widthMeters * 2}m; received ${state.depthMeters}.`,
+    );
+  }
+
+  if (state.skewXMeters < 0 || state.skewXMeters > state.widthMeters * 2) {
+    throw new Error(
+      `World deformation A must be between 0m and ${state.widthMeters * 2}m; received ${state.skewXMeters}.`,
+    );
   }
 
   return {

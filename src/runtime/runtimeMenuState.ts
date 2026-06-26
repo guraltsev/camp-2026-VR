@@ -81,8 +81,11 @@ export interface RuntimeMenuState {
   readonly geometryComputerOptions?: {
     readonly computerId: string;
     readonly available: boolean;
+    readonly widthMeters?: number;
     readonly currentSkewXMeters?: number;
+    readonly currentDepthMeters?: number;
     readonly targetSkewXMeters?: number;
+    readonly targetDepthMeters?: number;
   };
   readonly tutorialOptions?: {
     readonly objectId: string;
@@ -245,8 +248,11 @@ export function showRuntimeMenuGeometryComputerActions(
   options: {
     readonly computerId: string;
     readonly available: boolean;
+    readonly widthMeters?: number;
     readonly currentSkewXMeters?: number;
+    readonly currentDepthMeters?: number;
     readonly targetSkewXMeters?: number;
+    readonly targetDepthMeters?: number;
   },
 ): RuntimeMenuState {
   return {
@@ -256,8 +262,11 @@ export function showRuntimeMenuGeometryComputerActions(
     geometryComputerOptions: {
       computerId: options.computerId,
       available: options.available,
+      widthMeters: options.widthMeters,
       currentSkewXMeters: options.currentSkewXMeters,
+      currentDepthMeters: options.currentDepthMeters,
       targetSkewXMeters: options.targetSkewXMeters,
+      targetDepthMeters: options.targetDepthMeters,
     },
   };
 }

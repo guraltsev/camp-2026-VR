@@ -107,16 +107,31 @@ export interface GeometryComputerActionsPaletteContent {
   readonly computerId: string;
   readonly available: boolean;
   readonly statusLabel: string;
-  readonly setActions: readonly {
-    readonly skewXMeters: number;
-    readonly label: string;
-    readonly disabled: boolean;
-  }[];
+  readonly widthMeters: number;
+  readonly current: {
+    readonly aMeters: number;
+    readonly bMeters: number;
+  };
+  readonly target: {
+    readonly aMeters: number;
+    readonly bMeters: number;
+  };
+  readonly limits: {
+    readonly minAMeters: number;
+    readonly maxAMeters: number;
+    readonly minBMeters: number;
+    readonly maxBMeters: number;
+  };
   readonly stepActions: readonly {
-    readonly deltaXMeters: number;
+    readonly axis: "a" | "b";
+    readonly deltaMeters: number;
     readonly label: string;
     readonly disabled: boolean;
   }[];
+  readonly goAction: {
+    readonly label: string;
+    readonly disabled: boolean;
+  };
 }
 
 export interface TutorialPaletteContent {
@@ -463,27 +478,50 @@ function createGeometryComputerActionsContent(
   options: NonNullable<RuntimeMenuState["geometryComputerOptions"]>,
 ): GeometryComputerActionsPaletteContent {
   const available = options.available;
-  const current = options.currentSkewXMeters;
-  const target = options.targetSkewXMeters;
+  const widthMeters = roundMeters(options.widthMeters ?? 15);
+  const currentA = clampIntegerMeters(options.currentSkewXMeters ?? 0, 0, 2 * widthMeters);
+  const currentB = clampIntegerMeters(options.currentDepthMeters ?? widthMeters, 0.5 * widthMeters, 2 * widthMeters);
+  const targetA = clampIntegerMeters(options.targetSkewXMeters ?? currentA, 0, 2 * widthMeters);
+  const targetB = clampIntegerMeters(options.targetDepthMeters ?? currentB, 0.5 * widthMeters, 2 * widthMeters);
   const statusLabel = available
-    ? `Current ${formatMeters(current ?? 0)} / target ${formatMeters(target ?? current ?? 0)}`
-    : "Torus skew is only available in the torus world.";
-  const fixedSkews = [-2, -1, 0, 1, 2] as const;
+    ? `Current (${formatMeters(currentA)}, ${formatMeters(currentB)}) / target (${formatMeters(targetA)}, ${formatMeters(targetB)})`
+    : "World deformation is only available in the torus world.";
+  const halfWidthStep = Math.round(widthMeters / 2);
 
   return {
     kind: "geometry-computer-actions",
     computerId: options.computerId,
     available,
     statusLabel,
-    setActions: fixedSkews.map((skewXMeters) => ({
-      skewXMeters,
-      label: skewXMeters === 0 ? "Flat 0 m" : `${skewXMeters > 0 ? "+" : ""}${skewXMeters} m`,
-      disabled: !available,
-    })),
+    widthMeters,
+    current: {
+      aMeters: currentA,
+      bMeters: currentB,
+    },
+    target: {
+      aMeters: targetA,
+      bMeters: targetB,
+    },
+    limits: {
+      minAMeters: 0,
+      maxAMeters: 2 * widthMeters,
+      minBMeters: 0.5 * widthMeters,
+      maxBMeters: 2 * widthMeters,
+    },
     stepActions: [
-      { deltaXMeters: -0.25, label: "-0.25 m", disabled: !available },
-      { deltaXMeters: 0.25, label: "+0.25 m", disabled: !available },
+      { axis: "a", deltaMeters: -halfWidthStep, label: `A -${formatMeters(halfWidthStep)}`, disabled: !available },
+      { axis: "a", deltaMeters: -1, label: "A -1 m", disabled: !available },
+      { axis: "a", deltaMeters: 1, label: "A +1 m", disabled: !available },
+      { axis: "a", deltaMeters: halfWidthStep, label: `A +${formatMeters(halfWidthStep)}`, disabled: !available },
+      { axis: "b", deltaMeters: -halfWidthStep, label: `B -${formatMeters(halfWidthStep)}`, disabled: !available },
+      { axis: "b", deltaMeters: -1, label: "B -1 m", disabled: !available },
+      { axis: "b", deltaMeters: 1, label: "B +1 m", disabled: !available },
+      { axis: "b", deltaMeters: halfWidthStep, label: `B +${formatMeters(halfWidthStep)}`, disabled: !available },
     ],
+    goAction: {
+      label: "GO!",
+      disabled: !available || (currentA === targetA && currentB === targetB),
+    },
   };
 }
 
@@ -505,6 +543,14 @@ function createGeodesicCannonEntries(
 function formatMeters(value: number): string {
   const rounded = Math.round(value * 100) / 100;
   return Number.isInteger(rounded) ? `${rounded} m` : `${rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} m`;
+}
+
+function clampIntegerMeters(value: number, min: number, max: number): number {
+  return Math.max(Math.ceil(min), Math.min(Math.floor(max), Math.round(value)));
+}
+
+function roundMeters(value: number): number {
+  return Math.max(1, Math.round(value));
 }
 
 function createHeaderAction(id: PaletteHeaderAction["id"]): PaletteHeaderAction {

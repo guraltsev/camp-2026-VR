@@ -140,8 +140,8 @@ const helpBodyByTopic: Readonly<Record<string, Readonly<Record<InputMode, string
     xr: "A placed note in the world. Use the side trigger menu to edit text or delete it.",
   },
   "geometry-computer": {
-    desktop: "Changes the torus skew for worlds that support live geometry deformation.",
-    xr: "Changes the torus skew for worlds that support live geometry deformation.",
+    desktop: "Changes world deformation for worlds that support live geometry deformation.",
+    xr: "Changes world deformation for worlds that support live geometry deformation.",
   },
   "geodesic-emitter": {
     desktop: "Creates and edits geodesic rays from this point. Right click to open its menu.",

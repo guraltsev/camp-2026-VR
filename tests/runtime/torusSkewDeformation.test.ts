@@ -32,17 +32,9 @@ describe("torus skew deformation", () => {
     expect(world.cellsById.get("torus-room")?.isConvex).toBe(true);
   });
 
-  it("negative skew produces a convex parallelogram", () => {
-    const world = compileCellComplex(createTorusSkewDeformationFamily().applyToSpec(torus, skewState(-2)));
-    const room = world.cellsById.get("torus-room")!;
-
-    expect(room.baseVertices).toEqual([
-      { x: -6.5, y: -7.5 },
-      { x: 8.5, y: -7.5 },
-      { x: 6.5, y: 7.5 },
-      { x: -8.5, y: 7.5 },
-    ]);
-    expect(room.isConvex).toBe(true);
+  it("rejects negative A offsets", () => {
+    expect(() => createTorusSkewDeformationFamily().applyToSpec(torus, skewState(-2)))
+      .toThrowError(/A must be between 0m and 30m/);
   });
 
   it("keeps side ids and portal ids unchanged", () => {

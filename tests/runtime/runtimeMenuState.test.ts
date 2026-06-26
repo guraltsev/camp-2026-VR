@@ -216,14 +216,17 @@ describe("runtimeMenuState", () => {
     ]);
   });
 
-  it("creates a geometry computer action menu with torus skew controls", () => {
+  it("creates a geometry computer action menu with world deformation controls", () => {
     const definition = createPaletteDefinition(showRuntimeMenuGeometryComputerActions(createRuntimeMenuState({
       selectedWorldId: "torus",
     }), {
       computerId: "torus-geometry-computer",
       available: true,
-      currentSkewXMeters: 0.5,
+      widthMeters: 15,
+      currentSkewXMeters: 1,
+      currentDepthMeters: 15,
       targetSkewXMeters: 1,
+      targetDepthMeters: 20,
     }));
 
     expect(definition.pageId).toBe("geometry-computer-actions");
@@ -232,9 +235,19 @@ describe("runtimeMenuState", () => {
     if (definition.content.kind !== "geometry-computer-actions") {
       throw new Error("Expected geometry computer actions.");
     }
-    expect(definition.content.statusLabel).toBe("Current 0.5 m / target 1 m");
-    expect(definition.content.setActions.map((action) => action.label)).toEqual(["-2 m", "-1 m", "Flat 0 m", "+1 m", "+2 m"]);
-    expect(definition.content.stepActions.map((action) => action.label)).toEqual(["-0.25 m", "+0.25 m"]);
+    expect(definition.content.statusLabel).toBe("Current (1 m, 15 m) / target (1 m, 20 m)");
+    expect(definition.content.widthMeters).toBe(15);
+    expect(definition.content.stepActions.map((action) => action.label)).toEqual([
+      "A -8 m",
+      "A -1 m",
+      "A +1 m",
+      "A +8 m",
+      "B -8 m",
+      "B -1 m",
+      "B +1 m",
+      "B +8 m",
+    ]);
+    expect(definition.content.goAction).toEqual({ label: "GO!", disabled: false });
   });
 
   it("creates a paged tutorial menu", () => {

@@ -63,7 +63,7 @@ export function createWorldFocusMessageDefinition(
       if (options.object.interactable?.action === "open-geometry-computer") {
         return withObjectHelp(options.object, {
           title,
-          actions: [contextAction("open-geometry-computer", "Torus skew")],
+          actions: [contextAction("open-geometry-computer", "World deformation")],
           helpTopicId: "geometry-computer",
         });
       }

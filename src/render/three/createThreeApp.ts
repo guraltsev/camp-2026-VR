@@ -687,11 +687,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     onGeodesicCannonDeleteRequested(cannonId, geodesicId) {
       deleteGeodesicFromCannon(cannonId, geodesicId);
     },
-    onGeometryComputerSetSkewRequested(computerId, skewXMeters) {
-      setGeometryComputerSkewTarget(computerId, skewXMeters);
+    onGeometryComputerSetTargetRequested(computerId, target) {
+      setGeometryComputerPendingTarget(computerId, target);
     },
-    onGeometryComputerStepSkewRequested(computerId, deltaXMeters) {
-      stepGeometryComputerSkewTarget(computerId, deltaXMeters);
+    onGeometryComputerStepTargetRequested(computerId, axis, deltaMeters) {
+      stepGeometryComputerPendingTarget(computerId, axis, deltaMeters);
+    },
+    onGeometryComputerGoRequested(computerId) {
+      startGeometryComputerDeformation(computerId);
     },
     onQuestionHelpTutorialRequested() {
       menuState = showRuntimeMenuQuestionTutorial(menuState);
@@ -753,7 +756,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     familyRegistry: deformationFamilyRegistry,
     portalPathOptions,
     stepOptions: {
-      maxStepMeters: 0.08,
+      maxStepMeters: 0.04,
       snapToleranceMeters: 1e-6,
     },
   });
@@ -1388,7 +1391,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       SetTorusSkew(skewXMeters) {
         const current = geometrySession.state.current;
         if (current.kind !== "torus-skew") {
-          throw new Error("Torus skew is not available for the active world.");
+          throw new Error("World deformation is not available for the active world.");
         }
 
         geometrySession.setTarget({
@@ -1404,7 +1407,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
             ? state.current
             : undefined;
         if (!base) {
-          throw new Error("Torus skew is not available for the active world.");
+          throw new Error("World deformation is not available for the active world.");
         }
 
         geometrySession.setTarget({
@@ -4068,12 +4071,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const state = geometrySession.state;
     const current = state.current.kind === "torus-skew" ? state.current : undefined;
     const target = state.target.kind === "torus-skew" ? state.target : undefined;
+    const pending = menuState.geometryComputerOptions;
 
     return {
       computerId,
       available: current !== undefined || target !== undefined,
+      widthMeters: current?.widthMeters ?? target?.widthMeters,
       currentSkewXMeters: current?.skewXMeters,
-      targetSkewXMeters: target?.skewXMeters,
+      currentDepthMeters: current?.depthMeters,
+      targetSkewXMeters: pending?.targetSkewXMeters ?? target?.skewXMeters,
+      targetDepthMeters: pending?.targetDepthMeters ?? target?.depthMeters,
     };
   }
 
@@ -4089,44 +4096,89 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     );
   }
 
-  function setGeometryComputerSkewTarget(computerId: string, skewXMeters: number): void {
-    const state = geometrySession.state;
-    const base = state.target.kind === "torus-skew"
-      ? state.target
-      : state.current.kind === "torus-skew"
-        ? state.current
-        : undefined;
+  function setGeometryComputerPendingTarget(
+    computerId: string,
+    target: { readonly aMeters: number; readonly bMeters: number },
+  ): void {
+    const base = getGeometryComputerBaseState();
     if (!base) {
       refreshOpenGeometryComputerMenu();
       syncDesktopPalette();
       return;
     }
 
-    geometrySession.setTarget({
-      ...base,
-      skewXMeters,
-    });
+    const sanitized = sanitizeGeometryComputerTarget(base.widthMeters, target);
     menuState = showRuntimeMenuGeometryComputerActions(
       menuState,
-      createGeometryComputerMenuOptions(computerId),
+      {
+        ...createGeometryComputerMenuOptions(computerId),
+        targetSkewXMeters: sanitized.aMeters,
+        targetDepthMeters: sanitized.bMeters,
+      },
     );
     syncDesktopPalette();
   }
 
-  function stepGeometryComputerSkewTarget(computerId: string, deltaXMeters: number): void {
-    const state = geometrySession.state;
-    const base = state.target.kind === "torus-skew"
-      ? state.target
-      : state.current.kind === "torus-skew"
-        ? state.current
-        : undefined;
+  function stepGeometryComputerPendingTarget(computerId: string, axis: "a" | "b", deltaMeters: number): void {
+    const base = getGeometryComputerBaseState();
     if (!base) {
       refreshOpenGeometryComputerMenu();
       syncDesktopPalette();
       return;
     }
 
-    setGeometryComputerSkewTarget(computerId, base.skewXMeters + deltaXMeters);
+    const pending = menuState.geometryComputerOptions;
+    const next = sanitizeGeometryComputerTarget(base.widthMeters, {
+      aMeters: (pending?.targetSkewXMeters ?? base.skewXMeters) + (axis === "a" ? deltaMeters : 0),
+      bMeters: (pending?.targetDepthMeters ?? base.depthMeters) + (axis === "b" ? deltaMeters : 0),
+    });
+    setGeometryComputerPendingTarget(computerId, next);
+  }
+
+  function startGeometryComputerDeformation(_computerId: string): void {
+    const base = getGeometryComputerBaseState();
+    if (!base) {
+      refreshOpenGeometryComputerMenu();
+      syncDesktopPalette();
+      return;
+    }
+
+    const pending = menuState.geometryComputerOptions;
+    const target = sanitizeGeometryComputerTarget(base.widthMeters, {
+      aMeters: pending?.targetSkewXMeters ?? base.skewXMeters,
+      bMeters: pending?.targetDepthMeters ?? base.depthMeters,
+    });
+
+    geometrySession.setTarget({
+      ...base,
+      skewXMeters: target.aMeters,
+      depthMeters: target.bMeters,
+    });
+    menuState = closeRuntimeMenu(menuState);
+    syncDesktopPalette();
+  }
+
+  function getGeometryComputerBaseState() {
+    const state = geometrySession.state;
+    return state.current.kind === "torus-skew"
+      ? state.current
+      : state.target.kind === "torus-skew"
+        ? state.target
+        : undefined;
+  }
+
+  function sanitizeGeometryComputerTarget(
+    widthMeters: number,
+    target: { readonly aMeters: number; readonly bMeters: number },
+  ): { readonly aMeters: number; readonly bMeters: number } {
+    return {
+      aMeters: clampInteger(target.aMeters, 0, 2 * widthMeters),
+      bMeters: clampInteger(target.bMeters, widthMeters / 2, 2 * widthMeters),
+    };
+  }
+
+  function clampInteger(value: number, min: number, max: number): number {
+    return Math.max(Math.ceil(min), Math.min(Math.floor(max), Math.round(value)));
   }
 
   function addGeodesicToCannon(

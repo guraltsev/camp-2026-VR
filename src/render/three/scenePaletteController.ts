@@ -48,8 +48,9 @@ export interface ScenePaletteControllerOptions {
   readonly onGeodesicCannonRotateRequested: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested: (cannonId: string, geodesicId: string) => void;
-  readonly onGeometryComputerSetSkewRequested: (computerId: string, skewXMeters: number) => void;
-  readonly onGeometryComputerStepSkewRequested: (computerId: string, deltaXMeters: number) => void;
+  readonly onGeometryComputerSetTargetRequested: (computerId: string, target: { readonly aMeters: number; readonly bMeters: number }) => void;
+  readonly onGeometryComputerStepTargetRequested: (computerId: string, axis: "a" | "b", deltaMeters: number) => void;
+  readonly onGeometryComputerGoRequested: (computerId: string) => void;
   readonly onQuestionHelpTutorialRequested: () => void;
   readonly onQuestionHelpGoalRequested: () => void;
   readonly onTutorialPreviousRequested: () => void;
@@ -133,8 +134,9 @@ export function createScenePaletteController(options: ScenePaletteControllerOpti
     onGeodesicCannonRotateRequested: options.onGeodesicCannonRotateRequested,
     onGeodesicCannonAimRequested: options.onGeodesicCannonAimRequested,
     onGeodesicCannonDeleteRequested: options.onGeodesicCannonDeleteRequested,
-    onGeometryComputerSetSkewRequested: options.onGeometryComputerSetSkewRequested,
-    onGeometryComputerStepSkewRequested: options.onGeometryComputerStepSkewRequested,
+    onGeometryComputerSetTargetRequested: options.onGeometryComputerSetTargetRequested,
+    onGeometryComputerStepTargetRequested: options.onGeometryComputerStepTargetRequested,
+    onGeometryComputerGoRequested: options.onGeometryComputerGoRequested,
     onQuestionHelpTutorialRequested: options.onQuestionHelpTutorialRequested,
     onQuestionHelpGoalRequested: options.onQuestionHelpGoalRequested,
     onTutorialPreviousRequested: options.onTutorialPreviousRequested,

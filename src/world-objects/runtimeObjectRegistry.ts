@@ -232,7 +232,7 @@ export function createRuntimeStaticAssetObject(
     do_not_collide_with: objectSpec.do_not_collide_with,
     portalRenderable: false,
     displayHelpMessage: objectSpec.displayHelpMessage ?? (geometryComputer
-      ? "Use this computer to change the torus skew when the current world supports live geometry changes."
+      ? "Use this computer to change world deformation when the current world supports live geometry changes."
       : undefined),
     autoDisplayHelpRangeMeters: objectSpec.autoDisplayHelpRangeMeters,
     tutorialPages: objectSpec.tutorialPages,
@@ -251,7 +251,7 @@ export function createRuntimeStaticAssetObject(
         }
       : geometryComputer
       ? {
-          label: "Set torus skew",
+          label: "World deformation",
           action: "open-geometry-computer",
           rangeMeters: 3,
         }

@@ -112,8 +112,9 @@ export interface DesktopToolPaletteOptions {
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
-  readonly onGeometryComputerSetSkewRequested?: (computerId: string, skewXMeters: number) => void;
-  readonly onGeometryComputerStepSkewRequested?: (computerId: string, deltaXMeters: number) => void;
+  readonly onGeometryComputerSetTargetRequested?: (computerId: string, target: { readonly aMeters: number; readonly bMeters: number }) => void;
+  readonly onGeometryComputerStepTargetRequested?: (computerId: string, axis: "a" | "b", deltaMeters: number) => void;
+  readonly onGeometryComputerGoRequested?: (computerId: string) => void;
   readonly onQuestionHelpTutorialRequested?: () => void;
   readonly onQuestionHelpGoalRequested?: () => void;
   readonly onTutorialPreviousRequested?: () => void;
@@ -525,7 +526,7 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
 
     const heading = document.createElement("span");
     heading.className = "desktop-tool-palette-field-label";
-    heading.textContent = "Torus skew";
+    heading.textContent = "World deformation";
     section.append(heading);
 
     const status = document.createElement("span");
@@ -533,24 +534,28 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
     status.textContent = content.statusLabel;
     section.append(status);
 
-    const presetGrid = document.createElement("div");
-    presetGrid.className = "desktop-tool-palette-tool-grid";
-    for (const action of content.setActions) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "desktop-tool-palette-button";
-      button.disabled = action.disabled;
-      button.ariaDisabled = String(action.disabled);
-      button.textContent = action.label;
-      button.addEventListener("click", () => {
-        options.onGeometryComputerSetSkewRequested?.(content.computerId, action.skewXMeters);
-      });
-      presetGrid.append(button);
-    }
-    section.append(presetGrid);
+    section.append(createWorldDeformationDiagram(content));
 
-    const stepRow = document.createElement("div");
-    stepRow.className = "desktop-tool-palette-geodesic-row";
+    const coordinateRow = document.createElement("div");
+    coordinateRow.className = "desktop-world-deformation-values";
+    coordinateRow.append(
+      createWorldDeformationValueButton("A", content.target.aMeters, content.limits.minAMeters, content.limits.maxAMeters, (value) => {
+        options.onGeometryComputerSetTargetRequested?.(content.computerId, {
+          ...content.target,
+          aMeters: value,
+        });
+      }),
+      createWorldDeformationValueButton("B", content.target.bMeters, content.limits.minBMeters, content.limits.maxBMeters, (value) => {
+        options.onGeometryComputerSetTargetRequested?.(content.computerId, {
+          ...content.target,
+          bMeters: value,
+        });
+      }),
+    );
+    section.append(coordinateRow);
+
+    const presetGrid = document.createElement("div");
+    presetGrid.className = "desktop-world-deformation-step-grid";
     for (const action of content.stepActions) {
       const button = document.createElement("button");
       button.type = "button";
@@ -559,11 +564,22 @@ function renderContent(definition: PaletteDefinition, options: DesktopToolPalett
       button.ariaDisabled = String(action.disabled);
       button.textContent = action.label;
       button.addEventListener("click", () => {
-        options.onGeometryComputerStepSkewRequested?.(content.computerId, action.deltaXMeters);
+        options.onGeometryComputerStepTargetRequested?.(content.computerId, action.axis, action.deltaMeters);
       });
-      stepRow.append(button);
+      presetGrid.append(button);
     }
-    section.append(stepRow);
+    section.append(presetGrid);
+
+    const goButton = document.createElement("button");
+    goButton.type = "button";
+    goButton.className = "desktop-tool-palette-button desktop-world-deformation-go";
+    goButton.disabled = content.goAction.disabled;
+    goButton.ariaDisabled = String(content.goAction.disabled);
+    goButton.textContent = content.goAction.label;
+    goButton.addEventListener("click", () => {
+      options.onGeometryComputerGoRequested?.(content.computerId);
+    });
+    section.append(goButton);
     actions.append(section);
     return actions;
   }
@@ -999,6 +1015,93 @@ function createContextualHeaderActions(
   }
 
   return [];
+}
+
+function createWorldDeformationDiagram(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "geometry-computer-actions" }>,
+): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "desktop-world-deformation-diagram");
+  svg.setAttribute("viewBox", "0 0 360 220");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Current white parallelogram and target green parallelogram");
+
+  const current = parallelogramPoints(content.widthMeters, content.current.aMeters, content.current.bMeters);
+  const target = parallelogramPoints(content.widthMeters, content.target.aMeters, content.target.bMeters);
+  svg.append(createParallelogramPolyline(current, "#f8fafc", "current world shape"));
+  svg.append(createParallelogramPolyline(target, "#34d399", "target world shape"));
+
+  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  label.setAttribute("x", "16");
+  label.setAttribute("y", "205");
+  label.setAttribute("class", "desktop-world-deformation-svg-label");
+  label.textContent = `(0,0) to (${content.widthMeters} m,0), upper left (${content.target.aMeters} m,${content.target.bMeters} m)`;
+  svg.append(label);
+  return svg;
+}
+
+function createParallelogramPolyline(
+  points: readonly { readonly x: number; readonly y: number }[],
+  color: string,
+  label: string,
+): SVGPolylineElement {
+  const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  polyline.setAttribute("points", points.map((point) => `${point.x},${point.y}`).join(" "));
+  polyline.setAttribute("fill", "none");
+  polyline.setAttribute("stroke", color);
+  polyline.setAttribute("stroke-width", "4");
+  polyline.setAttribute("stroke-linejoin", "round");
+  polyline.setAttribute("aria-label", label);
+  return polyline;
+}
+
+function parallelogramPoints(
+  widthMeters: number,
+  aMeters: number,
+  bMeters: number,
+): readonly { readonly x: number; readonly y: number }[] {
+  const scale = 240 / Math.max(widthMeters + aMeters, bMeters, 1);
+  const originX = 50;
+  const originY = 172;
+  const toPoint = (x: number, y: number) => ({
+    x: originX + x * scale,
+    y: originY - y * scale,
+  });
+  const points = [
+    toPoint(0, 0),
+    toPoint(widthMeters, 0),
+    toPoint(widthMeters + aMeters, bMeters),
+    toPoint(aMeters, bMeters),
+    toPoint(0, 0),
+  ];
+  return points;
+}
+
+function createWorldDeformationValueButton(
+  labelText: string,
+  valueMeters: number,
+  minMeters: number,
+  maxMeters: number,
+  onSelected: (valueMeters: number) => void,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "desktop-tool-palette-button desktop-world-deformation-value";
+  button.textContent = `${labelText}: ${valueMeters} m`;
+  button.addEventListener("click", () => {
+    const typed = window.prompt(`${labelText} meters (${Math.ceil(minMeters)}-${Math.floor(maxMeters)})`, String(valueMeters));
+    if (typed === null) {
+      return;
+    }
+
+    const parsed = Number.parseInt(typed, 10);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+
+    onSelected(Math.max(Math.ceil(minMeters), Math.min(Math.floor(maxMeters), parsed)));
+  });
+  return button;
 }
 
 function createHeaderIconButton(

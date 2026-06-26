@@ -43,8 +43,9 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
-  readonly onGeometryComputerSetSkewRequested?: (computerId: string, skewXMeters: number) => void;
-  readonly onGeometryComputerStepSkewRequested?: (computerId: string, deltaXMeters: number) => void;
+  readonly onGeometryComputerSetTargetRequested?: (computerId: string, target: { readonly aMeters: number; readonly bMeters: number }) => void;
+  readonly onGeometryComputerStepTargetRequested?: (computerId: string, axis: "a" | "b", deltaMeters: number) => void;
+  readonly onGeometryComputerGoRequested?: (computerId: string) => void;
   readonly onQuestionHelpTutorialRequested?: () => void;
   readonly onQuestionHelpGoalRequested?: () => void;
   readonly onTutorialPreviousRequested?: () => void;
@@ -666,7 +667,7 @@ function buildGeometryComputerActionsContent(
     borderColor,
     borderWidth: 2,
   });
-  panel.add(createSectionLabel("Torus skew"));
+  panel.add(createSectionLabel("World deformation"));
   panel.add(new Text({
     text: content.statusLabel,
     fontSize: 18,
@@ -677,19 +678,29 @@ function buildGeometryComputerActionsContent(
     wordBreak: "break-word",
   }));
 
+  panel.add(new Text({
+    text: `X = ${content.widthMeters} m   current white (${content.current.aMeters}, ${content.current.bMeters})   target green (${content.target.aMeters}, ${content.target.bMeters})`,
+    fontSize: 16,
+    fontWeight: "medium",
+    color: "#bbf7d0",
+    fill: "#bbf7d0",
+    flexShrink: 1,
+    wordBreak: "break-word",
+  }));
+
   const presetGrid = new Container({
     width: "100%",
     flexDirection: "column",
     gap: 8,
   });
-  for (let index = 0; index < content.setActions.length; index += 2) {
+  for (let index = 0; index < content.stepActions.length; index += 2) {
     const row = new Container({
       width: "100%",
       flexDirection: "row",
       justifyContent: "space-between",
       gap: 8,
     });
-    for (const action of content.setActions.slice(index, index + 2)) {
+    for (const action of content.stepActions.slice(index, index + 2)) {
       const button = createInteractiveSurface({
         width: "49%",
         height: 46,
@@ -697,37 +708,28 @@ function buildGeometryComputerActionsContent(
         labelFontSize: 16,
         disabled: action.disabled,
         backgroundColor: action.disabled ? "#334155" : actionColor,
-        onClick: () => options.onGeometryComputerSetSkewRequested?.(content.computerId, action.skewXMeters),
+        onClick: () => options.onGeometryComputerStepTargetRequested?.(content.computerId, action.axis, action.deltaMeters),
       });
-      button.userData.xrPaletteItemId = `geometry-computer:set:${action.skewXMeters}`;
-      button.userData.scenePaletteItemId = `geometry-computer:set:${action.skewXMeters}`;
+      button.userData.xrPaletteItemId = `geometry-computer:step:${action.axis}:${action.deltaMeters}`;
+      button.userData.scenePaletteItemId = `geometry-computer:step:${action.axis}:${action.deltaMeters}`;
       row.add(button);
     }
     presetGrid.add(row);
   }
 
-  const stepRow = new Container({
+  const goButton = createInteractiveSurface({
     width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
+    height: 52,
+    label: content.goAction.label,
+    labelFontSize: 20,
+    disabled: content.goAction.disabled,
+    backgroundColor: content.goAction.disabled ? "#334155" : "#166534",
+    onClick: () => options.onGeometryComputerGoRequested?.(content.computerId),
   });
-  for (const action of content.stepActions) {
-    const button = createInteractiveSurface({
-      width: "49%",
-      height: 46,
-      label: action.label,
-      labelFontSize: 16,
-      disabled: action.disabled,
-      backgroundColor: action.disabled ? "#334155" : activeColor,
-      onClick: () => options.onGeometryComputerStepSkewRequested?.(content.computerId, action.deltaXMeters),
-    });
-    button.userData.xrPaletteItemId = `geometry-computer:step:${action.deltaXMeters}`;
-    button.userData.scenePaletteItemId = `geometry-computer:step:${action.deltaXMeters}`;
-    stepRow.add(button);
-  }
+  goButton.userData.xrPaletteItemId = "geometry-computer:go";
+  goButton.userData.scenePaletteItemId = "geometry-computer:go";
 
-  panel.add(presetGrid, stepRow);
+  panel.add(presetGrid, goButton);
   return panel;
 }
 
