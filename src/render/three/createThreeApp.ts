@@ -1107,6 +1107,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       world: activeWorld(),
       registry: runtimeObjectRegistry,
       deltaSeconds: frame.resetRequested ? 0 : deltaSeconds,
+      onDebugMessage: menuState.debugEnabled
+        ? (message, detail) => {
+            const diagnostics = runtimeDiagnostics();
+            diagnostics.recordDebugEvent(message, detail);
+            if (!diagnostics.enabled) {
+              console.info(`[noneuclid] ${message}`, detail);
+            }
+          }
+        : undefined,
     });
     for (const geodesicId of straightenedGeodesicIds) {
       refreshProtractorAnglesForGeodesic(geodesicId);
