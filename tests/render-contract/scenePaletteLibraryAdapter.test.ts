@@ -149,22 +149,43 @@ describe("scenePaletteLibraryAdapter", () => {
     adapter.dispose();
   });
 
-  it("hides home and reload on geometry computer action menus", () => {
+  it("renders a fundamental tile picture on geometry computer action menus", () => {
     const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
     adapter.setDefinition(createPaletteDefinition(showRuntimeMenuGeometryComputerActions(
       createRuntimeMenuState({ selectedWorldId: "torus" }),
       {
         computerId: "torus-geometry-computer",
         available: true,
+        widthMeters: 15,
         currentSkewXMeters: 0,
+        currentDepthMeters: 15,
         targetSkewXMeters: 1,
+        targetDepthMeters: 20,
       },
     )));
 
     const itemIds = collectPaletteItemIds(adapter.root);
+    const imageSources = collectPaletteImageSources(adapter.root);
+    const diagramPoints = collectGeometryComputerDiagramWorldPoints(adapter.root);
 
     expect(itemIds).not.toContain("go-home");
     expect(itemIds).not.toContain("reload-world");
+    expect(itemIds).toContain("geometry-computer:diagram");
+    expect(imageSources).toContain("world-deformation-parallelogram");
+    expect(diagramPoints).toEqual({
+      current: [
+        { x: 0, y: 0 },
+        { x: 15, y: 0 },
+        { x: 15, y: 15 },
+        { x: 0, y: 15 },
+      ],
+      target: [
+        { x: 0, y: 0 },
+        { x: 15, y: 0 },
+        { x: 16, y: 20 },
+        { x: 1, y: 20 },
+      ],
+    });
 
     adapter.dispose();
   });
@@ -304,6 +325,20 @@ function collectPaletteActionItemIds(root: { readonly children: readonly any[]; 
   };
   visit(root);
   return ids;
+}
+
+function collectGeometryComputerDiagramWorldPoints(
+  root: { readonly children: readonly any[]; readonly userData?: Record<string, unknown> },
+): unknown {
+  let points: unknown;
+  const visit = (node: { readonly children?: readonly any[]; readonly userData?: Record<string, unknown> }) => {
+    points ??= node.userData?.scenePaletteDiagramWorldPoints;
+    for (const child of node.children ?? []) {
+      visit(child);
+    }
+  };
+  visit(root);
+  return points;
 }
 
 function collectSignPreviewLines(root: { readonly children: readonly any[]; readonly userData?: Record<string, unknown> }): string[] {

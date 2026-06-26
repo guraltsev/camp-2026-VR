@@ -1,6 +1,6 @@
 export const scenePalettePanelPixelSize = 0.00144;
-export const scenePalettePanelWidthPixels = 780;
-export const scenePalettePanelHeightPixels = 560;
+export const scenePalettePanelWidthPixels = 980;
+export const scenePalettePanelHeightPixels = 760;
 export const scenePalettePanelBorderRadiusPixels = 28;
 
 export const scenePalettePanelWidthMeters = scenePalettePanelWidthPixels * scenePalettePanelPixelSize;

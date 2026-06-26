@@ -553,9 +553,9 @@ function buildGeodesicCannonActionsContent(
 ): Container {
   const panel = new Container({
     width: "100%",
-    minHeight: 382,
+    minHeight: 522,
     flexDirection: "column",
-    gap: 12,
+    gap: 10,
     padding: 16,
     borderRadius: 24,
     backgroundColor: sectionColor,
@@ -658,9 +658,9 @@ function buildGeometryComputerActionsContent(
 ): Container {
   const panel = new Container({
     width: "100%",
-    minHeight: 382,
+    minHeight: 600,
     flexDirection: "column",
-    gap: 12,
+    gap: 10,
     padding: 16,
     borderRadius: 24,
     backgroundColor: sectionColor,
@@ -677,6 +677,7 @@ function buildGeometryComputerActionsContent(
     flexShrink: 1,
     wordBreak: "break-word",
   }));
+  panel.add(createWorldDeformationDiagram(content));
 
   panel.add(new Text({
     text: `X = ${content.widthMeters} m   current white (${content.current.aMeters}, ${content.current.bMeters})   target green (${content.target.aMeters}, ${content.target.bMeters})`,
@@ -693,19 +694,19 @@ function buildGeometryComputerActionsContent(
     flexDirection: "column",
     gap: 8,
   });
-  for (let index = 0; index < content.stepActions.length; index += 2) {
+  for (let index = 0; index < content.stepActions.length; index += 4) {
     const row = new Container({
       width: "100%",
       flexDirection: "row",
       justifyContent: "space-between",
       gap: 8,
     });
-    for (const action of content.stepActions.slice(index, index + 2)) {
+    for (const action of content.stepActions.slice(index, index + 4)) {
       const button = createInteractiveSurface({
-        width: "49%",
-        height: 46,
+        width: "24%",
+        height: 44,
         label: action.label,
-        labelFontSize: 16,
+        labelFontSize: 15,
         disabled: action.disabled,
         backgroundColor: action.disabled ? "#334155" : actionColor,
         onClick: () => options.onGeometryComputerStepTargetRequested?.(content.computerId, action.axis, action.deltaMeters),
@@ -719,7 +720,7 @@ function buildGeometryComputerActionsContent(
 
   const goButton = createInteractiveSurface({
     width: "100%",
-    height: 52,
+    height: 56,
     label: content.goAction.label,
     labelFontSize: 20,
     disabled: content.goAction.disabled,
@@ -731,6 +732,207 @@ function buildGeometryComputerActionsContent(
 
   panel.add(presetGrid, goButton);
   return panel;
+}
+
+function createWorldDeformationDiagram(
+  content: Extract<PaletteDefinition["content"], { readonly kind: "geometry-computer-actions" }>,
+): Container {
+  const diagramWidthPixels = 900;
+  const diagramHeightPixels = 280;
+  const fitted = fitParallelogramDiagramPoints(
+    diagramWidthPixels,
+    diagramHeightPixels,
+    [
+      createDiagramLatticePoints(content.widthMeters, content.current.aMeters, content.current.bMeters),
+      createDiagramLatticePoints(content.widthMeters, content.target.aMeters, content.target.bMeters),
+    ],
+  );
+  const current = fitted[0] ?? [];
+  const target = fitted[1] ?? [];
+  const diagram = new Container({
+    width: "100%",
+    height: diagramHeightPixels,
+    positionType: "relative",
+    borderRadius: 14,
+    backgroundColor: "#0a1114",
+    borderColor,
+    borderWidth: 2,
+    overflow: "hidden",
+    flexShrink: 0,
+    renderOrder: 1002,
+  });
+
+  addParallelogramLines(diagram, current, "#f8fafc", "current", 1004, 7);
+  addParallelogramLines(diagram, target, "#34d399", "target", 1008, 4);
+  diagram.add(createDiagramPoint(current[0], "#f8fafc"));
+  diagram.add(createDiagramLabel(`(0,0)`, clampDiagramLabelX(current[0].x - 12, diagramWidthPixels), current[0].y + 10, "#f8fafc"));
+  diagram.add(createDiagramLabel(
+    `(X,0)=(${content.widthMeters},0)`,
+    clampDiagramLabelX(current[1].x - 76, diagramWidthPixels),
+    current[1].y + 10,
+    "#d9edf1",
+  ));
+  diagram.add(createDiagramLabel(
+    `A+X,B=(${content.target.aMeters + content.widthMeters},${content.target.bMeters})`,
+    clampDiagramLabelX(target[2].x + 8, diagramWidthPixels),
+    Math.max(70, target[2].y - 24),
+    "#34d399",
+  ));
+
+  diagram.userData.scenePaletteIconSrc = "world-deformation-parallelogram";
+  diagram.userData.xrPaletteItemId = "geometry-computer:diagram";
+  diagram.userData.scenePaletteItemId = "geometry-computer:diagram";
+  diagram.userData.scenePaletteDiagramWorldPoints = {
+    current: createDiagramLatticePoints(content.widthMeters, content.current.aMeters, content.current.bMeters),
+    target: createDiagramLatticePoints(content.widthMeters, content.target.aMeters, content.target.bMeters),
+  };
+  return diagram;
+}
+
+function createDiagramLatticePoints(
+  widthMeters: number,
+  aMeters: number,
+  bMeters: number,
+): readonly DiagramPoint[] {
+  return [
+    { x: 0, y: 0 },
+    { x: widthMeters, y: 0 },
+    { x: widthMeters + aMeters, y: bMeters },
+    { x: aMeters, y: bMeters },
+  ];
+}
+
+function fitParallelogramDiagramPoints(
+  diagramWidthPixels: number,
+  diagramHeightPixels: number,
+  shapes: readonly (readonly DiagramPoint[])[],
+): readonly (readonly DiagramPoint[])[] {
+  const allPoints = shapes.flat();
+  const minX = Math.min(...allPoints.map((point) => point.x));
+  const maxX = Math.max(...allPoints.map((point) => point.x));
+  const minY = Math.min(...allPoints.map((point) => point.y));
+  const maxY = Math.max(...allPoints.map((point) => point.y));
+  const paddingLeft = 128;
+  const paddingRight = 42;
+  const paddingTop = 76;
+  const paddingBottom = 58;
+  const worldWidth = Math.max(maxX - minX, 1);
+  const worldHeight = Math.max(maxY - minY, 1);
+  const scale = Math.min(
+    (diagramWidthPixels - paddingLeft - paddingRight) / worldWidth,
+    (diagramHeightPixels - paddingTop - paddingBottom) / worldHeight,
+  );
+  const drawnWidth = worldWidth * scale;
+  const drawnHeight = worldHeight * scale;
+  const originX = (diagramWidthPixels - drawnWidth) / 2 - minX * scale;
+  const originY = (diagramHeightPixels + drawnHeight) / 2 + minY * scale;
+
+  return shapes.map((shape) => shape.map((point) => ({
+    x: originX + point.x * scale,
+    y: originY - point.y * scale,
+  })));
+}
+
+function clampDiagramLabelX(x: number, diagramWidthPixels: number): number {
+  return Math.max(12, Math.min(diagramWidthPixels - 260, x));
+}
+
+interface DiagramPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+function addParallelogramLines(
+  parent: Container,
+  points: readonly DiagramPoint[],
+  color: string,
+  labelPrefix: string,
+  renderOrder: number,
+  thicknessPixels: number,
+): void {
+  for (const [index, [start, end]] of [
+    [points[0], points[1]],
+    [points[1], points[2]],
+    [points[2], points[3]],
+    [points[3], points[0]],
+  ].entries()) {
+    const dots = createDiagramSegmentDots(start, end, color, renderOrder, thicknessPixels);
+    for (let dotIndex = 0; dotIndex < dots.length; dotIndex += 1) {
+      const dot = dots[dotIndex];
+      if (dotIndex === 0) {
+        dot.userData.scenePaletteItemId = `geometry-computer:diagram:${labelPrefix}:edge:${index}`;
+        dot.userData.scenePaletteDiagramSegment = { start, end };
+      }
+      parent.add(dot);
+    }
+  }
+}
+
+function createDiagramSegmentDots(
+  start: DiagramPoint,
+  end: DiagramPoint,
+  color: string,
+  renderOrder: number,
+  thicknessPixels: number,
+): readonly Container[] {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  const stepCount = Math.max(1, Math.ceil(length / Math.max(2, thicknessPixels * 0.75)));
+  const dots: Container[] = [];
+
+  for (let index = 0; index <= stepCount; index += 1) {
+    const t = index / stepCount;
+    const x = start.x + dx * t;
+    const y = start.y + dy * t;
+    dots.push(new Container({
+      width: thicknessPixels,
+      height: thicknessPixels,
+      positionType: "absolute",
+      positionLeft: x - thicknessPixels / 2,
+      positionTop: y - thicknessPixels / 2,
+      borderRadius: 999,
+      backgroundColor: color,
+      zIndexOffset: renderOrder,
+      renderOrder,
+      depthTest: false,
+      depthWrite: false,
+    }));
+  }
+
+  return dots;
+}
+
+function createDiagramPoint(point: DiagramPoint, color: string): Container {
+  return new Container({
+    width: 12,
+    height: 12,
+    positionType: "absolute",
+    positionLeft: point.x - 6,
+    positionTop: point.y - 6,
+    borderRadius: 999,
+    backgroundColor: color,
+    renderOrder: 1005,
+    depthTest: false,
+    depthWrite: false,
+  });
+}
+
+function createDiagramLabel(text: string, x: number, y: number, color: string): Text {
+  return new Text({
+    text,
+    positionType: "absolute",
+    positionLeft: x,
+    positionTop: y,
+    fontSize: 15,
+    fontWeight: "bold",
+    color,
+    fill: color,
+    wordBreak: "keep-all",
+    renderOrder: 1005,
+    depthTest: false,
+    depthWrite: false,
+  });
 }
 
 function buildQuestionHelpContent(
