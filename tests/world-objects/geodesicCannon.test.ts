@@ -7,7 +7,10 @@ import {
 } from "../../src/world-objects/runtimeObjectRegistry";
 import {
   collectLockedIncidentGeodesicIdsForEmitter,
+  advanceCurveShorteningPairs,
   advanceStraighteningGeodesics,
+  createCurveShorteningPairObject,
+  createFreeGeodesicEndObject,
   createGeodesicCannonObject,
   createGeodesicIntervalObject,
   collectGeodesicPortalWord,
@@ -34,8 +37,10 @@ import {
   resolveGeodesicCannonAimYawRadians,
   resolveGeodesicEndpointSelectionFromSegmentHit,
   resolveGeodesicNumber,
+  rebuildDerivedGeodesicSegments,
   shootGeodesic,
   tieAndDetachIncidentGeodesics,
+  tieAndDetachGeodesicEndpoints,
   traceGeodesicSegment,
   updateGeodesicIntersectionObjects,
   updateLockedGeodesicPortalWordForCarriedAnchorTraversal,
@@ -1660,6 +1665,114 @@ describe("geodesic cannon world objects", () => {
     expect(getGeodesicSegments(registry, "g-a")).toHaveLength(0);
     expect(getCannonGeodesicIds(registry, "cannon-a")).toEqual([]);
     expect(getCannonGeodesicIds(registry, "cannon-b")).toEqual([]);
+  });
+
+  it("detaches the two endpoint roles of a same-emitter loop into one curve-shortening free end", () => {
+    const world = compileTorusLoopWorld();
+    const registry = createRuntimeObjectRegistry();
+    const emitter = createGeodesicCannonObject({
+      id: "cannon-a",
+      cellId: "torus-room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+    });
+    registry.add(emitter);
+    registry.add(createGeodesicIntervalObject({
+      id: "g-loop",
+      startAnchorObjectId: "cannon-a",
+      endAnchorObjectId: "cannon-a",
+      startCellId: "torus-room",
+      portalWord: [{
+        sourceCellId: "torus-room",
+        sourcePortalId: "right-left",
+        targetCellId: "torus-room",
+        targetPortalId: "left-right",
+      }],
+    }));
+    rebuildConnectedGeodesicBetweenEmitters({ world, registry, geodesicId: "g-loop" });
+
+    const pair = tieAndDetachGeodesicEndpoints({
+      world,
+      registry,
+      detachedEmitterId: "cannon-a",
+      first: { geodesicId: "g-loop", role: "start", anchorObjectId: "cannon-a" },
+      second: { geodesicId: "g-loop", role: "end", anchorObjectId: "cannon-a" },
+      createPairId: () => "pair-loop",
+      createFreeEndId: () => "free-loop",
+    });
+
+    expect(pair).toMatchObject({
+      id: "pair-loop",
+      kind: "curve-shortening-pair",
+      first: { geodesicId: "g-loop", role: "start", anchorObjectId: "free-loop" },
+      second: { geodesicId: "g-loop", role: "end", anchorObjectId: "free-loop" },
+      freeEndAnchorId: "free-loop",
+      state: "moving",
+    });
+    expect(getGeodesicEndpointAttachmentsForAnchor(registry, "free-loop")).toEqual([
+      { geodesicId: "g-loop", role: "start", anchorObjectId: "free-loop" },
+      { geodesicId: "g-loop", role: "end", anchorObjectId: "free-loop" },
+    ]);
+    expect(registry.get("g-loop")).toMatchObject({ kind: "geodesic-interval", motionState: "moving" });
+    expect(getGeodesicSegments(registry, "g-loop").map((segment) => segment.connectionState)).toContain("straightening");
+  });
+
+  it("fuses a ready curve-shortening pair into one stable locked interval using the lower geodesic id", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    registry.add(createGeodesicCannonObject({
+      id: "cannon-left",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -2, y: 0, z: 0 }),
+    }));
+    registry.add(createGeodesicCannonObject({
+      id: "cannon-right",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 2, y: 0, z: 0 }),
+    }));
+    registry.add(createFreeGeodesicEndObject({
+      id: "free-shared",
+      cellId: "a",
+      point: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    }));
+    registry.add(createGeodesicIntervalObject({
+      id: "g-b",
+      startAnchorObjectId: "cannon-left",
+      endAnchorObjectId: "free-shared",
+      startCellId: "a",
+      motionState: "moving",
+    }));
+    registry.add(createGeodesicIntervalObject({
+      id: "g-a",
+      startAnchorObjectId: "free-shared",
+      endAnchorObjectId: "cannon-right",
+      startCellId: "a",
+      motionState: "moving",
+    }));
+    rebuildDerivedGeodesicSegments({ world, registry, geodesicId: "g-b" });
+    rebuildDerivedGeodesicSegments({ world, registry, geodesicId: "g-a" });
+    registry.add(createCurveShorteningPairObject({
+      id: "pair-a",
+      first: { geodesicId: "g-b", role: "end", anchorObjectId: "free-shared" },
+      second: { geodesicId: "g-a", role: "start", anchorObjectId: "free-shared" },
+      freeEndAnchorId: "free-shared",
+      lastGoodFreeEndCellId: "a",
+      lastGoodFreeEndPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+      state: "ready-to-fuse",
+    }));
+
+    const changed = advanceCurveShorteningPairs({ world, registry, deltaSeconds: 1 });
+
+    expect(changed).toEqual(["g-a"]);
+    expect(registry.get("g-b")).toBeUndefined();
+    expect(registry.get("free-shared")).toBeUndefined();
+    expect(registry.get("pair-a")).toBeUndefined();
+    expect(registry.get("g-a")).toMatchObject({
+      kind: "geodesic-interval",
+      motionState: "stable",
+      start: { geodesicId: "g-a", role: "start", anchorObjectId: "cannon-left" },
+      end: { geodesicId: "g-a", role: "end", anchorObjectId: "cannon-right" },
+    });
+    expect(getGeodesicSegments(registry, "g-a").at(-1)?.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-right" });
   });
 
   it.skip("ties and detaches two locked geodesics from an emitter as a straightening pair", () => {

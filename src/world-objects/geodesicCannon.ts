@@ -67,6 +67,17 @@ export interface GeodesicIntervalObject extends RuntimeWorldObjectBase {
   readonly motionState: "stable" | "moving";
 }
 
+export interface CurveShorteningPairObject extends RuntimeWorldObjectBase {
+  readonly kind: "curve-shortening-pair";
+  readonly first: GeodesicEndpointAttachment;
+  readonly second: GeodesicEndpointAttachment;
+  readonly freeEndAnchorId: string;
+  readonly previousTotalLengthMeters?: number;
+  readonly lastGoodFreeEndCellId: string;
+  readonly lastGoodFreeEndPoint: Vec3;
+  readonly state: "moving" | "ready-to-fuse";
+}
+
 export interface LiftedGeodesicEndpoint {
   readonly sourceRole: GeodesicEndRole;
   readonly targetRole: GeodesicEndRole;
@@ -242,7 +253,24 @@ export interface TieAndDetachIncidentGeodesicsRequest {
   readonly incidentGeodesicIds?: readonly [string, string];
 }
 
+export interface TieAndDetachGeodesicEndpointsRequest {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly detachedEmitterId: string;
+  readonly first: GeodesicEndpointSelection;
+  readonly second: GeodesicEndpointSelection;
+  readonly createPairId: () => string;
+  readonly createFreeEndId: () => string;
+}
+
 export interface AdvanceStraighteningGeodesicsRequest {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly deltaSeconds: number;
+  readonly speedMetersPerSecond?: number;
+}
+
+export interface AdvanceCurveShorteningPairsRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
   readonly deltaSeconds: number;
@@ -272,6 +300,11 @@ const emitterConnectionToleranceMeters = 0.3;
 const geodesicIntersectionBalloonHeightOffsetMeters = 0.25;
 export const geodesicStraighteningSpeedMetersPerSecond = 0.4;
 const geodesicStraighteningToleranceMeters = 0.01;
+export const curveShorteningDefaultSpeedMetersPerSecond = 0.4;
+export const curveShorteningLengthIncreaseToleranceMeters = 1e-4;
+export const curveShorteningFuseAngleToleranceRadians = 0.03;
+export const curveShorteningFuseStepToleranceMeters = 0.01;
+export const curveShorteningMinStepMeters = 0.002;
 const geodesicIntersectionMemoryByRegistry = new WeakMap<RuntimeObjectRegistry, Map<string, GeodesicIntersectionObject>>();
 
 export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions): GeodesicCannonObject {
@@ -359,6 +392,10 @@ export function isFreeGeodesicEndObject(object: { readonly kind: string }): obje
   return object.kind === "free-geodesic-end";
 }
 
+export function isCurveShorteningPairObject(object: { readonly kind: string }): object is CurveShorteningPairObject {
+  return object.kind === "curve-shortening-pair";
+}
+
 export function createFreeGeodesicEndObject(input: {
   readonly id: string;
   readonly cellId: string;
@@ -401,6 +438,32 @@ export function createGeodesicIntervalObject(input: {
       role: "end",
       anchorObjectId: input.endAnchorObjectId,
     },
+  };
+}
+
+export function createCurveShorteningPairObject(input: {
+  readonly id: string;
+  readonly first: GeodesicEndpointAttachment;
+  readonly second: GeodesicEndpointAttachment;
+  readonly freeEndAnchorId: string;
+  readonly previousTotalLengthMeters?: number;
+  readonly lastGoodFreeEndCellId: string;
+  readonly lastGoodFreeEndPoint: Vec3;
+  readonly state?: "moving" | "ready-to-fuse";
+}): CurveShorteningPairObject {
+  return {
+    id: input.id,
+    kind: "curve-shortening-pair",
+    cellId: input.lastGoodFreeEndCellId,
+    localPose: yawRigidTransform3(0, input.lastGoodFreeEndPoint),
+    portalRenderable: false,
+    first: input.first,
+    second: input.second,
+    freeEndAnchorId: input.freeEndAnchorId,
+    previousTotalLengthMeters: input.previousTotalLengthMeters,
+    lastGoodFreeEndCellId: input.lastGoodFreeEndCellId,
+    lastGoodFreeEndPoint: input.lastGoodFreeEndPoint,
+    state: input.state ?? "moving",
   };
 }
 
@@ -497,6 +560,49 @@ export function liftGeodesicEndpoint(input: {
   const targetAttachment = input.interval[targetRole];
   const sourceAnchor = input.registry.get(sourceAttachment.anchorObjectId);
   const targetAnchor = input.registry.get(targetAttachment.anchorObjectId);
+  if (!canObjectAttachGeodesics(sourceAnchor) || !canObjectAttachGeodesics(targetAnchor)) {
+    return undefined;
+  }
+
+  const portalWordFromSourceToTarget = input.sourceRole === "start"
+    ? input.interval.portalWord
+    : reverseGeodesicPortalWord(input.interval.portalWord);
+  const sourcePoint = getAnchorBeamPoint(sourceAnchor);
+  let targetPointInSourceCell = getAnchorBeamPoint(targetAnchor);
+  for (const traversal of portalWordFromSourceToTarget.slice().reverse()) {
+    const portal = input.world.cellsById.get(traversal.sourceCellId)?.portalsById.get(traversal.sourcePortalId);
+    if (!portal) {
+      return undefined;
+    }
+    targetPointInSourceCell = transformPoint3(invertRigidTransform3(portal.transformToTarget), targetPointInSourceCell);
+  }
+
+  return {
+    sourceRole: input.sourceRole,
+    targetRole,
+    sourceAnchorObjectId: sourceAttachment.anchorObjectId,
+    targetAnchorObjectId: targetAttachment.anchorObjectId,
+    sourceCellId: sourceAnchor.cellId,
+    sourcePoint,
+    targetPointInSourceCell,
+    portalWordFromSourceToTarget,
+  };
+}
+
+function liftGeodesicEndpointWithAnchors(input: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly interval: GeodesicIntervalObject;
+  readonly sourceRole: GeodesicEndRole;
+  readonly candidateAnchorsById?: ReadonlyMap<string, RuntimeWorldObject>;
+}): LiftedGeodesicEndpoint | undefined {
+  const sourceAttachment = input.interval[input.sourceRole];
+  const targetRole: GeodesicEndRole = input.sourceRole === "start" ? "end" : "start";
+  const targetAttachment = input.interval[targetRole];
+  const sourceAnchor = input.candidateAnchorsById?.get(sourceAttachment.anchorObjectId) ??
+    input.registry.get(sourceAttachment.anchorObjectId);
+  const targetAnchor = input.candidateAnchorsById?.get(targetAttachment.anchorObjectId) ??
+    input.registry.get(targetAttachment.anchorObjectId);
   if (!canObjectAttachGeodesics(sourceAnchor) || !canObjectAttachGeodesics(targetAnchor)) {
     return undefined;
   }
@@ -1439,6 +1545,91 @@ export function updateLockedGeodesicPortalWordForCarriedAnchorTraversal(input: {
   return portalWord;
 }
 
+export function getPortalWordBetweenEndpointRoles(input: {
+  readonly interval: GeodesicIntervalObject;
+  readonly sourceRole: GeodesicEndRole;
+  readonly targetRole: GeodesicEndRole;
+}): readonly GeodesicPortalTraversal[] {
+  if (input.sourceRole === input.targetRole) {
+    return [];
+  }
+  return input.sourceRole === "start"
+    ? input.interval.portalWord
+    : reverseGeodesicPortalWord(input.interval.portalWord);
+}
+
+export function updatePortalWordForMovedEndpoint(input: {
+  readonly registry: RuntimeObjectRegistry;
+  readonly interval: GeodesicIntervalObject;
+  readonly movedRole: GeodesicEndRole;
+  readonly traversal: GeodesicPortalTraversal;
+}): readonly GeodesicPortalTraversal[] | undefined {
+  const word = input.movedRole === "end"
+    ? reduceAdjacentInversePortalTraversals([...input.interval.portalWord, input.traversal])
+    : reduceAdjacentInversePortalTraversals([
+        reverseGeodesicPortalWord([input.traversal])[0],
+        ...input.interval.portalWord,
+      ]);
+  return portalWordMatchesCurrentEndpointCells(input.registry, input.interval, word) ? word : undefined;
+}
+
+export function previewRebuildGeodesicInterval(input: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly interval: GeodesicIntervalObject;
+  readonly candidateAnchorsById?: ReadonlyMap<string, RuntimeWorldObject>;
+}): GeodesicTraceBuildResult | undefined {
+  const lifted = liftGeodesicEndpointWithAnchors({
+    world: input.world,
+    registry: input.registry,
+    interval: input.interval,
+    sourceRole: "start",
+    candidateAnchorsById: input.candidateAnchorsById,
+  });
+  if (!lifted) {
+    return undefined;
+  }
+  const dx = lifted.targetPointInSourceCell.x - lifted.sourcePoint.x;
+  const dy = lifted.targetPointInSourceCell.y - lifted.sourcePoint.y;
+  const lengthMeters = Math.hypot(dx, dy);
+  if (lengthMeters < GEODESIC_MIN_LENGTH_METERS - intersectionTolerance) {
+    return undefined;
+  }
+  const traces = traceGeodesicPathForConnectionMode({
+    connectEmitters: false,
+    world: input.world,
+    registry: input.registry,
+    geodesicId: input.interval.id,
+    sourceEmitterId: input.interval.start.anchorObjectId,
+    cellId: lifted.sourceCellId,
+    start: lifted.sourcePoint,
+    direction: directionFromYaw(Math.atan2(dy, dx)),
+    maxLengthMeters: lengthMeters,
+  });
+  const portalWord = collectPortalWordFromTraces(input.world, traces);
+  if (!samePortalWord(portalWord, lifted.portalWordFromSourceToTarget)) {
+    return undefined;
+  }
+  if (traces.some((trace) => trace.terminal.kind === "forbidden-zone-hit" || trace.terminal.kind === "wall-hit")) {
+    return undefined;
+  }
+  const realizedTraces = withAnchoredTargetTerminalForAnchors(
+    input.registry,
+    input.interval,
+    traces,
+    input.candidateAnchorsById,
+  );
+  return {
+    interval: input.interval,
+    segments: buildDerivedSegmentsFromTraces({
+      registry: input.registry,
+      geodesicId: input.interval.id,
+      traces: realizedTraces,
+    }),
+    terminal: traceTerminalToBuildTerminalForInterval(input.interval, realizedTraces.at(-1)),
+  };
+}
+
 export function collectGeodesicMenuRowsForEmitter(
   registry: RuntimeObjectRegistry,
   emitterId: string,
@@ -1710,7 +1901,17 @@ function withAnchoredTargetTerminal(
   interval: GeodesicIntervalObject,
   traces: readonly TraceGeodesicSegmentResult[],
 ): readonly TraceGeodesicSegmentResult[] {
-  const targetAnchor = registry.get(interval.end.anchorObjectId);
+  return withAnchoredTargetTerminalForAnchors(registry, interval, traces);
+}
+
+function withAnchoredTargetTerminalForAnchors(
+  registry: RuntimeObjectRegistry,
+  interval: GeodesicIntervalObject,
+  traces: readonly TraceGeodesicSegmentResult[],
+  candidateAnchorsById?: ReadonlyMap<string, RuntimeWorldObject>,
+): readonly TraceGeodesicSegmentResult[] {
+  const targetAnchor = candidateAnchorsById?.get(interval.end.anchorObjectId) ??
+    registry.get(interval.end.anchorObjectId);
   const tail = traces.at(-1);
   if (targetAnchor?.kind !== "geodesic-cannon" || !tail || tail.terminal.kind !== "open") {
     return traces;
@@ -1729,6 +1930,18 @@ function replaceDerivedSegmentsFromTraces(input: {
   readonly traces: readonly TraceGeodesicSegmentResult[];
 }): readonly GeodesicSegmentObject[] {
   removeGeodesicSegments(input.registry, input.geodesicId);
+  const splitSegments = buildDerivedSegmentsFromTraces(input);
+  for (const segment of splitSegments) {
+    input.registry.add(segment);
+  }
+  return splitSegments;
+}
+
+function buildDerivedSegmentsFromTraces(input: {
+  readonly registry: RuntimeObjectRegistry;
+  readonly geodesicId: string;
+  readonly traces: readonly TraceGeodesicSegmentResult[];
+}): readonly GeodesicSegmentObject[] {
   const geodesicNumber = resolveGeodesicNumber(input.registry, input.geodesicId);
   const rawSegments = input.traces.map((trace, index) => createSegmentFromTrace({
     id: `${input.geodesicId}:segment:${index}`,
@@ -1744,9 +1957,6 @@ function replaceDerivedSegmentsFromTraces(input: {
       connectionState,
       tooltip: createGeodesicSegmentTooltip(segment.geodesicNumber, connectionState),
     }));
-  for (const segment of splitSegments) {
-    input.registry.add(segment);
-  }
   return splitSegments;
 }
 
@@ -2321,6 +2531,112 @@ export function tieAndDetachIncidentGeodesics(
   if (detached?.kind !== "geodesic-cannon") {
     return [];
   }
+  const selectable = getGeodesicEndpointAttachmentsForAnchor(request.registry, detached.id)
+    .filter((attachment) => isGeodesicLocked(request.registry, attachment.geodesicId))
+    .filter((attachment) => !isGeodesicStraightening(request.registry, attachment.geodesicId));
+  const selected = request.incidentGeodesicIds
+    ? request.incidentGeodesicIds
+        .map((geodesicId) => selectable.find((attachment) => attachment.geodesicId === geodesicId))
+    : selectable.length === 2 ? [selectable[0], selectable[1]] : [];
+  const first = selected[0];
+  const second = selected[1];
+  if (first && second) {
+    const pair = tieAndDetachGeodesicEndpoints({
+      world: request.world,
+      registry: request.registry,
+      detachedEmitterId: detached.id,
+      first,
+      second,
+      createPairId: () => request.geodesicId,
+      createFreeEndId: () => `${request.geodesicId}:free-end`,
+    });
+    return pair
+      ? [...new Set([pair.first.geodesicId, pair.second.geodesicId])]
+          .flatMap((geodesicId) => getGeodesicSegments(request.registry, geodesicId))
+      : [];
+  }
+
+  return tieAndDetachIncidentGeodesicsLegacy(request);
+}
+
+export function tieAndDetachGeodesicEndpoints(
+  request: TieAndDetachGeodesicEndpointsRequest,
+): CurveShorteningPairObject | undefined {
+  if (
+    request.first.geodesicId === request.second.geodesicId &&
+    request.first.role === request.second.role
+  ) {
+    return undefined;
+  }
+  const detached = request.registry.get(request.detachedEmitterId);
+  if (detached?.kind !== "geodesic-cannon") {
+    return undefined;
+  }
+
+  const firstInterval = request.registry.get(request.first.geodesicId);
+  const secondInterval = request.registry.get(request.second.geodesicId);
+  if (firstInterval?.kind !== "geodesic-interval" || secondInterval?.kind !== "geodesic-interval") {
+    return undefined;
+  }
+  const affected = uniqueIntervals([firstInterval, secondInterval]);
+  if (!affected.every((interval) => isGeodesicLocked(request.registry, interval.id))) {
+    return undefined;
+  }
+  if (
+    firstInterval[request.first.role].anchorObjectId !== detached.id ||
+    secondInterval[request.second.role].anchorObjectId !== detached.id
+  ) {
+    return undefined;
+  }
+
+  const freeEnd = createFreeGeodesicEndObject({
+    id: request.createFreeEndId(),
+    cellId: detached.cellId,
+    point: getGeodesicCannonEmitterPoint(detached),
+  });
+  request.registry.add(freeEnd);
+  for (const interval of affected) {
+    const next: GeodesicIntervalObject = {
+      ...interval,
+      motionState: "moving",
+      start: interval.id === request.first.geodesicId && request.first.role === "start" ||
+        interval.id === request.second.geodesicId && request.second.role === "start"
+        ? { geodesicId: interval.id, role: "start", anchorObjectId: freeEnd.id }
+        : interval.start,
+      end: interval.id === request.first.geodesicId && request.first.role === "end" ||
+        interval.id === request.second.geodesicId && request.second.role === "end"
+        ? { geodesicId: interval.id, role: "end", anchorObjectId: freeEnd.id }
+        : interval.end,
+    };
+    request.registry.update(next);
+    if (!rebuildDerivedGeodesicSegments({ world: request.world, registry: request.registry, geodesicId: interval.id })) {
+      cleanupCurveShorteningFailure(request.registry, affected.map(({ id }) => id), freeEnd.id, undefined);
+      return undefined;
+    }
+    syncLegacyEmitterGeodesicFields(request.registry, interval.id);
+  }
+
+  const pair = createCurveShorteningPairObject({
+    id: request.createPairId(),
+    first: { geodesicId: request.first.geodesicId, role: request.first.role, anchorObjectId: freeEnd.id },
+    second: { geodesicId: request.second.geodesicId, role: request.second.role, anchorObjectId: freeEnd.id },
+    freeEndAnchorId: freeEnd.id,
+    previousTotalLengthMeters: totalLengthForGeodesicIds(request.registry, affected.map(({ id }) => id)),
+    lastGoodFreeEndCellId: freeEnd.cellId,
+    lastGoodFreeEndPoint: getAnchorBeamPoint(freeEnd),
+  });
+  request.registry.add(pair);
+  updateGeodesicIntersectionObjects(request.registry);
+  return pair;
+}
+
+function tieAndDetachIncidentGeodesicsLegacy(
+  request: TieAndDetachIncidentGeodesicsRequest,
+): readonly GeodesicSegmentObject[] {
+  const detached = request.registry.get(request.emitterId);
+  if (detached?.kind !== "geodesic-cannon") {
+    return [];
+  }
 
   const selectableGeodesicIds = collectLockedIncidentGeodesicIdsForEmitter(request.registry, detached.id)
     .filter((geodesicId) => !isGeodesicStraightening(request.registry, geodesicId));
@@ -2389,6 +2705,11 @@ export function tieAndDetachIncidentGeodesics(
 export function advanceStraighteningGeodesics(
   request: AdvanceStraighteningGeodesicsRequest,
 ): readonly string[] {
+  const shortened = advanceCurveShorteningPairs(request);
+  if (shortened.length > 0) {
+    return shortened;
+  }
+
   if (!(request.deltaSeconds > 0)) {
     return [];
   }
@@ -2482,6 +2803,209 @@ export function advanceStraighteningGeodesics(
   return advanced;
 }
 
+export function advanceCurveShorteningPairs(
+  request: AdvanceCurveShorteningPairsRequest,
+): readonly string[] {
+  if (!(request.deltaSeconds > 0)) {
+    return [];
+  }
+  const changed: string[] = [];
+  for (const pair of request.registry.getAll().filter(isCurveShorteningPairObject)) {
+    if (pair.state === "ready-to-fuse") {
+      const fused = fuseCurveShorteningPair({ world: request.world, registry: request.registry, pairId: pair.id });
+      changed.push(fused?.id ?? pair.id);
+      continue;
+    }
+    const freeEnd = request.registry.get(pair.freeEndAnchorId);
+    if (freeEnd?.kind !== "free-geodesic-end") {
+      request.registry.remove(pair.id);
+      continue;
+    }
+    const owned = resolvePairIntervals(request.registry, pair);
+    if (!owned) {
+      cleanupCurveShorteningFailure(request.registry, [pair.first.geodesicId, pair.second.geodesicId], pair.freeEndAnchorId, pair.id);
+      changed.push(pair.id);
+      continue;
+    }
+    const firstTangent = endpointDirectionAwayFromAnchor(request.registry, pair.first);
+    const secondTangent = endpointDirectionAwayFromAnchor(request.registry, pair.second);
+    if (!firstTangent || !secondTangent) {
+      cleanupCurveShorteningFailure(request.registry, owned.intervals.map(({ id }) => id), pair.freeEndAnchorId, pair.id);
+      changed.push(pair.id);
+      continue;
+    }
+    const sum = addVec3(firstTangent, secondTangent);
+    const sumLength = Math.hypot(sum.x, sum.y);
+    const turnAngle = Math.acos(Math.max(-1, Math.min(1, firstTangent.x * secondTangent.x + firstTangent.y * secondTangent.y)));
+    if (sumLength <= intersectionTolerance || Math.abs(Math.PI - turnAngle) <= curveShorteningFuseAngleToleranceRadians) {
+      request.registry.update({ ...pair, state: "ready-to-fuse" });
+      changed.push(pair.id);
+      continue;
+    }
+    const shortestIncidentLength = Math.max(
+      curveShorteningMinStepMeters,
+      Math.min(...owned.intervals.map((interval) => totalGeodesicLengthFromSegments(getGeodesicSegments(request.registry, interval.id)))),
+    );
+    const stepMeters = Math.min(
+      (request.speedMetersPerSecond ?? curveShorteningDefaultSpeedMetersPerSecond) * request.deltaSeconds,
+      0.25 * shortestIncidentLength,
+    );
+    if (stepMeters < curveShorteningMinStepMeters) {
+      request.registry.update({ ...pair, state: "ready-to-fuse" });
+      changed.push(pair.id);
+      continue;
+    }
+
+    const currentPoint = getAnchorBeamPoint(freeEnd);
+    const descent = normalizeHorizontalDirection(sum);
+    const candidateFreeEnd: FreeGeodesicEndObject = {
+      ...freeEnd,
+      localPose: yawRigidTransform3(0, addVec3(currentPoint, scaleVec3(descent, stepMeters))),
+    };
+    const candidateAnchors = new Map<string, RuntimeWorldObject>([[candidateFreeEnd.id, candidateFreeEnd]]);
+    const previews = owned.intervals.map((interval) =>
+      previewRebuildGeodesicInterval({
+        world: request.world,
+        registry: request.registry,
+        interval,
+        candidateAnchorsById: candidateAnchors,
+      })
+    );
+    if (previews.some((preview) => !preview)) {
+      cleanupCurveShorteningPreviewFailure({
+        world: request.world,
+        registry: request.registry,
+        pair,
+        intervals: owned.intervals,
+        previews,
+      });
+      changed.push(pair.id);
+      continue;
+    }
+    const nextTotal = previews.reduce((total, preview) =>
+      total + (preview?.segments.reduce((sumMeters, segment) => sumMeters + segment.lengthMeters, 0) ?? 0), 0);
+    const previous = pair.previousTotalLengthMeters ??
+      totalLengthForGeodesicIds(request.registry, owned.intervals.map(({ id }) => id));
+    if (nextTotal > previous + curveShorteningLengthIncreaseToleranceMeters) {
+      request.registry.update({
+        ...freeEnd,
+        cellId: pair.lastGoodFreeEndCellId,
+        localPose: yawRigidTransform3(0, pair.lastGoodFreeEndPoint),
+      });
+      request.registry.update({ ...pair, state: "ready-to-fuse" });
+      changed.push(pair.id);
+      continue;
+    }
+
+    request.registry.update(candidateFreeEnd);
+    for (const preview of previews) {
+      if (!preview) {
+        continue;
+      }
+      removeGeodesicSegments(request.registry, preview.interval.id);
+      for (const segment of preview.segments) {
+        request.registry.add(segment);
+      }
+      syncLegacyEmitterGeodesicFields(request.registry, preview.interval.id);
+    }
+    request.registry.update({
+      ...pair,
+      previousTotalLengthMeters: nextTotal,
+      lastGoodFreeEndCellId: candidateFreeEnd.cellId,
+      lastGoodFreeEndPoint: getAnchorBeamPoint(candidateFreeEnd),
+    });
+    changed.push(...owned.intervals.map(({ id }) => id));
+  }
+  if (changed.length > 0) {
+    updateGeodesicIntersectionObjects(request.registry);
+  }
+  return [...new Set(changed)];
+}
+
+export function fuseCurveShorteningPair(input: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly pairId: string;
+}): GeodesicIntervalObject | undefined {
+  const pair = input.registry.get(input.pairId);
+  if (pair?.kind !== "curve-shortening-pair") {
+    return undefined;
+  }
+  const owned = resolvePairIntervals(input.registry, pair);
+  if (!owned) {
+    cleanupCurveShorteningFailure(input.registry, [pair.first.geodesicId, pair.second.geodesicId], pair.freeEndAnchorId, pair.id);
+    return undefined;
+  }
+
+  if (owned.intervals.length === 1) {
+    const loop = owned.intervals[0];
+    const stableLoop: GeodesicIntervalObject = { ...loop, motionState: "stable" };
+    input.registry.update(stableLoop);
+    const rebuilt = rebuildDerivedGeodesicSegments({ world: input.world, registry: input.registry, geodesicId: loop.id });
+    if (!rebuilt || !geodesicHasNonzeroLiftedDisplacement({ world: input.world, registry: input.registry, interval: stableLoop })) {
+      cleanupCurveShorteningFailure(input.registry, [loop.id], pair.freeEndAnchorId, pair.id);
+      return undefined;
+    }
+    input.registry.remove(pair.id);
+    syncLegacyEmitterGeodesicFields(input.registry, loop.id);
+    updateGeodesicIntersectionObjects(input.registry);
+    return input.registry.get(loop.id) as GeodesicIntervalObject | undefined;
+  }
+
+  const firstInterval = input.registry.get(pair.first.geodesicId);
+  const secondInterval = input.registry.get(pair.second.geodesicId);
+  if (firstInterval?.kind !== "geodesic-interval" || secondInterval?.kind !== "geodesic-interval") {
+    cleanupCurveShorteningFailure(input.registry, owned.intervals.map(({ id }) => id), pair.freeEndAnchorId, pair.id);
+    return undefined;
+  }
+  const firstNonFreeRole = getOppositeEndRole(pair.first.role);
+  const secondNonFreeRole = getOppositeEndRole(pair.second.role);
+  const firstAnchor = input.registry.get(firstInterval[firstNonFreeRole].anchorObjectId);
+  const secondAnchor = input.registry.get(secondInterval[secondNonFreeRole].anchorObjectId);
+  if (firstAnchor?.kind !== "geodesic-cannon" || secondAnchor?.kind !== "geodesic-cannon") {
+    cleanupCurveShorteningFailure(input.registry, owned.intervals.map(({ id }) => id), pair.freeEndAnchorId, pair.id);
+    return undefined;
+  }
+
+  const fusedId = [firstInterval.id, secondInterval.id].sort()[0];
+  const removedId = fusedId === firstInterval.id ? secondInterval.id : firstInterval.id;
+  const fusedWord = reduceAdjacentInversePortalTraversals([
+    ...getPortalWordBetweenEndpointRoles({
+      interval: firstInterval,
+      sourceRole: firstNonFreeRole,
+      targetRole: pair.first.role,
+    }),
+    ...getPortalWordBetweenEndpointRoles({
+      interval: secondInterval,
+      sourceRole: pair.second.role,
+      targetRole: secondNonFreeRole,
+    }),
+  ]);
+  const fusedInterval: GeodesicIntervalObject = {
+    ...(fusedId === firstInterval.id ? firstInterval : secondInterval),
+    id: fusedId,
+    cellId: firstAnchor.cellId,
+    startCellId: firstAnchor.cellId,
+    motionState: "stable",
+    portalWord: fusedWord,
+    start: { geodesicId: fusedId, role: "start", anchorObjectId: firstAnchor.id },
+    end: { geodesicId: fusedId, role: "end", anchorObjectId: secondAnchor.id },
+  };
+  input.registry.update(fusedInterval);
+  removeGeodesicIntervalAndDerivedObjects(input.registry, removedId);
+  input.registry.remove(pair.freeEndAnchorId);
+  input.registry.remove(pair.id);
+  const rebuilt = rebuildDerivedGeodesicSegments({ world: input.world, registry: input.registry, geodesicId: fusedId });
+  const finalInterval = input.registry.get(fusedId);
+  if (!rebuilt || finalInterval?.kind !== "geodesic-interval") {
+    cleanupCurveShorteningFailure(input.registry, [fusedId], pair.freeEndAnchorId, pair.id);
+    return undefined;
+  }
+  syncLegacyEmitterGeodesicFields(input.registry, fusedId);
+  updateGeodesicIntersectionObjects(input.registry);
+  return finalInterval;
+}
+
 export function collectGeodesicPortalWord(
   world: CompiledCellComplex,
   registry: RuntimeObjectRegistry,
@@ -2512,6 +3036,133 @@ export function collectGeodesicPortalWord(
   }
 
   return word;
+}
+
+function uniqueIntervals(intervals: readonly GeodesicIntervalObject[]): readonly GeodesicIntervalObject[] {
+  const byId = new Map<string, GeodesicIntervalObject>();
+  for (const interval of intervals) {
+    byId.set(interval.id, interval);
+  }
+  return [...byId.values()];
+}
+
+function resolvePairIntervals(
+  registry: RuntimeObjectRegistry,
+  pair: CurveShorteningPairObject,
+): { readonly intervals: readonly GeodesicIntervalObject[] } | undefined {
+  const first = registry.get(pair.first.geodesicId);
+  const second = registry.get(pair.second.geodesicId);
+  if (first?.kind !== "geodesic-interval" || second?.kind !== "geodesic-interval") {
+    return undefined;
+  }
+  if (
+    first[pair.first.role].anchorObjectId !== pair.freeEndAnchorId ||
+    second[pair.second.role].anchorObjectId !== pair.freeEndAnchorId
+  ) {
+    return undefined;
+  }
+  const intervals = uniqueIntervals([first, second]);
+  return intervals.every((interval) => interval.motionState === "moving") ? { intervals } : undefined;
+}
+
+function endpointDirectionAwayFromAnchor(
+  registry: RuntimeObjectRegistry,
+  attachment: GeodesicEndpointAttachment,
+): Vec3 | undefined {
+  const tangent = resolveEndpointTangentAtAnchor({
+    registry,
+    geodesicId: attachment.geodesicId,
+    endRole: attachment.role,
+  });
+  return tangent ? directionFromYaw(tangent.yawRadians) : undefined;
+}
+
+function totalLengthForGeodesicIds(
+  registry: RuntimeObjectRegistry,
+  geodesicIds: readonly string[],
+): number {
+  return [...new Set(geodesicIds)].reduce(
+    (total, geodesicId) => total + totalGeodesicLengthFromSegments(getGeodesicSegments(registry, geodesicId)),
+    0,
+  );
+}
+
+function cleanupCurveShorteningFailure(
+  registry: RuntimeObjectRegistry,
+  geodesicIds: readonly string[],
+  freeEndAnchorId: string,
+  pairId: string | undefined,
+): void {
+  for (const geodesicId of [...new Set(geodesicIds)]) {
+    removeGeodesicIntervalAndDerivedObjects(registry, geodesicId);
+  }
+  registry.remove(freeEndAnchorId);
+  if (pairId) {
+    registry.remove(pairId);
+  }
+  updateGeodesicIntersectionObjects(registry);
+}
+
+function cleanupCurveShorteningPreviewFailure(input: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly pair: CurveShorteningPairObject;
+  readonly intervals: readonly GeodesicIntervalObject[];
+  readonly previews: readonly (GeodesicTraceBuildResult | undefined)[];
+}): void {
+  const successes = input.intervals.filter((_interval, index) => input.previews[index] !== undefined);
+  const failures = input.intervals.filter((_interval, index) => input.previews[index] === undefined);
+  if (successes.length !== 1 || input.intervals.length !== 2) {
+    cleanupCurveShorteningFailure(
+      input.registry,
+      input.intervals.map(({ id }) => id),
+      input.pair.freeEndAnchorId,
+      input.pair.id,
+    );
+    return;
+  }
+
+  const survivor = successes[0];
+  const failed = failures[0];
+  const freeRole = survivor.start.anchorObjectId === input.pair.freeEndAnchorId ? "start" : "end";
+  const survivorFreeEnd = createFreeGeodesicEndObject({
+    id: `${survivor.id}:surviving-free-end`,
+    cellId: input.pair.lastGoodFreeEndCellId,
+    point: input.pair.lastGoodFreeEndPoint,
+  });
+  removeGeodesicIntervalAndDerivedObjects(input.registry, failed.id);
+  input.registry.remove(input.pair.id);
+  input.registry.remove(input.pair.freeEndAnchorId);
+  input.registry.add(survivorFreeEnd);
+  const currentSurvivor = input.registry.get(survivor.id);
+  if (currentSurvivor?.kind !== "geodesic-interval") {
+    removeUnusedFreeGeodesicEnds(input.registry);
+    updateGeodesicIntersectionObjects(input.registry);
+    return;
+  }
+  const nextSurvivor: GeodesicIntervalObject = freeRole === "start"
+    ? {
+        ...currentSurvivor,
+        motionState: "stable",
+        start: {
+          geodesicId: currentSurvivor.id,
+          role: "start",
+          anchorObjectId: survivorFreeEnd.id,
+        },
+      }
+    : {
+        ...currentSurvivor,
+        motionState: "stable",
+        end: {
+          geodesicId: currentSurvivor.id,
+          role: "end",
+          anchorObjectId: survivorFreeEnd.id,
+        },
+      };
+  input.registry.update(nextSurvivor);
+  rebuildDerivedGeodesicSegments({ world: input.world, registry: input.registry, geodesicId: survivor.id });
+  syncLegacyEmitterGeodesicFields(input.registry, survivor.id);
+  updateGeodesicIntersectionObjects(input.registry);
 }
 
 function resolveCarriedConnectedGeodesicPlan(input: {

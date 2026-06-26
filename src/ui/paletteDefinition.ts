@@ -295,7 +295,10 @@ export function createPaletteDefinition(
         cannonId: state.geodesicCannonOptions.cannonId,
         addAction: { label: "Add geodesic", disabled: false },
         carryAction: { label: "Carry", disabled: false },
-        tieAndDetachAction: { label: "Tie & detach", disabled: true },
+        tieAndDetachAction: {
+          label: "Tie & detach",
+          disabled: state.geodesicCannonOptions.canTieAndDetach !== true,
+        },
         geodesics: createGeodesicCannonEntries(
           state.geodesicCannonOptions.geodesicIds,
           state.geodesicCannonOptions.geodesicLabelsById,

@@ -94,9 +94,10 @@ import {
 import {
   collectLockedIncidentGeodesicIdsForEmitter,
   collectGeodesicPortalWord,
-  advanceStraighteningGeodesics,
+  advanceCurveShorteningPairs,
   canExtendGeodesicSegment,
   extendGeodesic,
+  getGeodesicEndpointAttachmentsForAnchor,
   getGeodesicConnection,
   getGeodesicSegments,
   hasStraighteningIncidentGeodesic,
@@ -112,11 +113,13 @@ import {
   removeGeodesicCannonAndSegments,
   removeUnlockedGeodesicsFromCannon,
   resolveGeodesicNumber,
+  resolveGeodesicEndpointSelectionFromSegmentHit,
   shootGeodesic,
-  tieAndDetachIncidentGeodesics,
+  tieAndDetachGeodesicEndpoints,
   updateLockedGeodesicPortalWordForCarriedAnchorTraversal,
   geodesicRayBeamHeightMeters,
   type GeodesicCarryPortalTransition,
+  type GeodesicEndpointSelection,
   type GeodesicPortalTraversal,
 } from "../../world-objects/geodesicCannon";
 import {
@@ -630,7 +633,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         syncRuntimeObjectPortalInstances();
         activeGeodesicCannonToolState = {
           ...activeGeodesicCannonToolState,
-          tieAndDetachGeodesicIds: undefined,
+          tieAndDetachEndpointSelections: undefined,
         };
       }
       menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, toolId));
@@ -786,7 +789,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     readonly carryPortalWordsByGeodesicId?: Readonly<Record<string, readonly GeodesicPortalTraversal[]>>;
     readonly carryPortalTransitionSerial?: number;
     readonly carryPortalTransitionSerialByGeodesicId?: Readonly<Record<string, number>>;
-    readonly tieAndDetachGeodesicIds?: readonly string[];
+    readonly tieAndDetachEndpointSelections?: readonly GeodesicEndpointSelection[];
   } = {};
   let activeProtractorToolState: {
     readonly center?: ProtractorCenterSelection;
@@ -1100,7 +1103,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     for (const runtime of placedFlagRuntimes.values()) {
       runtime.syncParent(cellMeshes);
     }
-    const straightenedGeodesicIds = advanceStraighteningGeodesics({
+    const straightenedGeodesicIds = advanceCurveShorteningPairs({
       world: activeWorld(),
       registry: runtimeObjectRegistry,
       deltaSeconds: frame.resetRequested ? 0 : deltaSeconds,
@@ -3101,7 +3104,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function getTieAndDetachToolPrompt(): string {
-    const selectedCount = activeGeodesicCannonToolState.tieAndDetachGeodesicIds?.length ?? 0;
+    const selectedCount = activeGeodesicCannonToolState.tieAndDetachEndpointSelections?.length ?? 0;
     return selectedCount === 0 ? "select: geodesic 1" : "select: geodesic 2";
   }
 
@@ -4258,8 +4261,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   }
 
   function canTieAndDetachGeodesicsFromCannon(cannonId: string): boolean {
-    return collectLockedIncidentGeodesicIdsForEmitter(runtimeObjectRegistry, cannonId)
-      .filter((geodesicId) => !isGeodesicStraightening(runtimeObjectRegistry, geodesicId))
+    return getGeodesicEndpointAttachmentsForAnchor(runtimeObjectRegistry, cannonId)
+      .filter((attachment) => isGeodesicLocked(runtimeObjectRegistry, attachment.geodesicId))
+      .filter((attachment) => !isGeodesicStraightening(runtimeObjectRegistry, attachment.geodesicId))
       .length >= 2;
   }
 
@@ -4272,7 +4276,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncTieAndDetachSelectionHighlights([]);
     activeGeodesicCannonToolState = {
       selectedCannonId: cannonId,
-      tieAndDetachGeodesicIds: [],
+      tieAndDetachEndpointSelections: [],
     };
     menuState = closeRuntimeMenu(setRuntimeMenuSelectedTool(menuState, "geodesic-cannon-tie-detach"));
     syncDesktopPalette();
@@ -4287,64 +4291,69 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       return false;
     }
 
-    const selectedGeodesicId = resolveTieAndDetachGeodesicFromAim(ray, cannonId);
-    if (!selectedGeodesicId) {
+    const selectedEndpoint = resolveTieAndDetachEndpointFromAim(ray, cannonId);
+    if (!selectedEndpoint) {
       return false;
     }
 
-    const selectedIds = activeGeodesicCannonToolState.tieAndDetachGeodesicIds ?? [];
-    if (selectedIds.includes(selectedGeodesicId)) {
+    const selected = activeGeodesicCannonToolState.tieAndDetachEndpointSelections ?? [];
+    if (selected.some((selection) =>
+      selection.geodesicId === selectedEndpoint.geodesicId && selection.role === selectedEndpoint.role
+    )) {
       return true;
     }
 
-    const nextIds = [...selectedIds, selectedGeodesicId];
-    if (nextIds.length < 2) {
+    const nextSelections = [...selected, selectedEndpoint];
+    if (nextSelections.length < 2) {
       activeGeodesicCannonToolState = {
         ...activeGeodesicCannonToolState,
-        tieAndDetachGeodesicIds: nextIds,
+        tieAndDetachEndpointSelections: nextSelections,
       };
-      syncTieAndDetachSelectionHighlights(nextIds);
+      syncTieAndDetachSelectionHighlights(nextSelections);
       syncDesktopPalette();
       syncRuntimeObjectPortalInstances();
       return true;
     }
 
-    tieAndDetachGeodesicsFromCannon(cannonId, [nextIds[0], nextIds[1]]);
+    tieAndDetachGeodesicsFromCannon(cannonId, [nextSelections[0], nextSelections[1]]);
     return true;
   }
 
-  function resolveTieAndDetachGeodesicFromAim(ray: RootAimRay, cannonId: string): string | undefined {
-    const selectableIds = collectLockedIncidentGeodesicIdsForEmitter(runtimeObjectRegistry, cannonId)
-      .filter((id) => !isGeodesicStraightening(runtimeObjectRegistry, id));
+  function resolveTieAndDetachEndpointFromAim(ray: RootAimRay, cannonId: string): GeodesicEndpointSelection | undefined {
+    const selectable = getGeodesicEndpointAttachmentsForAnchor(runtimeObjectRegistry, cannonId)
+      .filter((attachment) => isGeodesicLocked(runtimeObjectRegistry, attachment.geodesicId))
+      .filter((attachment) => !isGeodesicStraightening(runtimeObjectRegistry, attachment.geodesicId));
     for (const target of resolveCurrentAimTargets(ray)) {
       if (!targetIsWithinInteractionRange(target)) {
         continue;
       }
 
-      const geodesicId = target.object?.kind === "geodesic-segment"
-        ? target.object.geodesicId
-        : target.object?.kind === "geodesic-cannon"
-          ? target.geodesicEmitterGeodesicId
-          : undefined;
-      if (geodesicId && selectableIds.includes(geodesicId)) {
-        return geodesicId;
+      const endpoint = target.object?.kind === "geodesic-segment"
+        ? resolveGeodesicEndpointSelectionFromSegmentHit(runtimeObjectRegistry, target.object.id)
+        : undefined;
+      if (
+        endpoint &&
+        selectable.some((selection) => selection.geodesicId === endpoint.geodesicId && selection.role === endpoint.role)
+      ) {
+        return endpoint;
       }
     }
 
     return undefined;
   }
 
-  function tieAndDetachGeodesicsFromCannon(cannonId: string, selectedGeodesicIds: readonly [string, string]): void {
+  function tieAndDetachGeodesicsFromCannon(cannonId: string, selectedEndpoints: readonly [GeodesicEndpointSelection, GeodesicEndpointSelection]): void {
     syncTieAndDetachSelectionHighlights([]);
-    const geodesicId = `geodesic:${Date.now()}:${geodesicIdCounter++}`;
-    const segments = tieAndDetachIncidentGeodesics({
+    const pair = tieAndDetachGeodesicEndpoints({
       world: activeWorld(),
       registry: runtimeObjectRegistry,
-      emitterId: cannonId,
-      geodesicId,
-      incidentGeodesicIds: selectedGeodesicIds,
+      detachedEmitterId: cannonId,
+      first: selectedEndpoints[0],
+      second: selectedEndpoints[1],
+      createPairId: () => `curve-shortening:${Date.now()}:${geodesicIdCounter++}`,
+      createFreeEndId: () => `free-end:${Date.now()}:${geodesicIdCounter++}`,
     });
-    if (segments.length === 0) {
+    if (!pair) {
       syncDesktopPalette();
       syncRuntimeObjectPortalInstances();
       return;
@@ -4358,14 +4367,18 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncSelectableHitboxDebug();
   }
 
-  function syncTieAndDetachSelectionHighlights(selectedGeodesicIds: readonly string[]): void {
-    const selected = new Set(selectedGeodesicIds);
+  function syncTieAndDetachSelectionHighlights(selectedEndpoints: readonly GeodesicEndpointSelection[]): void {
     for (const object of runtimeObjectRegistry.getAll()) {
       if (object.kind !== "geodesic-segment") {
         continue;
       }
 
-      const nextHighlightState = selected.has(object.geodesicId) ? "tie-detach-selected" : undefined;
+      const endpoint = resolveGeodesicEndpointSelectionFromSegmentHit(runtimeObjectRegistry, object.id);
+      const nextHighlightState = endpoint && selectedEndpoints.some((selection) =>
+        selection.geodesicId === endpoint.geodesicId && selection.role === endpoint.role
+      )
+        ? "tie-detach-selected"
+        : undefined;
       if (object.highlightState === nextHighlightState) {
         continue;
       }
@@ -5253,9 +5266,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const ignoredGeodesicIds = menuState.selectedTool === "geodesic-cannon-aim" &&
         activeGeodesicCannonToolState.activeGeodesicId
       ? [activeGeodesicCannonToolState.activeGeodesicId]
-      : menuState.selectedTool === "geodesic-cannon-tie-detach"
-        ? activeGeodesicCannonToolState.tieAndDetachGeodesicIds
-        : undefined;
+      : undefined;
     const aimCamera = syncAimRayCamera(ray);
 
     return resolveAimTargets({
