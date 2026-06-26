@@ -284,7 +284,7 @@ import { createXrControllerHandModels } from "./xrControllerHandModels";
 import { createXrEntryUi } from "./xrEntryUi";
 import { resolveXrPortalEyeRenderRoot, type XrPortalEyeRenderRoot } from "./xrPortalEye";
 import { createXrPlayerRig, headLocalMetersFromViewerPose, headYawRadiansFromViewerPose, xrRigidTransformLocalMatrix } from "./xrPlayerRig";
-import { resolveFrontFacingQuaternion, resolveVrPalettePlacement, shouldAutoCloseVrPalette } from "./vrPalettePlacement";
+import { resolveFrontFacingQuaternion, resolveVrPalettePlacement } from "./vrPalettePlacement";
 import { createXrScenePaletteInput } from "./xrScenePaletteInput";
 import {
   createVrComfortVignette,
@@ -449,7 +449,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     vrComfortOptions,
   });
   let previousDesktopPalettePlacement: ReturnType<typeof resolveDesktopScenePalettePlacement> | undefined;
-  let fixedXrPalettePlacement: ReturnType<typeof resolveVrPalettePlacement> | undefined;
   let geodesicCannonRotationHeadHeightMeters: number | undefined;
   let geodesicCannonRotationTargetLengthMeters: number | undefined;
   let aimTargetCycleState: { readonly signature: string; readonly index: number } | undefined;
@@ -462,7 +461,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       requestAppRestart(() => options.onReloadRequested?.());
     },
     goHome() {
-      resetPlayerToHome();
+      teleportPlayerHome();
     },
     changeWorld(worldId) {
       requestAppRestart(() => options.onWorldChangeRequested?.(worldId));
@@ -544,7 +543,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       syncDesktopPalette();
     },
     onCloseRequested() {
-      fixedXrPalettePlacement = undefined;
       cancelRuntimeMenuAndSelectedTool();
     },
     onShowSettingsRequested() {
@@ -994,7 +992,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     let moveResult: ReturnType<typeof movePlayer> | undefined;
 
     if (frame.resetRequested) {
-      resetPlayerToHome();
+      teleportPlayerHome();
       resetRuntimeWorld();
     } else {
       const yawDeltaRadians = xrActive
@@ -1938,7 +1936,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         xrRig.reset();
         xrScenePaletteInput.reset();
         xrControllerHandModels.reset();
-        fixedXrPalettePlacement = undefined;
         scenePaletteController.setVisible(false);
         xrEntryUi.update(xrSessionState);
         syncXrDebugState("desktop");
@@ -1968,20 +1965,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       const headPosition = xrHeadWorldPose?.position ?? camera.getWorldPosition(new THREE.Vector3());
       const headQuaternion = xrHeadWorldPose?.quaternion ?? camera.getWorldQuaternion(new THREE.Quaternion());
 
-      if (!menuState.isOpen) {
-        fixedXrPalettePlacement = undefined;
-      } else if (
-        fixedXrPalettePlacement &&
-        shouldAutoCloseVrPalette({
-          headPosition,
-          palettePosition: fixedXrPalettePlacement.position,
-        })
-      ) {
-        cancelRuntimeMenuAndSelectedTool();
-        fixedXrPalettePlacement = undefined;
-      }
-
-      const placement = fixedXrPalettePlacement ?? resolveVrPalettePlacement({
+      const placement = resolveVrPalettePlacement({
         head: {
           position: headPosition,
           quaternion: headQuaternion,
@@ -1998,13 +1982,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         definition: createPaletteDefinition(menuState, appConfig, "xr"),
         placement,
       });
-      if (menuState.isOpen && !fixedXrPalettePlacement) {
-        fixedXrPalettePlacement = {
-          anchorKind: placement.anchorKind,
-          position: placement.position.clone(),
-          quaternion: placement.quaternion.clone(),
-        };
-      }
       xrControllerHandModels.update({
         inputSources,
         xrFrame,
@@ -2019,7 +1996,6 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const placement = resolveDesktopScenePalettePlacement({
       camera,
       previousPlacement: previousDesktopPalettePlacement,
-      freeze: menuState.isOpen,
     });
     previousDesktopPalettePlacement = placement;
     scenePaletteController.update({
@@ -3825,6 +3801,20 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
           cellId: fallbackCell?.id ?? appState.playerPose.cellId,
         };
     xrRig.reset();
+  }
+
+  function teleportPlayerHome(): void {
+    closeMenusForHomeTeleport();
+    resetPlayerToHome();
+  }
+
+  function closeMenusForHomeTeleport(): void {
+    if (desktopFlagEditor.isOpen()) {
+      desktopFlagEditor.close();
+    }
+    if (menuState.isOpen || menuState.selectedTool !== "none") {
+      cancelRuntimeMenuAndSelectedTool();
+    }
   }
 
   function resetRuntimeWorld(): void {

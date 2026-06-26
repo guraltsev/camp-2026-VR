@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-export type VrPaletteAnchorKind = "world";
+export type VrPaletteAnchorKind = "viewer";
 
 export interface VrPoseSample {
   readonly position: THREE.Vector3;
@@ -29,7 +29,7 @@ const lookAtMatrix = new THREE.Matrix4();
 const positiveZFacingFlip = new THREE.Quaternion().setFromAxisAngle(upAxis, Math.PI);
 
 export function resolveVrPalettePlacement(options: ResolveVrPalettePlacementOptions): VrPalettePlacement {
-  const anchorKind: VrPaletteAnchorKind = "world";
+  const anchorKind: VrPaletteAnchorKind = "viewer";
   const targetPosition = options.head.position.clone().add(applyLocalOffset(headOffset, options.head.quaternion));
   const targetQuaternion = resolveFacingQuaternion(targetPosition, options.head.position);
 

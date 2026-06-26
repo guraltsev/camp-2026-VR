@@ -12,7 +12,7 @@ describe("vrPalettePlacement", () => {
       head: { position: new THREE.Vector3(0, 1.6, 0), quaternion: new THREE.Quaternion() },
     });
 
-    expect(placement.anchorKind).toBe("world");
+    expect(placement.anchorKind).toBe("viewer");
     expect(placement.position.x).toBeCloseTo(0);
     expect(placement.position.y).toBeCloseTo(1.48);
     expect(placement.position.z).toBeCloseTo(-0.72);
@@ -24,7 +24,7 @@ describe("vrPalettePlacement", () => {
       head: { position: new THREE.Vector3(0, 1.6, 0), quaternion: headYaw },
     });
 
-    expect(placement.anchorKind).toBe("world");
+    expect(placement.anchorKind).toBe("viewer");
     expect(placement.position.x).toBeLessThan(-0.7);
     expect(placement.position.z).toBeCloseTo(0);
   });
