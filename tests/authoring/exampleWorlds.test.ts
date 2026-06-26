@@ -5,6 +5,7 @@ import {
   basicTetrahedron,
   cube,
   dodecahedron,
+  genus2Torus,
   icosahedron,
   octahedron,
   tetrahedron,
@@ -28,6 +29,7 @@ const exampleWorlds = [
   ["002-basic-tetrahedron", basicTetrahedron],
   ["cube", cube],
   ["dodecahedron", dodecahedron],
+  ["genus-2-torus", genus2Torus],
   ["icosahedron", icosahedron],
   ["octahedron", octahedron],
   ["tetrahedron", tetrahedron],
@@ -46,6 +48,7 @@ describe("example worlds", () => {
       "002-basic-tetrahedron",
       "cube",
       "dodecahedron",
+      "genus-2-torus",
       "icosahedron",
       "octahedron",
       "tetrahedron",
@@ -74,6 +77,19 @@ describe("example worlds", () => {
         height: 1.5525,
       },
     });
+  });
+
+  it("models the genus-2 torus as a paired octagon", () => {
+    const octagon = genus2Torus.cells.find((cell) => cell.id === "genus-2-octagon");
+    const vertexClasses = buildVertexClasses(genus2Torus);
+    const quotientEdges = (octagon?.portals.length ?? 0) / 2;
+    const eulerCharacteristic = vertexClasses.length - quotientEdges + genus2Torus.cells.length;
+
+    expect(octagon?.baseVertices).toHaveLength(8);
+    expect(octagon?.portals).toHaveLength(8);
+    expect(vertexClasses).toHaveLength(1);
+    expect(quotientEdges).toBe(4);
+    expect(eulerCharacteristic).toBe(-2);
   });
 
   it.each(exampleWorlds)("places the starter house and question cube in %s", (_name, world) => {
@@ -230,4 +246,73 @@ function getPlayerBounds(playerPose: PlayerPose) {
   }
 
   return playerBounds;
+}
+
+function buildVertexClasses(world: CellComplexSpec) {
+  const parent = new Map<string, string>();
+  const cellById = new Map(world.cells.map((cell) => [cell.id, cell]));
+  const portalById = new Map<string, { readonly id: string; readonly sideIndex: number; readonly targetCellId: string; readonly targetPortalId: string }>();
+
+  for (const cell of world.cells) {
+    for (let vertexIndex = 0; vertexIndex < cell.baseVertices.length; vertexIndex += 1) {
+      const key = vertexKey(cell.id, vertexIndex);
+      parent.set(key, key);
+    }
+
+    for (const portal of cell.portals) {
+      portalById.set(`${cell.id}:${portal.id}`, portal);
+    }
+  }
+
+  for (const cell of world.cells) {
+    for (const portal of cell.portals) {
+      const targetCell = cellById.get(portal.targetCellId);
+      const targetPortal = portalById.get(`${portal.targetCellId}:${portal.targetPortalId}`);
+
+      if (!targetCell || !targetPortal) {
+        throw new Error(`Missing target for portal "${cell.id}:${portal.id}".`);
+      }
+
+      unionVertex(parent, vertexKey(cell.id, portal.sideIndex), vertexKey(portal.targetCellId, (targetPortal.sideIndex + 1) % targetCell.baseVertices.length));
+      unionVertex(parent, vertexKey(cell.id, (portal.sideIndex + 1) % cell.baseVertices.length), vertexKey(portal.targetCellId, targetPortal.sideIndex));
+    }
+  }
+
+  const classes = new Map<string, string[]>();
+
+  for (const key of parent.keys()) {
+    const root = findVertexRoot(parent, key);
+    classes.set(root, [...(classes.get(root) ?? []), key]);
+  }
+
+  return [...classes.values()];
+}
+
+function vertexKey(cellId: string, vertexIndex: number) {
+  return `${cellId}:vertex-${vertexIndex}`;
+}
+
+function findVertexRoot(parent: Map<string, string>, key: string): string {
+  const current = parent.get(key);
+
+  if (!current) {
+    throw new Error(`Missing vertex key "${key}".`);
+  }
+
+  if (current === key) {
+    return current;
+  }
+
+  const root = findVertexRoot(parent, current);
+  parent.set(key, root);
+  return root;
+}
+
+function unionVertex(parent: Map<string, string>, left: string, right: string): void {
+  const leftRoot = findVertexRoot(parent, left);
+  const rightRoot = findVertexRoot(parent, right);
+
+  if (leftRoot !== rightRoot) {
+    parent.set(leftRoot, rightRoot);
+  }
 }

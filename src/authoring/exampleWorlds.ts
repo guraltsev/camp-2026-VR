@@ -4,6 +4,7 @@ import basicCubeWorldSource from "../examples/001-basic-cube.world.js?raw";
 import basicTetrahedronWorldSource from "../examples/002-basic-tetrahedron.world.js?raw";
 import cubeWorldSource from "../examples/cube.world.js?raw";
 import dodecahedronWorldSource from "../examples/dodecahedron.world.js?raw";
+import genus2TorusWorldSource from "../examples/genus-2-torus.world.js?raw";
 import icosahedronWorldSource from "../examples/icosahedron.world.js?raw";
 import octahedronWorldSource from "../examples/octahedron.world.js?raw";
 import tetrahedronWorldSource from "../examples/tetrahedron.world.js?raw";
@@ -14,6 +15,7 @@ export const basicCube = compileExampleWorld(basicCubeWorldSource, "001-basic-cu
 export const basicTetrahedron = compileExampleWorld(basicTetrahedronWorldSource, "002-basic-tetrahedron.world.js");
 export const cube = compileExampleWorld(cubeWorldSource, "cube.world.js");
 export const dodecahedron = compileExampleWorld(dodecahedronWorldSource, "dodecahedron.world.js");
+export const genus2Torus = compileExampleWorld(genus2TorusWorldSource, "genus-2-torus.world.js");
 export const icosahedron = compileExampleWorld(icosahedronWorldSource, "icosahedron.world.js");
 export const octahedron = compileExampleWorld(octahedronWorldSource, "octahedron.world.js");
 export const tetrahedron = compileExampleWorld(tetrahedronWorldSource, "tetrahedron.world.js");

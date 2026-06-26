@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
-import { cube, dodecahedron, icosahedron, octahedron, tetrahedron, torus } from "../../src/authoring/exampleWorlds";
+import { cube, dodecahedron, genus2Torus, icosahedron, octahedron, tetrahedron, torus } from "../../src/authoring/exampleWorlds";
 import { twoPrismLoop } from "../fixtures/twoPrismLoop";
 import { validateAuthoringSpec } from "../../src/authoring/validateAuthoringSpec";
 import {
@@ -92,7 +92,7 @@ describe("compileCellComplex", () => {
   });
 
   it("derives seam-consistent compiled transforms for every example portal", () => {
-    for (const world of [twoPrismLoop, torus, cube, tetrahedron, octahedron, dodecahedron, icosahedron]) {
+    for (const world of [twoPrismLoop, torus, genus2Torus, cube, tetrahedron, octahedron, dodecahedron, icosahedron]) {
       const compiled = compileCellComplex(world);
 
       for (const cell of compiled.cells) {
