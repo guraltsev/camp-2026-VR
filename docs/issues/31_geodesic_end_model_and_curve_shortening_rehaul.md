@@ -249,7 +249,7 @@ reverse lookup returns two endpoint attachments for that same anchor.
 - Homotopically distinct locked geodesics between the same emitters are allowed.
   Duplicate pruning must compare endpoint roles and portal words, not only
   emitter ids and local coordinates.
-- Geodesics shorter than `GEODESIC_MIN_LENGTH_METERS = 0.2` are degenerate and
+- Geodesics shorter than `GEODESIC_MIN_LENGTH_METERS = 0.15` are degenerate and
   should be rejected or deleted. This check uses lifted endpoint displacement,
   not visible same-cell coordinates.
 - Same-emitter intervals with too-small lifted endpoint displacement are
@@ -1164,7 +1164,7 @@ Acceptance:
 - final derived segments still never span a portal;
 - duplicate detection does not remove same-emitter wrapped loops;
 - same-emitter intervals with lifted endpoint displacement shorter than
-  `GEODESIC_MIN_LENGTH_METERS = 0.2` are rejected as degenerate;
+  `GEODESIC_MIN_LENGTH_METERS = 0.15` are rejected as degenerate;
 - a same-emitter locked loop exposes two endpoint attachments and two endpoint
   tangents at the same emitter.
 
@@ -1299,7 +1299,7 @@ World-object tests:
 - a geodesic can be locked from an emitter back to the same emitter through a
   nonempty portal word;
 - a same-emitter interval with lifted endpoint displacement shorter than
-  `GEODESIC_MIN_LENGTH_METERS = 0.2` is rejected as degenerate;
+  `GEODESIC_MIN_LENGTH_METERS = 0.15` is rejected as degenerate;
 - a locked same-emitter loop exposes two selectable endpoint roles at that
   emitter;
 - derived segment chains are split at total arclength / 2;

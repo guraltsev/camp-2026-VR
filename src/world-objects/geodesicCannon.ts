@@ -292,7 +292,7 @@ const defaultCannonCollision: SimpleCollisionCylinder = {
 };
 export const geodesicRayBeamHeightMeters = 1.08;
 export const geodesicRayBeamStartOffsetMeters = 0;
-export const GEODESIC_MIN_LENGTH_METERS = 0.2;
+export const GEODESIC_MIN_LENGTH_METERS = 0.15;
 const defaultTraceLengthMeters = 2;
 const portalStartEpsilonMeters = 1e-4;
 const intersectionTolerance = 1e-7;
@@ -304,7 +304,7 @@ export const geodesicStraighteningSpeedMetersPerSecond = 0.4;
 const geodesicStraighteningToleranceMeters = 0.01;
 export const curveShorteningDefaultSpeedMetersPerSecond = 0.4;
 export const curveShorteningFuseAngleToleranceRadians = 0.03;
-export const curveShorteningFuseStepToleranceMeters = 0.01;
+export const curveShorteningFuseStepToleranceMeters = 1.1 * GEODESIC_MIN_LENGTH_METERS;
 export const curveShorteningMinStepMeters = 0.002;
 const geodesicIntersectionMemoryByRegistry = new WeakMap<RuntimeObjectRegistry, Map<string, GeodesicIntersectionObject>>();
 
@@ -2937,6 +2937,16 @@ export function advanceCurveShorteningPairs(
       0.25 * shortestIncidentLength,
     );
     if (stepMeters < curveShorteningMinStepMeters) {
+      const absorbed = absorbShortCurveShorteningHalf({
+        world: request.world,
+        registry: request.registry,
+        pair,
+        intervals: owned.intervals,
+        onDebugMessage: request.onDebugMessage,
+      });
+      if (absorbed) {
+        changed.push(absorbed.id);
+      }
       continue;
     }
 
@@ -2994,6 +3004,29 @@ export function advanceCurveShorteningPairs(
       })
     );
     if (previews.some((preview) => !preview)) {
+      const degenerateInterval = candidateIntervals.find((interval, index) =>
+        previews[index] === undefined &&
+        previewGeodesicIntervalIsDegenerate({
+          world: request.world,
+          registry: request.registry,
+          interval,
+          candidateAnchorsById: candidateAnchors,
+        })
+      );
+      if (degenerateInterval) {
+        const absorbed = absorbShortCurveShorteningHalf({
+          world: request.world,
+          registry: request.registry,
+          pair,
+          intervals: owned.intervals,
+          preferredShortGeodesicId: degenerateInterval.id,
+          onDebugMessage: request.onDebugMessage,
+        });
+        if (absorbed) {
+          changed.push(absorbed.id);
+        }
+        continue;
+      }
       cleanupCurveShorteningPreviewFailure({
         world: request.world,
         registry: request.registry,
@@ -3148,6 +3181,134 @@ export function fuseCurveShorteningPair(input: {
   syncLegacyEmitterGeodesicFields(input.registry, fusedId);
   updateGeodesicIntersectionObjects(input.registry);
   return finalInterval;
+}
+
+function absorbShortCurveShorteningHalf(input: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly pair: CurveShorteningPairObject;
+  readonly intervals: readonly GeodesicIntervalObject[];
+  readonly preferredShortGeodesicId?: string;
+  readonly onDebugMessage?: (message: string, detail?: unknown) => void;
+}): GeodesicIntervalObject | undefined {
+  if (input.intervals.length !== 2) {
+    return undefined;
+  }
+  const intervalLengths = input.intervals.map((interval) => ({
+    interval,
+    lengthMeters: totalGeodesicLengthFromSegments(getGeodesicSegments(input.registry, interval.id)),
+  })).sort((left, right) => left.lengthMeters - right.lengthMeters);
+  const short = intervalLengths[0];
+  const survivor = intervalLengths[1];
+  const preferredShort = input.preferredShortGeodesicId
+    ? intervalLengths.find(({ interval }) => interval.id === input.preferredShortGeodesicId)
+    : undefined;
+  const preferredSurvivor = preferredShort
+    ? intervalLengths.find(({ interval }) => interval.id !== preferredShort.interval.id)
+    : undefined;
+  const absorbedShort = preferredShort ?? short;
+  const absorbedSurvivor = preferredSurvivor ?? survivor;
+  if (
+    !absorbedShort ||
+    !absorbedSurvivor ||
+    (
+      !input.preferredShortGeodesicId &&
+      absorbedShort.lengthMeters > curveShorteningFuseStepToleranceMeters
+    )
+  ) {
+    return undefined;
+  }
+
+  const shortFreeRole = getPairFreeRoleForInterval(input.pair, absorbedShort.interval);
+  const survivorFreeRole = getPairFreeRoleForInterval(input.pair, absorbedSurvivor.interval);
+  if (!shortFreeRole || !survivorFreeRole) {
+    return undefined;
+  }
+  const shortNonFreeRole = getOppositeEndRole(shortFreeRole);
+  const survivorNonFreeRole = getOppositeEndRole(survivorFreeRole);
+  const shortNonFreeAnchor = input.registry.get(absorbedShort.interval[shortNonFreeRole].anchorObjectId);
+  const survivorNonFreeAnchor = input.registry.get(absorbedSurvivor.interval[survivorNonFreeRole].anchorObjectId);
+  if (shortNonFreeAnchor?.kind !== "geodesic-cannon" || survivorNonFreeAnchor?.kind !== "geodesic-cannon") {
+    return undefined;
+  }
+
+  const fusedWord = reduceAdjacentInversePortalTraversals([
+    ...getPortalWordBetweenEndpointRoles({
+      interval: absorbedSurvivor.interval,
+      sourceRole: survivorNonFreeRole,
+      targetRole: survivorFreeRole,
+    }),
+    ...getPortalWordBetweenEndpointRoles({
+      interval: absorbedShort.interval,
+      sourceRole: shortFreeRole,
+      targetRole: shortNonFreeRole,
+    }),
+  ]);
+  const fusedInterval: GeodesicIntervalObject = {
+    ...absorbedSurvivor.interval,
+    id: absorbedSurvivor.interval.id,
+    cellId: survivorNonFreeAnchor.cellId,
+    startCellId: survivorNonFreeAnchor.cellId,
+    motionState: "stable",
+    portalWord: fusedWord,
+    start: { geodesicId: absorbedSurvivor.interval.id, role: "start", anchorObjectId: survivorNonFreeAnchor.id },
+    end: { geodesicId: absorbedSurvivor.interval.id, role: "end", anchorObjectId: shortNonFreeAnchor.id },
+  };
+  const preview = previewRebuildGeodesicInterval({
+    world: input.world,
+    registry: input.registry,
+    interval: fusedInterval,
+  });
+  if (!preview) {
+    if (previewGeodesicIntervalHitsForbiddenZone({ world: input.world, registry: input.registry, interval: fusedInterval })) {
+      cleanupCurveShorteningFailure(
+        input.registry,
+        input.intervals.map(({ id }) => id),
+        input.pair.freeEndAnchorId,
+        input.pair.id,
+      );
+    }
+    return undefined;
+  }
+
+  input.onDebugMessage?.("curve-shortening pair absorbed short incident half", {
+    pairId: input.pair.id,
+    removedGeodesicId: absorbedShort.interval.id,
+    survivorGeodesicId: absorbedSurvivor.interval.id,
+    shortLengthMeters: absorbedShort.lengthMeters,
+    survivorLengthMeters: absorbedSurvivor.lengthMeters,
+    absorbLengthToleranceMeters: curveShorteningFuseStepToleranceMeters,
+    fusedPortalWord: fusedWord,
+  });
+  input.registry.update(fusedInterval);
+  removeGeodesicIntervalAndDerivedObjects(input.registry, absorbedShort.interval.id);
+  input.registry.remove(input.pair.freeEndAnchorId);
+  input.registry.remove(input.pair.id);
+  const rebuilt = rebuildDerivedGeodesicSegments({
+    world: input.world,
+    registry: input.registry,
+    geodesicId: absorbedSurvivor.interval.id,
+  });
+  const finalInterval = input.registry.get(absorbedSurvivor.interval.id);
+  if (!rebuilt || finalInterval?.kind !== "geodesic-interval") {
+    return undefined;
+  }
+  syncLegacyEmitterGeodesicFields(input.registry, absorbedSurvivor.interval.id);
+  updateGeodesicIntersectionObjects(input.registry);
+  return finalInterval;
+}
+
+function getPairFreeRoleForInterval(
+  pair: CurveShorteningPairObject,
+  interval: GeodesicIntervalObject,
+): GeodesicEndRole | undefined {
+  if (pair.first.geodesicId === interval.id) {
+    return pair.first.role;
+  }
+  if (pair.second.geodesicId === interval.id) {
+    return pair.second.role;
+  }
+  return undefined;
 }
 
 export function collectGeodesicPortalWord(
@@ -3378,6 +3539,28 @@ function previewGeodesicIntervalHitsForbiddenZone(input: {
     maxLengthMeters: lengthMeters,
   });
   return traces.some((trace) => trace.terminal.kind === "forbidden-zone-hit");
+}
+
+function previewGeodesicIntervalIsDegenerate(input: {
+  readonly world: CompiledCellComplex;
+  readonly registry: RuntimeObjectRegistry;
+  readonly interval: GeodesicIntervalObject;
+  readonly candidateAnchorsById?: ReadonlyMap<string, RuntimeWorldObject>;
+}): boolean {
+  const lifted = liftGeodesicEndpointWithAnchors({
+    world: input.world,
+    registry: input.registry,
+    interval: input.interval,
+    sourceRole: "start",
+    candidateAnchorsById: input.candidateAnchorsById,
+  });
+  if (!lifted) {
+    return false;
+  }
+  return Math.hypot(
+    lifted.targetPointInSourceCell.x - lifted.sourcePoint.x,
+    lifted.targetPointInSourceCell.y - lifted.sourcePoint.y,
+  ) < GEODESIC_MIN_LENGTH_METERS - intersectionTolerance;
 }
 
 function resolveCarriedConnectedGeodesicPlan(input: {

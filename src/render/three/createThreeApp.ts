@@ -16,7 +16,7 @@ import type { DebugLevelId } from "../../glue/debugLevels";
 import type { LaunchOptions } from "../../glue/readLaunchOptions";
 import { defaultAppConfig, isRuntimeToolEnabled, type AppConfig } from "../../glue/appConfig";
 import type { PortalPanelModeId } from "../../glue/portalPanelMode";
-import { normalizeVec3, vec3, type Vec3 } from "../../math/vec3";
+import { addVec3, normalizeVec3, scaleVec3, vec3, type Vec3 } from "../../math/vec3";
 import { movePlayer } from "../../movement/movePlayer";
 import { moveDynamicObject } from "../../movement/moveDynamicObject";
 import { createAppCommandDispatcher } from "../../runtime/appCommandDispatcher";
@@ -71,6 +71,7 @@ import {
   showRuntimeMenuSettings,
   setRuntimeMenuSelectedTool,
   toggleRuntimeMenuDebugOverlayItem,
+  type RuntimeToolId,
 } from "../../runtime/runtimeMenuState";
 import { createPaletteDefinition } from "../../ui/paletteDefinition";
 import { createHelpLensDefinition } from "../../ui/helpLensDefinition";
@@ -861,6 +862,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   installGeneralDebugHelpers({
     debugHelp: () => logDebugStartupGuide(debugLevel, debugOptions),
     dumpGeodesicCreatures: dumpGeodesicCreatures,
+    dumpAllGeodesics: dumpAllGeodesics,
     dumpGeodesicPath: dumpGeodesicPath,
     dumpLockedGeodesicWords: dumpLockedGeodesicWords,
   });
@@ -1461,6 +1463,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     installGeneralDebugHelpers({
       debugHelp: () => logDebugStartupGuide(debugLevel, debugOptions),
       dumpGeodesicCreatures: dumpGeodesicCreatures,
+      dumpAllGeodesics: dumpAllGeodesics,
       dumpGeodesicPath: dumpGeodesicPath,
       dumpLockedGeodesicWords: dumpLockedGeodesicWords,
     });
@@ -1563,6 +1566,127 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     return dumps;
   }
 
+  function dumpAllGeodesics(): AllGeodesicsDebugDump {
+    const objects = runtimeObjectRegistry.getAll();
+    const geodesicIds = [...collectKnownGeodesicIds()].sort();
+    const segments = objects
+      .filter((object): object is Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }> =>
+        object.kind === "geodesic-segment"
+      )
+      .sort((left, right) =>
+        left.geodesicId.localeCompare(right.geodesicId) || left.segmentIndex - right.segmentIndex
+      );
+    const intervals = objects
+      .filter((object): object is Extract<RuntimeWorldObject, { readonly kind: "geodesic-interval" }> =>
+        object.kind === "geodesic-interval"
+      )
+      .sort((left, right) => left.id.localeCompare(right.id));
+    const anchors = objects
+      .filter((object) => object.kind === "geodesic-cannon" || object.kind === "free-geodesic-end")
+      .sort((left, right) => left.id.localeCompare(right.id));
+    const curveShorteningPairs = objects
+      .filter((object): object is Extract<RuntimeWorldObject, { readonly kind: "curve-shortening-pair" }> =>
+        object.kind === "curve-shortening-pair"
+      )
+      .sort((left, right) => left.id.localeCompare(right.id));
+
+    const dump: AllGeodesicsDebugDump = {
+      worldId: options.selectedWorldId,
+      visibleCellId,
+      selectedTool: menuState.selectedTool,
+      activeGeodesicCannonToolState,
+      geodesicIds,
+      intervals: intervals.map((interval) => {
+        const intervalSegments = getGeodesicSegments(runtimeObjectRegistry, interval.id);
+        return {
+          id: interval.id,
+          cellId: interval.cellId,
+          startCellId: interval.startCellId,
+          motionState: interval.motionState,
+          start: describeEndpointAttachment(interval.start),
+          end: describeEndpointAttachment(interval.end),
+          portalWordText: formatGeodesicPortalWord(interval.portalWord),
+          portalWord: interval.portalWord,
+          connection: getGeodesicConnection(runtimeObjectRegistry, interval.id),
+          locked: isGeodesicLocked(runtimeObjectRegistry, interval.id),
+          segmentCount: intervalSegments.length,
+          totalSegmentLengthMeters: roundedMeters(totalGeodesicLengthFromDebugSegments(intervalSegments)),
+          segmentCells: [...new Set(intervalSegments.map((segment) => segment.cellId))],
+        };
+      }),
+      segments: segments.map((segment) => ({
+        id: segment.id,
+        geodesicId: segment.geodesicId,
+        cellId: segment.cellId,
+        index: segment.segmentIndex,
+        halfRole: segment.halfRole,
+        lengthMeters: roundedMeters(segment.lengthMeters),
+        start: formatVec3(segment.start),
+        end: formatVec3(addVec3(segment.start, scaleVec3(segment.direction, segment.lengthMeters))),
+        direction: formatVec3(segment.direction),
+        terminal: formatGeodesicTerminal(segment.terminal),
+        connectionState: segment.connectionState ?? "open",
+        highlightState: segment.highlightState,
+      })),
+      anchors: anchors.map((anchor) => ({
+        id: anchor.id,
+        kind: anchor.kind,
+        cellId: anchor.cellId,
+        point: formatVec3(anchor.kind === "geodesic-cannon" ? getGeodesicDebugAnchorPoint(anchor) : anchor.localPose.translation),
+        attachedEndpoints: objects
+          .filter((object): object is Extract<RuntimeWorldObject, { readonly kind: "geodesic-interval" }> =>
+            object.kind === "geodesic-interval"
+          )
+          .flatMap((interval) => [interval.start, interval.end])
+          .filter((endpoint) => endpoint.anchorObjectId === anchor.id)
+          .map(formatEndpointRef),
+      })),
+      curveShorteningPairs: curveShorteningPairs.map((pair) => ({
+        id: pair.id,
+        state: pair.state,
+        freeEndAnchorId: pair.freeEndAnchorId,
+        first: formatEndpointRef(pair.first),
+        second: formatEndpointRef(pair.second),
+        previousTotalLengthMeters: pair.previousTotalLengthMeters === undefined
+          ? undefined
+          : roundedMeters(pair.previousTotalLengthMeters),
+        lastGoodFreeEndCellId: pair.lastGoodFreeEndCellId,
+        lastGoodFreeEndPoint: formatVec3(pair.lastGoodFreeEndPoint),
+      })),
+    };
+
+    console.info("[noneuclid] all geodesics dump", dump);
+    console.info("[noneuclid] copyable all geodesics dump\n" + JSON.stringify(dump, null, 2));
+    console.table(dump.intervals.map((interval) => ({
+      id: interval.id,
+      motionState: interval.motionState,
+      start: `${interval.start.anchorObjectId}@${interval.start.anchorCellId}`,
+      end: `${interval.end.anchorObjectId}@${interval.end.anchorCellId}`,
+      word: interval.portalWordText,
+      segments: interval.segmentCount,
+      totalLength: interval.totalSegmentLengthMeters,
+    })));
+    return dump;
+  }
+
+  function describeEndpointAttachment(endpoint: {
+    readonly geodesicId: string;
+    readonly role: string;
+    readonly anchorObjectId: string;
+  }): EndpointDebugDump {
+    const anchor = runtimeObjectRegistry.get(endpoint.anchorObjectId);
+    return {
+      geodesicId: endpoint.geodesicId,
+      role: endpoint.role,
+      anchorObjectId: endpoint.anchorObjectId,
+      anchorKind: anchor?.kind,
+      anchorCellId: anchor?.cellId,
+      anchorPoint: anchor
+        ? formatVec3(anchor.kind === "geodesic-cannon" ? getGeodesicDebugAnchorPoint(anchor) : anchor.localPose.translation)
+        : undefined,
+    };
+  }
+
   function createGeodesicWordDebugDump(geodesicId: string): GeodesicWordDebugDump {
     const segments = getGeodesicSegments(runtimeObjectRegistry, geodesicId);
     const word = collectGeodesicPortalWord(activeWorld(), runtimeObjectRegistry, geodesicId);
@@ -1597,6 +1721,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         if (object.activeGeodesicId) {
           ids.add(object.activeGeodesicId);
         }
+      } else if (object.kind === "geodesic-interval") {
+        ids.add(object.id);
+      } else if (object.kind === "curve-shortening-pair") {
+        ids.add(object.first.geodesicId);
+        ids.add(object.second.geodesicId);
       }
     }
     return [...ids];
@@ -5923,9 +6052,11 @@ function logDebugStartupGuide(debugLevel: DebugLevelId, debugOptions: readonly D
   const commands = [
     "debug_help()",
     "dump_geodesic_creatures()",
+    "dump_all_geodesics()",
     "dump_geodesic_path()",
     "dump_locked_geodesic_words()",
     "window.noneuclidDebug.DumpGeodesicCreatures()",
+    "window.noneuclidDebug.DumpAllGeodesics()",
     "window.noneuclidDebug.DumpGeodesicPath()",
     "window.noneuclidDebug.DumpLockedGeodesicWords()",
     "window.noneuclidPortalDebug.state",
@@ -5945,7 +6076,7 @@ function logDebugStartupGuide(debugLevel: DebugLevelId, debugOptions: readonly D
       "Debugging quick start:",
       `debugLevel=${debugLevel}`,
       `debugOptions=${activeOptions}`,
-      "Geodesic debug helpers are installed as debug_help(), dump_geodesic_creatures(), dump_geodesic_path(), and dump_locked_geodesic_words().",
+      "Geodesic debug helpers are installed as debug_help(), dump_geodesic_creatures(), dump_all_geodesics(), dump_geodesic_path(), and dump_locked_geodesic_words().",
       "Portal debug helpers are installed when portal-path-debug or portal-visible-path-debug is active.",
       "ShowCellPath overlays also need portal-path-overlays.",
       "Live clip polygons need portal-visible-path-debug.",
@@ -6042,6 +6173,8 @@ interface GeneralDebugHelpers {
   debug_help(): void;
   dump_geodesic_creatures(): GeodesicCreatureDebugDump;
   DumpGeodesicCreatures(): GeodesicCreatureDebugDump;
+  dump_all_geodesics(): AllGeodesicsDebugDump;
+  DumpAllGeodesics(): AllGeodesicsDebugDump;
   dump_geodesic_path(geodesicId?: string): GeodesicPathDebugDump | undefined;
   DumpGeodesicPath(geodesicId?: string): GeodesicPathDebugDump | undefined;
   dump_locked_geodesic_words(): readonly GeodesicWordDebugDump[];
@@ -6051,6 +6184,7 @@ interface GeneralDebugHelpers {
 interface GeneralDebugHelperCallbacks {
   readonly debugHelp: () => void;
   readonly dumpGeodesicCreatures: () => GeodesicCreatureDebugDump;
+  readonly dumpAllGeodesics: () => AllGeodesicsDebugDump;
   readonly dumpGeodesicPath: (geodesicId?: string) => GeodesicPathDebugDump | undefined;
   readonly dumpLockedGeodesicWords: () => readonly GeodesicWordDebugDump[];
 }
@@ -6058,6 +6192,7 @@ interface GeneralDebugHelperCallbacks {
 type WindowWithGeneralDebugHelpers = typeof window & {
   debug_help?: () => void;
   dump_geodesic_creatures?: () => GeodesicCreatureDebugDump;
+  dump_all_geodesics?: () => AllGeodesicsDebugDump;
   dump_geodesic_path?: (geodesicId?: string) => GeodesicPathDebugDump | undefined;
   dump_locked_geodesic_words?: () => readonly GeodesicWordDebugDump[];
   noneuclidDebug?: GeneralDebugHelpers;
@@ -6145,6 +6280,69 @@ interface GeodesicWordDebugDump {
   }[];
 }
 
+interface AllGeodesicsDebugDump {
+  readonly worldId: string;
+  readonly visibleCellId?: string;
+  readonly selectedTool: RuntimeToolId;
+  readonly activeGeodesicCannonToolState: unknown;
+  readonly geodesicIds: readonly string[];
+  readonly intervals: readonly {
+    readonly id: string;
+    readonly cellId: string;
+    readonly startCellId: string;
+    readonly motionState: string;
+    readonly start: EndpointDebugDump;
+    readonly end: EndpointDebugDump;
+    readonly portalWordText: string;
+    readonly portalWord: readonly GeodesicPortalTraversal[];
+    readonly connection: ReturnType<typeof getGeodesicConnection>;
+    readonly locked: boolean;
+    readonly segmentCount: number;
+    readonly totalSegmentLengthMeters: number;
+    readonly segmentCells: readonly string[];
+  }[];
+  readonly segments: readonly {
+    readonly id: string;
+    readonly geodesicId: string;
+    readonly cellId: string;
+    readonly index: number;
+    readonly halfRole?: string;
+    readonly lengthMeters: number;
+    readonly start: string;
+    readonly end: string;
+    readonly direction: string;
+    readonly terminal: string;
+    readonly connectionState: string;
+    readonly highlightState?: string;
+  }[];
+  readonly anchors: readonly {
+    readonly id: string;
+    readonly kind: string;
+    readonly cellId: string;
+    readonly point: string;
+    readonly attachedEndpoints: readonly string[];
+  }[];
+  readonly curveShorteningPairs: readonly {
+    readonly id: string;
+    readonly state: string;
+    readonly freeEndAnchorId: string;
+    readonly first: string;
+    readonly second: string;
+    readonly previousTotalLengthMeters?: number;
+    readonly lastGoodFreeEndCellId: string;
+    readonly lastGoodFreeEndPoint: string;
+  }[];
+}
+
+interface EndpointDebugDump {
+  readonly geodesicId: string;
+  readonly role: string;
+  readonly anchorObjectId: string;
+  readonly anchorKind?: string;
+  readonly anchorCellId?: string;
+  readonly anchorPoint?: string;
+}
+
 function installPortalDebugHelpers(helpers: PortalDebugHelpers): void {
   (window as typeof window & { noneuclidPortalDebug?: PortalDebugHelpers }).noneuclidPortalDebug = helpers;
 }
@@ -6159,6 +6357,8 @@ function installGeneralDebugHelpers(callbacks: GeneralDebugHelperCallbacks): voi
     debug_help: callbacks.debugHelp,
     dump_geodesic_creatures: callbacks.dumpGeodesicCreatures,
     DumpGeodesicCreatures: callbacks.dumpGeodesicCreatures,
+    dump_all_geodesics: callbacks.dumpAllGeodesics,
+    DumpAllGeodesics: callbacks.dumpAllGeodesics,
     dump_geodesic_path: callbacks.dumpGeodesicPath,
     DumpGeodesicPath: callbacks.dumpGeodesicPath,
     dump_locked_geodesic_words: callbacks.dumpLockedGeodesicWords,
@@ -6167,6 +6367,7 @@ function installGeneralDebugHelpers(callbacks: GeneralDebugHelperCallbacks): voi
 
   target.debug_help = helpers.debug_help;
   target.dump_geodesic_creatures = helpers.dump_geodesic_creatures;
+  target.dump_all_geodesics = helpers.dump_all_geodesics;
   target.dump_geodesic_path = helpers.dump_geodesic_path;
   target.dump_locked_geodesic_words = helpers.dump_locked_geodesic_words;
   target.noneuclidDebug = helpers;
@@ -6177,6 +6378,7 @@ function uninstallGeneralDebugHelpers(): void {
 
   delete target.debug_help;
   delete target.dump_geodesic_creatures;
+  delete target.dump_all_geodesics;
   delete target.dump_geodesic_path;
   delete target.dump_locked_geodesic_words;
   delete target.noneuclidDebug;
@@ -6396,6 +6598,30 @@ function reverseGeodesicPortalTraversal(step: GeodesicPortalTraversal): Geodesic
     sourcePortalId: step.targetPortalId,
     targetCellId: step.sourceCellId,
     targetPortalId: step.sourcePortalId,
+  };
+}
+
+function formatEndpointRef(endpoint: { readonly geodesicId: string; readonly role: string }): string {
+  return `${endpoint.geodesicId}.${endpoint.role}`;
+}
+
+function roundedMeters(value: number): number {
+  return Number(value.toFixed(4));
+}
+
+function totalGeodesicLengthFromDebugSegments(
+  segments: readonly { readonly lengthMeters: number }[],
+): number {
+  return segments.reduce((total, segment) => total + segment.lengthMeters, 0);
+}
+
+function getGeodesicDebugAnchorPoint(
+  anchor: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
+): Vec3 {
+  return {
+    x: anchor.localPose.translation.x,
+    y: anchor.localPose.translation.y,
+    z: anchor.localPose.translation.z + geodesicRayBeamHeightMeters,
   };
 }
 

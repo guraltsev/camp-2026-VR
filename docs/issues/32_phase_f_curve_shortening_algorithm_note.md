@@ -92,7 +92,7 @@ Use named constants near the geodesic constants:
 const curveShorteningDefaultSpeedMetersPerSecond = 0.4;
 const curveShorteningLengthIncreaseToleranceMeters = 1e-4;
 const curveShorteningFuseAngleToleranceRadians = 0.03;
-const curveShorteningFuseStepToleranceMeters = 0.01;
+const curveShorteningFuseStepToleranceMeters = 1.1 * GEODESIC_MIN_LENGTH_METERS;
 const curveShorteningMinStepMeters = 0.002;
 ```
 

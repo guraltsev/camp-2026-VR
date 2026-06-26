@@ -1961,6 +1961,149 @@ describe("geodesic cannon world objects", () => {
     });
   });
 
+  it("absorbs a very short incident half into the longer half instead of waiting for pi angle fusion", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    registry.add(createGeodesicCannonObject({
+      id: "cannon-left",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: -2, y: 0, z: 0 }),
+    }));
+    registry.add(createGeodesicCannonObject({
+      id: "cannon-right",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 2, y: 0, z: 0 }),
+    }));
+    registry.add(createFreeGeodesicEndObject({
+      id: "free-shared",
+      cellId: "a",
+      point: { x: 1.995, y: 0, z: geodesicRayBeamHeightMeters },
+    }));
+    registry.add(createGeodesicIntervalObject({
+      id: "g-long",
+      startAnchorObjectId: "cannon-left",
+      endAnchorObjectId: "free-shared",
+      startCellId: "a",
+      motionState: "moving",
+    }));
+    registry.add(createGeodesicIntervalObject({
+      id: "g-short",
+      startAnchorObjectId: "free-shared",
+      endAnchorObjectId: "cannon-right",
+      startCellId: "a",
+      motionState: "moving",
+    }));
+    registry.add(createSegment({
+      id: "g-long:segment:0",
+      geodesicId: "g-long",
+      start: { x: -2, y: -0.4, z: geodesicRayBeamHeightMeters },
+      direction: horizontalDirection({ x: -2, y: -0.4 }, { x: 1.995, y: 0 }),
+      lengthMeters: horizontalDistance({ x: -2, y: -0.4 }, { x: 1.995, y: 0 }),
+      connectionState: "straightening",
+      terminal: { kind: "open" },
+      halfRole: "end",
+    }));
+    registry.add(createSegment({
+      id: "g-short:segment:0",
+      geodesicId: "g-short",
+      start: { x: 1.995, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 1, y: 0, z: 0 },
+      lengthMeters: 0.005,
+      connectionState: "straightening",
+      terminal: { kind: "emitter-hit", emitterId: "cannon-right" },
+      halfRole: "start",
+    }));
+    registry.add(createCurveShorteningPairObject({
+      id: "pair-short",
+      first: { geodesicId: "g-long", role: "end", anchorObjectId: "free-shared" },
+      second: { geodesicId: "g-short", role: "start", anchorObjectId: "free-shared" },
+      freeEndAnchorId: "free-shared",
+      lastGoodFreeEndCellId: "a",
+      lastGoodFreeEndPoint: { x: 1.995, y: 0, z: geodesicRayBeamHeightMeters },
+    }));
+    const debugEvents: { readonly message: string; readonly detail?: unknown }[] = [];
+
+    advanceCurveShorteningPairs({
+      world,
+      registry,
+      deltaSeconds: 1,
+      onDebugMessage: (message, detail) => debugEvents.push({ message, detail }),
+    });
+
+    expect(registry.get("g-short")).toBeUndefined();
+    expect(registry.get("free-shared")).toBeUndefined();
+    expect(registry.get("pair-short")).toBeUndefined();
+    expect(registry.get("g-long")).toMatchObject({
+      kind: "geodesic-interval",
+      motionState: "stable",
+      start: { geodesicId: "g-long", role: "start", anchorObjectId: "cannon-left" },
+      end: { geodesicId: "g-long", role: "end", anchorObjectId: "cannon-right" },
+    });
+    expect(getGeodesicSegments(registry, "g-long").at(-1)?.terminal).toEqual({ kind: "emitter-hit", emitterId: "cannon-right" });
+    expect(debugEvents[0]?.message).toBe("curve-shortening pair absorbed short incident half");
+  });
+
+  it("absorbs a near-minimum half when the next shortening preview would make it degenerate", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    registry.add(createGeodesicCannonObject({
+      id: "cannon-near",
+      cellId: "a",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+    }));
+    registry.add(createGeodesicCannonObject({
+      id: "cannon-far",
+      cellId: "a",
+      localPose: yawRigidTransform3(Math.PI, { x: 0, y: -2, z: 0 }),
+    }));
+    registry.add(createFreeGeodesicEndObject({
+      id: "free-shared",
+      cellId: "a",
+      point: { x: 0, y: 0.1505, z: geodesicRayBeamHeightMeters },
+    }));
+    registry.add(createGeodesicIntervalObject({
+      id: "g-short",
+      startAnchorObjectId: "cannon-near",
+      endAnchorObjectId: "free-shared",
+      startCellId: "a",
+      motionState: "moving",
+    }));
+    registry.add(createGeodesicIntervalObject({
+      id: "g-long",
+      startAnchorObjectId: "cannon-far",
+      endAnchorObjectId: "free-shared",
+      startCellId: "a",
+      motionState: "moving",
+    }));
+    rebuildDerivedGeodesicSegments({ world, registry, geodesicId: "g-short" });
+    rebuildDerivedGeodesicSegments({ world, registry, geodesicId: "g-long" });
+    registry.add(createCurveShorteningPairObject({
+      id: "pair-near-min",
+      first: { geodesicId: "g-long", role: "end", anchorObjectId: "free-shared" },
+      second: { geodesicId: "g-short", role: "end", anchorObjectId: "free-shared" },
+      freeEndAnchorId: "free-shared",
+      lastGoodFreeEndCellId: "a",
+      lastGoodFreeEndPoint: { x: 0, y: 0.1505, z: geodesicRayBeamHeightMeters },
+    }));
+
+    advanceCurveShorteningPairs({
+      world,
+      registry,
+      deltaSeconds: 1,
+      speedMetersPerSecond: 0.4,
+    });
+
+    expect(registry.get("g-short")).toBeUndefined();
+    expect(registry.get("pair-near-min")).toBeUndefined();
+    expect(registry.get("free-shared")).toBeUndefined();
+    expect(registry.get("g-long")).toMatchObject({
+      kind: "geodesic-interval",
+      motionState: "stable",
+      start: { geodesicId: "g-long", role: "start", anchorObjectId: "cannon-far" },
+      end: { geodesicId: "g-long", role: "end", anchorObjectId: "cannon-near" },
+    });
+  });
+
   it.skip("ties and detaches two locked geodesics from an emitter as a straightening pair", () => {
     const world = compileLargeWorld();
     const registry = createRuntimeObjectRegistry();
