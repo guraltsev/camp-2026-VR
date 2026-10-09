@@ -21,7 +21,7 @@ import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder
 import { simpleCollisionCylinder } from "../../src/movement/dynamicObject";
 import { DEFAULT_PLAYER_HEIGHT_METERS, DEFAULT_PLAYER_RADIUS_METERS } from "../../src/movement/playerBody";
 import { createDefaultPlayerPose, playerPoseToDynamicObject, type PlayerPose } from "../../src/movement/playerPose";
-import { helpHubHomeGuidance } from "../../src/helpHubCopy";
+import { helpHubHomeGuidance } from "../../src/world-objects/helpHubCopy";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 
 const exampleWorlds = [

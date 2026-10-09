@@ -1,4 +1,8 @@
-/** Debug meshes for selectable hitboxes and aim collision outlines. */
+/**
+ * Debug meshes that visualize selectable hitboxes (translucent solids) and aim collision outlines (wireframes) of runtime world objects.
+ * Meshes are built in the owning cell's local frame (meters; world x right, y forward, z up) and converted to Three.js with worldAxes, so they are meant to be parented to the cell root. All meshes disable frustum culling, do not write depth and use high renderOrder values so they draw over the scene.
+ * Lifecycle: every builder allocates new geometry and materials; the caller owns the result and must free it with disposeObject3D.
+ */
 import * as THREE from "three";
 import { type SimpleCylinderBounds, getDynamicObjectCollisionBounds } from "../../movement/collision";
 import { createProtractorAngleLabelHitbox } from "../../world-objects/protractorTool";
@@ -10,17 +14,25 @@ import {
 } from "./aimTarget";
 import { worldPointToThree } from "./worldAxes";
 
+/** Color (hex RGB) of geodesic segment selectable-hitbox meshes. */
 export const selectableGeodesicSegmentHitboxDebugColor = 0xff2bd6;
+/** Color (hex RGB) of all aim-collision outline wireframes. */
 export const aimCollisionOutlineDebugColor = 0xff44ff;
+/** Opacity of selectable-hitbox meshes (0 to 1). */
 export const selectableHitboxDebugOpacity = 0.24;
+/** Opacity of aim-collision outline wireframes (0 to 1). */
 export const aimCollisionOutlineDebugOpacity = 0.82;
+/** Three.js render order of selectable-hitbox meshes, above normal scene content. */
 export const selectableHitboxDebugRenderOrder = 930;
+/** Three.js render order of aim-collision outlines, just above the selectable hitboxes. */
 export const aimCollisionOutlineDebugRenderOrder = 935;
 
+/** Builds an open-ended translucent cylinder showing a vertical cylinder hitbox; bounds are in cell-local meters and color is a hex RGB value. */
 export function buildCylinderSelectableHitboxDebugMesh(
   bounds: SimpleCylinderBounds,
   color: number,
 ): THREE.Mesh {
+  // Unit open-ended cylinder; position and non-uniform scale below fit it to the bounds (Three.js Y axis is world up).
   const geometry = new THREE.CylinderGeometry(1, 1, 1, 28, 1, true);
   const material = createSelectableHitboxDebugMaterial(color);
   const mesh = new THREE.Mesh(geometry, material);
@@ -32,6 +44,7 @@ export function buildCylinderSelectableHitboxDebugMesh(
   return mesh;
 }
 
+/** Builds a wireframe cylinder for the given vertical cylinder bounds (cell-local meters), named with the given mesh name. */
 export function buildCylinderAimCollisionOutlineDebugMesh(
   bounds: SimpleCylinderBounds,
   name: string,
@@ -47,6 +60,7 @@ export function buildCylinderAimCollisionOutlineDebugMesh(
   return mesh;
 }
 
+/** Builds a wireframe sphere of the given radius (meters) centered at a cell-local world-frame point. */
 export function buildSphereAimCollisionOutlineDebugMesh(
   center: { readonly x: number; readonly y: number; readonly z: number },
   radius: number,
@@ -62,6 +76,10 @@ export function buildSphereAimCollisionOutlineDebugMesh(
   return mesh;
 }
 
+/**
+ * Builds a box mesh for the protractor angle label hitbox using the supplied material and render order.
+ * Uses the object's stored labelHitbox, or derives one from the angle geometry when absent. The box is yawed about the vertical axis by the hitbox yaw (radians). The caller-supplied material is used directly, not cloned.
+ */
 export function buildProtractorAngleLabelBoxDebugMesh(
   object: Extract<RuntimeWorldObject, { readonly kind: "protractor-angle" }>,
   name: string,
@@ -84,6 +102,7 @@ export function buildProtractorAngleLabelBoxDebugMesh(
   return mesh;
 }
 
+/** Builds a group with a wireframe cylinder (the given bounds) and a wireframe sphere on top outlining a geodesic cannon's aim collision volume. */
 export function buildGeodesicEmitterAimCollisionOutlineDebugMesh(
   object: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
   bounds: SimpleCylinderBounds,
@@ -103,6 +122,10 @@ export function buildGeodesicEmitterAimCollisionOutlineDebugMesh(
   return group;
 }
 
+/**
+ * Builds a group of a cylinder with a sphere cap at each end, outlining the selectable volume of a geodesic segment.
+ * The capsule has radius geodesicSegmentAimRadiusMeters and runs from the segment start along its direction for its length (at least 1 mm).
+ */
 export function buildGeodesicSegmentSelectableHitboxDebugMesh(
   object: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>,
 ): THREE.Group {
@@ -129,6 +152,7 @@ export function buildGeodesicSegmentSelectableHitboxDebugMesh(
     z: object.start.z + object.direction.z * length * 0.5,
   }));
   const threeDirection = worldPointToThree(object.direction).normalize();
+  // Cylinder axis is Three.js +Y; rotate it onto the segment direction.
   segmentMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), threeDirection);
   segmentMesh.renderOrder = selectableHitboxDebugRenderOrder;
   segmentMesh.frustumCulled = false;
@@ -142,6 +166,7 @@ export function buildGeodesicSegmentSelectableHitboxDebugMesh(
   startCap.frustumCulled = false;
   group.add(startCap);
 
+  // Segment end: start + direction * length (the body mesh is centered at half length).
   const endCap = new THREE.Mesh(capGeometry.clone(), material.clone());
   endCap.name = "selectable-hitbox:geodesic-segment-end-cap";
   endCap.position.copy(worldPointToThree({
@@ -156,6 +181,7 @@ export function buildGeodesicSegmentSelectableHitboxDebugMesh(
   return group;
 }
 
+/** Builds the wireframe counterpart of the segment hitbox: a capsule (cylinder plus two sphere caps) of geodesicSegmentAimRadiusMeters along the segment. */
 export function buildGeodesicSegmentAimCollisionOutlineDebugMesh(
   object: Extract<RuntimeWorldObject, { readonly kind: "geodesic-segment" }>,
 ): THREE.Group {
@@ -209,6 +235,7 @@ export function buildGeodesicSegmentAimCollisionOutlineDebugMesh(
   return group;
 }
 
+/** Creates a translucent, double-sided, depth-write-free material of the given hex color for selectable hitboxes. */
 export function createSelectableHitboxDebugMaterial(color: number): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
     color,
@@ -219,6 +246,7 @@ export function createSelectableHitboxDebugMaterial(color: number): THREE.MeshBa
   });
 }
 
+/** Creates the translucent double-sided wireframe material used for aim collision outlines. */
 export function createAimCollisionOutlineDebugMaterial(): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
     color: aimCollisionOutlineDebugColor,
@@ -230,9 +258,12 @@ export function createAimCollisionOutlineDebugMaterial(): THREE.MeshBasicMateria
   });
 }
 
+/** Color (hex RGB) of selectable hitboxes for generic objects and protractor labels. */
 export const selectableObjectHitboxDebugColor = 0xffc400;
+/** Radius, in meters, of the fallback sphere outline used for objects without collision bounds. */
 export const fallbackObjectAimCollisionRadiusMeters = 0.25;
 
+/** Builds the selectable-hitbox debug visual for an object, or returns undefined if the object has neither tooltip nor interaction, or (for kinds other than geodesic segments and protractor labels) has no collision bounds. */
 export function buildSelectableHitboxDebugMesh(object: RuntimeWorldObject): THREE.Object3D | undefined {
   if (!object.tooltip && !object.interactable) {
     return undefined;
@@ -255,6 +286,10 @@ export function buildSelectableHitboxDebugMesh(object: RuntimeWorldObject): THRE
   return bounds ? buildCylinderSelectableHitboxDebugMesh(bounds, selectableObjectHitboxDebugColor) : undefined;
 }
 
+/**
+ * Builds the aim-collision outline for an object, or returns undefined if the object has neither tooltip nor interaction.
+ * Selects the shape by kind (segment capsule, cannon cylinder plus sphere, protractor label box), then the object's collision cylinder, then a fallback sphere centered at the object's local translation.
+ */
 export function buildAimCollisionOutlineDebugMesh(object: RuntimeWorldObject): THREE.Object3D | undefined {
   if (!object.tooltip && !object.interactable) {
     return undefined;

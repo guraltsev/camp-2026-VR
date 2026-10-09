@@ -28,7 +28,7 @@ describe("geodesic carry portal transition", () => {
       world,
       pose: {
         cellId: previousCellId,
-        position: { x: 7.4, y: 0, z: 1.7 },
+        position: { x: 7.4, y: 0, z: 0 },
         yawRadians: 0,
         pitchRadians: 0,
       },

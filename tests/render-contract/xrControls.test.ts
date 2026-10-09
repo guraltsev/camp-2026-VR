@@ -82,6 +82,22 @@ describe("XR controls", () => {
     ).toBe(true);
   });
 
+  it("reports reset as a thumbstick-click edge in stateful controls", () => {
+    const controls = createXrControls();
+    const buttons = (down: boolean) => ({ gamepad: { buttons: [{ pressed: false }, { pressed: false }, { pressed: false }, { pressed: down }] } });
+
+    expect(controls.consumeFrame([buttons(false)], 1).resetRequested).toBe(false);
+    expect(controls.consumeFrame([buttons(true)], 1).resetRequested).toBe(true);
+    expect(controls.consumeFrame([buttons(true)], 1).resetRequested).toBe(false);
+    expect(controls.consumeFrame([buttons(false)], 1).resetRequested).toBe(false);
+    expect(controls.consumeFrame([buttons(true)], 1).resetRequested).toBe(true);
+  });
+
+  it("treats NaN stick axes as zero", () => {
+    expect(readPrimaryStickAxes({ axes: [Number.NaN, 0.5] })).toEqual({ x: 0, y: 0.5 });
+    expect(readPrimaryStickAxes({ axes: [0, 0, Number.NaN, Number.NaN] })).toEqual({ x: 0, y: 0 });
+  });
+
   it("reports trigger as a primary action edge in stateful controls", () => {
     const controls = createXrControls();
     const released = { gamepad: { buttons: [{ pressed: false }] } };

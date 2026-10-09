@@ -1,3 +1,15 @@
+/**
+ * Builds the instanced-mesh archetypes for the static geometry of every cell, one archetype per drawable mesh part.
+ *
+ * For each cell, `buildCellMesh` is run once; every classified mesh (floor, solid wall, portal frame, static
+ * object, debug wireframe; ceilings and floor outlines are intentionally skipped) has its world matrix baked into a
+ * cloned geometry in the cell's local frame and becomes an `InstancedMesh` whose instances are the visible
+ * portal paths ending in that cell (`renderPortalInstances`). Instance capacity per cell is the largest number of
+ * statically kept paths ending at that cell over all roots (optionally capped by the visible-path budget, at least 1).
+ * Materials are cloned and, when a `PortalClipMaterialState` is given, patched for per-instance clipping.
+ * Archetypes are built once at load time and disposed with `disposeCellRenderArchetypes`.
+ */
+
 import * as THREE from "three";
 import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex";
 import type { CompiledPrismCell } from "../../cell-complex/prismCells";
@@ -10,7 +22,9 @@ import type { PortalPanelModeId } from "../../glue/portalPanelMode";
 import { buildCellMesh } from "./buildCellMesh";
 import { patchPortalClipMaterial, type PortalClipMaterialState } from "./portalClipMaterial";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
+import { disposeMaterial, disposeObject3D } from "./runtimeSceneUtils";
 
+/** Category of a cell mesh part; "ceiling" and floor-outline meshes have no kind and are not instanced. */
 export type CellRenderArchetypeKind =
   | "floor"
   | "solid-wall"
@@ -18,27 +32,39 @@ export type CellRenderArchetypeKind =
   | "static-object"
   | "debug-wireframe";
 
+/** An instanced mesh of one cell part with its per-instance portal attributes. */
 export interface CellRenderArchetype {
+  /** Cell whose geometry this archetype holds. */
   readonly cellId: string;
+  /** Unique id `<cellId>:<kind>:<index>`. */
   readonly archetypeId: string;
   readonly kind: CellRenderArchetypeKind;
+  /** Instanced mesh; `mesh.count` is the number of instances drawn this frame. */
   readonly mesh: THREE.InstancedMesh;
+  /** Per-instance portal path id (float), read by the clip shader. */
   readonly portalPathIdAttribute: THREE.InstancedBufferAttribute;
+  /** Per-instance clip-texture row, -2 for unclipped, -1 for no slot. */
   readonly portalClipIndexAttribute: THREE.InstancedBufferAttribute;
+  /** Maximum instances per frame. */
   readonly capacity: number;
+  /** Name of the source Three.js mesh, if it had one. */
   readonly sourceObjectName?: string;
 }
 
+/** Options controlling how cell meshes are built and instanced. */
 export interface BuildCellRenderArchetypesOptions {
   readonly debugLevel: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
   readonly eyeHeightMeters: number;
   readonly assets: PreparedWorldAssets;
+  /** Instance capacity per cell id (missing cells default to 1). */
   readonly capacitiesByCellId: ReadonlyMap<string, number>;
+  /** If provided, materials are patched for portal clipping; otherwise instances are drawn unclipped. */
   readonly portalClipMaterialState?: PortalClipMaterialState;
   readonly showForbiddenZoneWireframes?: boolean;
 }
 
+/** Description of an archetype that would be built, for diagnostics and tests, without creating GPU resources. */
 export interface CellRenderArchetypePlanEntry {
   readonly cellId: string;
   readonly archetypeId: string;
@@ -47,6 +73,7 @@ export interface CellRenderArchetypePlanEntry {
   readonly sourceObjectName?: string;
 }
 
+/** Builds every cell's archetypes, with `count = 0` and frustum culling disabled (instance bounds are not tracked). */
 export function buildCellRenderArchetypes(
   world: CompiledCellComplex,
   options: BuildCellRenderArchetypesOptions,
@@ -91,6 +118,7 @@ export function buildCellRenderArchetypes(
   return archetypes;
 }
 
+/** Lists the archetypes `buildCellRenderArchetypes` would create (ids, kinds, capacities). Note that it constructs (and discards) full cell meshes, so it is not free. */
 export function planCellRenderArchetypes(
   world: CompiledCellComplex,
   options: BuildCellRenderArchetypesOptions,
@@ -106,6 +134,12 @@ export function planCellRenderArchetypes(
   );
 }
 
+/**
+ * Computes per-cell instance capacities from statically culled path tables.
+ *
+ * Capacity of a cell = max over all root cells of the number of kept paths whose destination is that cell, clamped
+ * to `maxVisiblePaths` when given, and at least 1.
+ */
 export function deriveCellRenderArchetypeCapacities(
   world: CompiledCellComplex,
   staticCull: StaticPortalPathCullResult,
@@ -129,6 +163,7 @@ export function deriveCellRenderArchetypeCapacities(
   return capacities;
 }
 
+/** Builds the static path tables (depth `maxDepth`, immediate reversals skipped, 1e-6 m tolerance, 50 000 path cap per root) and derives per-cell capacities. This can be expensive for large worlds. */
 export function buildDefaultCellRenderArchetypeCapacities(
   world: CompiledCellComplex,
   maxDepth: number,
@@ -144,6 +179,7 @@ export function buildDefaultCellRenderArchetypeCapacities(
   return deriveCellRenderArchetypeCapacities(world, staticCull, maxVisiblePaths);
 }
 
+/** Disposes the geometry and materials of the given archetypes. */
 export function disposeCellRenderArchetypes(archetypes: readonly CellRenderArchetype[]): void {
   for (const archetype of archetypes) {
     archetype.mesh.geometry.dispose();
@@ -161,6 +197,7 @@ interface CellArchetypeSource {
   readonly sourceObjectName?: string;
 }
 
+// Bakes each mesh's world matrix (relative to the cell mesh root) into its geometry so instance matrices only need rootFromDestination.
 function collectCellArchetypeSources(
   cell: CompiledPrismCell,
   options: BuildCellRenderArchetypesOptions,
@@ -270,26 +307,4 @@ function cloneMaterial(
 
   const cloned = material.clone();
   return portalClipMaterialState ? patchPortalClipMaterial(cloned, portalClipMaterialState) : cloned;
-}
-
-function disposeObject3D(object: THREE.Object3D): void {
-  object.traverse((child) => {
-    if (!(child instanceof THREE.Mesh || child instanceof THREE.Line)) {
-      return;
-    }
-
-    child.geometry.dispose();
-    disposeMaterial(child.material);
-  });
-}
-
-function disposeMaterial(material: THREE.Material | THREE.Material[]): void {
-  if (Array.isArray(material)) {
-    for (const entry of material) {
-      entry.dispose();
-    }
-    return;
-  }
-
-  material.dispose();
 }

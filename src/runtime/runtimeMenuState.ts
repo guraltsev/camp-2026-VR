@@ -1,12 +1,20 @@
+/**
+ * Renderer-neutral state machine for the in-game menu, shared by the desktop overlay and the VR palette.
+ * RuntimeMenuState is a single immutable record holding which page is showing, per-page payloads (sign editing, cannon actions, geometry computer, tutorial, goal, question help), and the user's settings (debug level and options, portal panel mode, selected tool, anti-nausea mode).
+ * Every transition is a pure function (state, args) -> new state that spreads the old state and never mutates it; functions that do not apply to the current page return the same state object unchanged. The renderer owns the current value and replaces it after each transition.
+ * Page-scoped payloads (editSignOptions, geodesicCannonOptions, ...) are cleared by closeRuntimeMenu and showRuntimeMenuMainPage so stale data never leaks to a later page; "show..." transitions for object-driven pages also force isOpen to true.
+ * The debug-related fields round-trip with DebugSettings via createRuntimeMenuState and createDebugSettingsFromRuntimeMenuState.
+ */
 import type { DebugOptionId } from "../glue/debugOptions";
 import type { DebugSettings } from "../glue/debugSettings";
 import type { DebugLevelId } from "../glue/debugLevels";
 import type { PortalPanelModeId } from "../glue/portalPanelMode";
-import type { VrComfortOptions } from "../render/three/vrComfort";
+import type { VrComfortOptions } from "../glue/vrComfortOptions";
 import type { PlacedFlagType } from "../world-objects/placedFlags";
 import type { TutorialPageSpec } from "../cell-complex/specs";
 import { defaultAppConfigName } from "../glue/appConfig";
 
+/** Identifier of a menu page; "main" is the tool palette and the default. */
 export type RuntimeMenuPageId =
   | "main"
   | "settings"
@@ -18,8 +26,13 @@ export type RuntimeMenuPageId =
   | "question-help"
   | "tutorial"
   | "goal";
+/**
+ * Console log levels selectable in the menu (every debug level except "off", which is the debug toggle).
+ */
 export type RuntimeMenuConsoleLogLevelId = Exclude<DebugLevelId, "off">;
+/** Item that can be shown in the on-screen debug overlay. */
 export type RuntimeDebugOverlayItemId = "fps" | "location" | "portal-quantities";
+/** Tool the player can have active, including the geodesic-cannon sub-modes. */
 export type RuntimeToolId =
   | "none"
   | "aim"
@@ -31,7 +44,6 @@ export type RuntimeToolId =
   | "geodesic-cannon-rotate"
   | "geodesic-cannon-aim"
   | "geodesic-cannon-tie-detach";
-export type RuntimeDesktopToolId = RuntimeToolId;
 
 const defaultRuntimeDebugOverlayItems = ["fps", "location", "portal-quantities"] as const;
 const portalInspectionDebugOptions = [
@@ -48,29 +60,58 @@ const aimCollisionDebugOptions = [
   "aim-collision-outlines",
 ] as const satisfies readonly DebugOptionId[];
 
+/**
+ * Complete immutable menu state: visibility, current page, page payloads and user-adjustable settings.
+ */
 export interface RuntimeMenuState {
+  /** Whether the menu is visible. */
   readonly isOpen: boolean;
+  /** Page currently displayed; payload fields for that page are expected to be set. */
   readonly page: RuntimeMenuPageId;
+  /**
+   * Catalog id of the world that the world picker has selected (not necessarily the running one until applied).
+   */
   readonly selectedWorldId: string;
+  /** Name of the app config chosen in the menu. */
   readonly selectedAppConfigName: string;
+  /**
+   * Master debug switch; when false, createDebugSettingsFromRuntimeMenuState yields level "off", no options and no portal panel.
+   */
   readonly debugEnabled: boolean;
+  /** Console log level used while debug is enabled. */
   readonly consoleLogLevel: RuntimeMenuConsoleLogLevelId;
+  /** Whether the debug overlay is shown. */
   readonly debugOverlayEnabled: boolean;
+  /** Overlay items shown, kept in canonical order (fps, location, portal-quantities) without duplicates. */
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
+  /** How portal walls, placards and text are drawn. */
   readonly portalPanelMode: PortalPanelModeId;
+  /** Enables the group of portal path/cull debug options. */
   readonly portalInspectionEnabled: boolean;
+  /** Enables wireframes for forbidden zones and object collision shapes. */
   readonly collisionGeometryWireframesEnabled: boolean;
+  /** Enables outlines of what the aim ray collides with. */
   readonly aimCollisionOutlinesEnabled: boolean;
+  /** VR comfort setting; defaults to true. */
   readonly antiNauseaModeEnabled: boolean;
+  /** Currently active tool. */
   readonly selectedTool: RuntimeToolId;
+  /**
+   * Deadline (ms, caller's clock) until which a pending reload is awaiting confirmation; undefined when none.
+   */
   readonly reloadConfirmUntilMs?: number;
+  /** Options for the place-flag tool. */
   readonly placeFlagOptions: {
     readonly flagType: PlacedFlagType;
   };
+  /** Sign being edited on the edit-sign page: flag id and its current message text. */
   readonly editSignOptions?: {
     readonly flagId: string;
     readonly message: string;
   };
+  /**
+   * Payload of the geodesic-cannon-actions page: cannon id, its geodesics with optional display labels, which are locked, and whether tie/detach is possible.
+   */
   readonly geodesicCannonOptions?: {
     readonly cannonId: string;
     readonly geodesicIds: readonly string[];
@@ -78,6 +119,9 @@ export interface RuntimeMenuState {
     readonly lockedGeodesicIds?: readonly string[];
     readonly canTieAndDetach?: boolean;
   };
+  /**
+   * Payload of the geometry-computer-actions page: computer id, availability, torus width and current/target skew a and depth b in meters.
+   */
   readonly geometryComputerOptions?: {
     readonly computerId: string;
     readonly available: boolean;
@@ -87,24 +131,31 @@ export interface RuntimeMenuState {
     readonly targetSkewXMeters?: number;
     readonly targetDepthMeters?: number;
   };
+  /** Payload of the tutorial page; pageIndex is always within pages. */
   readonly tutorialOptions?: {
     readonly objectId: string;
     readonly pages: readonly TutorialPageSpec[];
     readonly pageIndex: number;
   };
+  /** Payload of the goal page; pageIndex is always within pages. */
   readonly goalOptions?: {
     readonly objectId: string;
     readonly pages: readonly TutorialPageSpec[];
     readonly pageIndex: number;
   };
+  /**
+   * Tutorial and goal pages offered by a help object on the question-help page, retained across tutorial/goal subpages.
+   */
   readonly questionHelpOptions?: {
     readonly objectId: string;
     readonly tutorialPages: readonly TutorialPageSpec[];
     readonly goalPages: readonly TutorialPageSpec[];
   };
+  /** Id of the placed flag whose sign is being edited, if any. */
   readonly editingFlagId?: string;
 }
 
+/** Launch-time values used to seed the initial menu state. */
 export interface CreateRuntimeMenuStateOptions {
   readonly selectedWorldId: string;
   readonly selectedAppConfigName?: string;
@@ -114,6 +165,9 @@ export interface CreateRuntimeMenuStateOptions {
   readonly vrComfortOptions?: Pick<VrComfortOptions, "antiNauseaModeEnabled">;
 }
 
+/**
+ * Creates a closed menu on the main page seeded from launch settings: debug flags are derived from the given DebugSettings, the overlay defaults to enabled with all items, anti-nausea defaults to true, no tool is selected and the flag type is "WoodenSign1".
+ */
 export function createRuntimeMenuState(options: CreateRuntimeMenuStateOptions): RuntimeMenuState {
   const debugSettings = options.debugSettings;
 
@@ -141,6 +195,7 @@ export function createRuntimeMenuState(options: CreateRuntimeMenuStateOptions): 
   };
 }
 
+/** Opens the menu on the main page. */
 export function openRuntimeMenu(state: RuntimeMenuState): RuntimeMenuState {
   return {
     ...state,
@@ -149,6 +204,9 @@ export function openRuntimeMenu(state: RuntimeMenuState): RuntimeMenuState {
   };
 }
 
+/**
+ * Closes the menu, returns to the main page and clears all page payloads and editingFlagId (the selected tool is kept).
+ */
 export function closeRuntimeMenu(state: RuntimeMenuState): RuntimeMenuState {
   return {
     ...state,
@@ -164,6 +222,7 @@ export function closeRuntimeMenu(state: RuntimeMenuState): RuntimeMenuState {
   };
 }
 
+/** Switches to the settings page without changing visibility. */
 export function showRuntimeMenuSettings(state: RuntimeMenuState): RuntimeMenuState {
   return {
     ...state,
@@ -171,6 +230,7 @@ export function showRuntimeMenuSettings(state: RuntimeMenuState): RuntimeMenuSta
   };
 }
 
+/** Switches to the debug-settings page without changing visibility. */
 export function showRuntimeMenuDebugSettings(state: RuntimeMenuState): RuntimeMenuState {
   return {
     ...state,
@@ -178,6 +238,7 @@ export function showRuntimeMenuDebugSettings(state: RuntimeMenuState): RuntimeMe
   };
 }
 
+/** Switches to the place-flag options page without changing visibility. */
 export function showRuntimeMenuPlaceFlagOptions(state: RuntimeMenuState): RuntimeMenuState {
   return {
     ...state,
@@ -185,6 +246,9 @@ export function showRuntimeMenuPlaceFlagOptions(state: RuntimeMenuState): Runtim
   };
 }
 
+/**
+ * Returns to the main page, resets the selected tool to "none" and clears all page payloads and editingFlagId.
+ */
 export function showRuntimeMenuMainPage(state: RuntimeMenuState): RuntimeMenuState {
   return {
     ...state,
@@ -200,6 +264,7 @@ export function showRuntimeMenuMainPage(state: RuntimeMenuState): RuntimeMenuSta
   };
 }
 
+/** Opens the menu on the edit-sign page for the given flag and message. */
 export function showRuntimeMenuEditSign(
   state: RuntimeMenuState,
   options: {
@@ -219,6 +284,7 @@ export function showRuntimeMenuEditSign(
   };
 }
 
+/** Opens the menu on the cannon actions page for the given cannon; geodesicIds defaults to empty. */
 export function showRuntimeMenuGeodesicCannonActions(
   state: RuntimeMenuState,
   options: {
@@ -243,6 +309,9 @@ export function showRuntimeMenuGeodesicCannonActions(
   };
 }
 
+/**
+ * Opens the menu on the geometry-computer page with the computer's availability and the torus measurements (all optional numbers in meters).
+ */
 export function showRuntimeMenuGeometryComputerActions(
   state: RuntimeMenuState,
   options: {
@@ -271,6 +340,9 @@ export function showRuntimeMenuGeometryComputerActions(
   };
 }
 
+/**
+ * Opens the tutorial page for an object's pages, with pageIndex clamped to the valid range (default 0).
+ */
 export function showRuntimeMenuTutorial(
   state: RuntimeMenuState,
   options: {
@@ -291,6 +363,9 @@ export function showRuntimeMenuTutorial(
   };
 }
 
+/**
+ * Opens the question-help page, using the given options or else the stored questionHelpOptions; returns the state unchanged if neither exists. Clears tutorial and goal payloads.
+ */
 export function showRuntimeMenuQuestionHelp(
   state: RuntimeMenuState,
   options?: {
@@ -320,6 +395,9 @@ export function showRuntimeMenuQuestionHelp(
   };
 }
 
+/**
+ * Opens the tutorial subpage from stored question-help options; unchanged if they are missing or have no tutorial pages.
+ */
 export function showRuntimeMenuQuestionTutorial(state: RuntimeMenuState): RuntimeMenuState {
   const options = state.questionHelpOptions;
   if (!options || options.tutorialPages.length === 0) {
@@ -332,6 +410,9 @@ export function showRuntimeMenuQuestionTutorial(state: RuntimeMenuState): Runtim
   });
 }
 
+/**
+ * Opens the goal page from the given options or the stored question-help goal pages; unchanged if there are no pages.
+ */
 export function showRuntimeMenuGoal(
   state: RuntimeMenuState,
   options?: {
@@ -362,6 +443,7 @@ export function showRuntimeMenuGoal(
   };
 }
 
+/** Sets the tutorial page index, clamped to range; unchanged if no tutorial is showing. */
 export function setRuntimeMenuTutorialPageIndex(
   state: RuntimeMenuState,
   pageIndex: number,
@@ -379,6 +461,7 @@ export function setRuntimeMenuTutorialPageIndex(
   };
 }
 
+/** Sets the goal page index, clamped to range; unchanged if no goal is showing. */
 export function setRuntimeMenuGoalPageIndex(
   state: RuntimeMenuState,
   pageIndex: number,
@@ -396,6 +479,7 @@ export function setRuntimeMenuGoalPageIndex(
   };
 }
 
+/** Replaces the sign text being edited; unchanged if no sign is being edited. */
 export function setRuntimeMenuEditingSignMessage(state: RuntimeMenuState, message: string): RuntimeMenuState {
   if (!state.editSignOptions) {
     return state;
@@ -410,6 +494,7 @@ export function setRuntimeMenuEditingSignMessage(state: RuntimeMenuState, messag
   };
 }
 
+/** Records the world id chosen in the world picker. */
 export function setRuntimeMenuSelectedWorldId(state: RuntimeMenuState, worldId: string): RuntimeMenuState {
   return {
     ...state,
@@ -417,6 +502,7 @@ export function setRuntimeMenuSelectedWorldId(state: RuntimeMenuState, worldId: 
   };
 }
 
+/** Records the app config name chosen in the menu. */
 export function setRuntimeMenuSelectedAppConfigName(state: RuntimeMenuState, configName: string): RuntimeMenuState {
   return {
     ...state,
@@ -424,6 +510,7 @@ export function setRuntimeMenuSelectedAppConfigName(state: RuntimeMenuState, con
   };
 }
 
+/** Sets the master debug switch. */
 export function setRuntimeMenuDebugEnabled(state: RuntimeMenuState, enabled: boolean): RuntimeMenuState {
   return {
     ...state,
@@ -431,6 +518,7 @@ export function setRuntimeMenuDebugEnabled(state: RuntimeMenuState, enabled: boo
   };
 }
 
+/** Sets the console log level used when debug is enabled. */
 export function setRuntimeMenuConsoleLogLevel(
   state: RuntimeMenuState,
   level: RuntimeMenuConsoleLogLevelId,
@@ -441,6 +529,7 @@ export function setRuntimeMenuConsoleLogLevel(
   };
 }
 
+/** Shows or hides the debug overlay. */
 export function setRuntimeMenuDebugOverlayEnabled(state: RuntimeMenuState, enabled: boolean): RuntimeMenuState {
   return {
     ...state,
@@ -448,6 +537,9 @@ export function setRuntimeMenuDebugOverlayEnabled(state: RuntimeMenuState, enabl
   };
 }
 
+/**
+ * Adds (enabled = true) or removes an overlay item, keeping items deduplicated and in canonical order.
+ */
 export function toggleRuntimeMenuDebugOverlayItem(
   state: RuntimeMenuState,
   itemId: RuntimeDebugOverlayItemId,
@@ -465,6 +557,7 @@ export function toggleRuntimeMenuDebugOverlayItem(
   };
 }
 
+/** Sets the portal panel rendering mode. */
 export function setRuntimeMenuPortalPanelMode(
   state: RuntimeMenuState,
   portalPanelMode: PortalPanelModeId,
@@ -475,6 +568,7 @@ export function setRuntimeMenuPortalPanelMode(
   };
 }
 
+/** Enables or disables the portal inspection debug option group. */
 export function setRuntimeMenuPortalInspectionEnabled(state: RuntimeMenuState, enabled: boolean): RuntimeMenuState {
   return {
     ...state,
@@ -482,6 +576,7 @@ export function setRuntimeMenuPortalInspectionEnabled(state: RuntimeMenuState, e
   };
 }
 
+/** Enables or disables collision-geometry wireframes. */
 export function setRuntimeMenuCollisionGeometryWireframesEnabled(
   state: RuntimeMenuState,
   enabled: boolean,
@@ -492,6 +587,7 @@ export function setRuntimeMenuCollisionGeometryWireframesEnabled(
   };
 }
 
+/** Enables or disables aim-collision outlines. */
 export function setRuntimeMenuAimCollisionOutlinesEnabled(
   state: RuntimeMenuState,
   enabled: boolean,
@@ -502,6 +598,7 @@ export function setRuntimeMenuAimCollisionOutlinesEnabled(
   };
 }
 
+/** Enables or disables VR anti-nausea mode. */
 export function setRuntimeMenuAntiNauseaModeEnabled(
   state: RuntimeMenuState,
   enabled: boolean,
@@ -512,6 +609,7 @@ export function setRuntimeMenuAntiNauseaModeEnabled(
   };
 }
 
+/** Selects the active tool without changing the page. */
 export function setRuntimeMenuSelectedTool(state: RuntimeMenuState, selectedTool: RuntimeToolId): RuntimeMenuState {
   return {
     ...state,
@@ -519,6 +617,7 @@ export function setRuntimeMenuSelectedTool(state: RuntimeMenuState, selectedTool
   };
 }
 
+/** Sets or clears (undefined) the reload-confirmation deadline. */
 export function setRuntimeMenuReloadConfirmUntilMs(
   state: RuntimeMenuState,
   reloadConfirmUntilMs: number | undefined,
@@ -529,6 +628,7 @@ export function setRuntimeMenuReloadConfirmUntilMs(
   };
 }
 
+/** Sets the flag type the place-flag tool will place. */
 export function setRuntimeMenuPlaceFlagType(state: RuntimeMenuState, flagType: PlacedFlagType): RuntimeMenuState {
   return {
     ...state,
@@ -539,10 +639,12 @@ export function setRuntimeMenuPlaceFlagType(state: RuntimeMenuState, flagType: P
   };
 }
 
+/** Chooses a flag type and activates the place-flag tool in one step. */
 export function selectRuntimeMenuPlaceFlagToolType(state: RuntimeMenuState, flagType: PlacedFlagType): RuntimeMenuState {
   return setRuntimeMenuSelectedTool(setRuntimeMenuPlaceFlagType(state, flagType), "place-flag");
 }
 
+/** Sets or clears the id of the flag being edited. */
 export function setRuntimeMenuEditingFlagId(state: RuntimeMenuState, editingFlagId: string | undefined): RuntimeMenuState {
   return {
     ...state,
@@ -550,6 +652,9 @@ export function setRuntimeMenuEditingFlagId(state: RuntimeMenuState, editingFlag
   };
 }
 
+/**
+ * Converts the menu's debug fields into launch-style DebugSettings: when debug is off it yields level "off", portal panel "none" and no options; otherwise it adds "runtime-diagnostics", the enabled option groups, and "portal-visible-path-debug" when the overlay shows portal-quantities.
+ */
 export function createDebugSettingsFromRuntimeMenuState(state: RuntimeMenuState): DebugSettings {
   const debugOptions: DebugOptionId[] = [];
 
@@ -580,6 +685,9 @@ export function createDebugSettingsFromRuntimeMenuState(state: RuntimeMenuState)
   };
 }
 
+/**
+ * Parses a comma-separated list of overlay item ids (null means all defaults), dropping unknown entries and returning canonical order.
+ */
 export function parseRuntimeDebugOverlayItems(rawValue: string | null): readonly RuntimeDebugOverlayItemId[] {
   if (rawValue === null) {
     return [...defaultRuntimeDebugOverlayItems];
@@ -594,6 +702,7 @@ export function parseRuntimeDebugOverlayItems(rawValue: string | null): readonly
   return orderRuntimeDebugOverlayItems(requestedItems);
 }
 
+/** Serializes overlay items to a canonical comma-separated string. */
 export function serializeRuntimeDebugOverlayItems(
   items: readonly RuntimeDebugOverlayItemId[],
 ): string {

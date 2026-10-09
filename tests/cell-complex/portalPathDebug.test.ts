@@ -51,6 +51,26 @@ describe("portal path debug helpers", () => {
     });
   });
 
+  it("prefers side indices and warns when a token falls back to the portal-array index", () => {
+    const world = compileCellComplex(twoPrismLoop);
+    const candidateTables = buildPortalPathTables(world, { maxDepth: 2 });
+
+    const bySideIndex = checkPortalPathString("1", { world, rootCellId: "room-a", candidateTables });
+    expect(bySideIndex.warnings).toBeUndefined();
+
+    // room-a has a single portal on side 1; token "0" is not a side index but is a valid array index.
+    const byArrayIndex = checkPortalPathString("0", { world, rootCellId: "room-a", candidateTables });
+    expect(byArrayIndex.valid).toBe(true);
+    expect(byArrayIndex.steps[0].sourcePortalSideIndex).toBe(1);
+    expect(byArrayIndex.warnings).toHaveLength(1);
+    expect(byArrayIndex.warnings?.[0]).toContain("portal-array index");
+
+    // Out of range on both interpretations is an error, not a silent pick.
+    const outOfRange = checkPortalPathString("2", { world, rootCellId: "room-a", candidateTables });
+    expect(outOfRange.valid).toBe(false);
+    expect(outOfRange.warnings).toBeUndefined();
+  });
+
   it("reports culled paths by reason when a kept table excludes them", () => {
     const world = compileCellComplex(cube);
     const candidateTables = buildPortalPathTables(world, { maxDepth: 1 });

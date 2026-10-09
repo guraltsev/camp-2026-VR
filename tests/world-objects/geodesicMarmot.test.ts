@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
-import { createGeodesicMarmot, createGeodesicMarmotRuntime } from "../../src/world-objects/geodesicMarmot";
+import { transformDirection3 } from "../../src/math/rigidTransform3";
+import { createGeodesicMarmot, createGeodesicMarmotRuntime, createGeodesicMarmotRuntimeObject } from "../../src/world-objects/geodesicMarmot";
 import type { PreparedWorldAssets } from "../../src/render/three/preloadWorldAssets";
 
 describe("createGeodesicMarmotRuntime", () => {
@@ -93,3 +94,18 @@ function twoRoomsWithPortal() {
     ],
   };
 }
+
+describe("geodesic marmot heading", () => {
+  // Skipped: documents the intended behavior; the current atan2(vx, vy) mirrors vx and the anchor-crossing test above relies on that (docs/issues/41).
+  it.skip("walks along its body +y axis in the authored velocity direction", () => {
+    for (const velocity of [{ x: 1, y: 0 }, { x: -0.5, y: 1 }, { x: 0.3, y: -0.8 }]) {
+      const spec = createGeodesicMarmot({ id: "m", position: { x: 0, y: 0, z: 0 }, velocity } as never);
+      const object = createGeodesicMarmotRuntimeObject(spec, "cell");
+      // The runtime advances by transformDirection3(localPose, (0, speed * dt, 0)).
+      const heading = transformDirection3(object.localPose, { x: 0, y: 1, z: 0 });
+      const speed = Math.hypot(velocity.x, velocity.y);
+      expect(heading.x).toBeCloseTo(velocity.x / speed, 9);
+      expect(heading.y).toBeCloseTo(velocity.y / speed, 9);
+    }
+  });
+});

@@ -1,5 +1,12 @@
+/**
+ * Human-readable text summary of an authored cell-complex spec, for logging and debugging.
+ * Lists each cell (side count, floor color, object count) and each portal as a (cell, side) -> (cell, side) connection. It only reads the spec; no geometry is computed or validated.
+ */
 import type { AuthoredPortalSpec, CellComplexSpec, PrismCellSpec } from "./specs";
 
+/**
+ * Returns a multi-line description of the spec's cells and portal connections.
+ */
 export function describeGeometrySpec(spec: CellComplexSpec): string {
   const lines = [`Ingested geometry: ${spec.cells.length} cell${spec.cells.length === 1 ? "" : "s"}.`];
 

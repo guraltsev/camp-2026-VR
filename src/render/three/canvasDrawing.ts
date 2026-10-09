@@ -1,6 +1,10 @@
-/** Canvas 2D drawing helpers used to build text-label textures. */
+/**
+ * Canvas 2D drawing helpers used to build text-label textures.
+ * All coordinates and sizes are in canvas pixels.
+ */
 
 
+/** Appends a closed rounded-rectangle path to the context (begin, trace, close) without filling or stroking it; radius must not exceed half the width or height for a well-formed shape. */
 export function roundRect(
   context: CanvasRenderingContext2D,
   x: number,

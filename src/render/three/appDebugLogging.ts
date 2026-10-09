@@ -1,9 +1,13 @@
-/** Console guides printed when debug options are enabled. */
+/**
+ * Console guides printed when debug options are enabled.
+ * These functions only write to the console (info and table) and have no state; the command lists they print name the window helpers installed by appDebugHelpers, so the two must be kept in sync by hand.
+ */
 import { type PortalPathTablesByRootCell } from "../../cell-complex/portalPaths";
 import { type StaticPortalPathCullResult } from "../../cell-complex/staticPortalPathCull";
 import { type DebugLevelId } from "../../glue/debugLevels";
 import { type DebugOptionId } from "../../glue/debugOptions";
 
+/** Prints which portal-overlay console commands are usable; portalPathDebugActive indicates whether the overlay helpers were installed. */
 export function logPortalOverlayGuide(portalPathDebugActive: boolean): void {
   const commands = [
     "window.noneuclidPortalDebug.state",
@@ -22,6 +26,7 @@ export function logPortalOverlayGuide(portalPathDebugActive: boolean): void {
   );
 }
 
+/** Prints the debugging quick start: the current debug level, the enabled options and the available console commands. */
 export function logDebugStartupGuide(debugLevel: DebugLevelId, debugOptions: readonly DebugOptionId[]): void {
   const commands = [
     "debug_help()",
@@ -60,6 +65,10 @@ export function logDebugStartupGuide(debugLevel: DebugLevelId, debugOptions: rea
   );
 }
 
+/**
+ * Prints how to use the portal path debug helpers and a table of per-root-cell path counts (generated, kept, rejected, budget-rejected).
+ * overlayActive and staticCullDebugActive only change the hint text. maxAvailableDepth is computed from the unculled table paths.
+ */
 export function logPortalDebugInstall(
   candidateTables: PortalPathTablesByRootCell,
   staticCull: StaticPortalPathCullResult,

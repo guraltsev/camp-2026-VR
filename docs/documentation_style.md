@@ -15,6 +15,27 @@ Use public docs for durable project context:
 
 Do not create a documentation site during the first implementation.
 
+## Enforced rules
+
+`npm run docs:check` (also run by `npm test`) fails when:
+
+- a module under `src/` has no header comment: a leading `/** ... */` block,
+  before the imports, of at least one full sentence saying what the module is
+  for, where it sits in the pipeline, and its key invariants;
+- an exported declaration has no JSDoc; the **first sentence** must be a
+  self-contained summary because it is copied into the generated API reference;
+- `docs/generated/*` is out of date (`npm run docs:generate` rewrites it);
+- a module imports across layers in a way that is not allowed and not in
+  `scripts/docs/layering-baseline.json`;
+- a backticked `src/<dir>/<file>.ts#<symbol>` reference in a hand-written
+  document points at something that no longer exists.
+
+State units (meters, radians), coordinate frames (cell-local x right, y forward,
+z up), preconditions, and failure behavior (throws or returns `undefined`) in
+JSDoc. Put mathematics that spans modules in
+[MATHEMATICAL_MODEL.md](MATHEMATICAL_MODEL.md) with symbol references instead of
+repeating it in code comments.
+
 ## JSDoc
 
 Public JSDoc should document contracts, intended use, observable behavior,

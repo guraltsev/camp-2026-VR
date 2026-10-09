@@ -1,10 +1,25 @@
-/** Floating tooltip mesh shown above the object a VR controller points at. */
+/**
+ * Builds the billboard mesh for the XR object tooltip: a rounded dark panel with up to three centered text lines, drawn on a canvas texture.
+ * The plane is 0.92 x 0.31 meters, rendered without depth test on top of the scene so it stays readable through geometry.
+ * Positioning and orientation are done by the caller (see xrObjectTooltipController).
+ */
 import * as THREE from "three";
 import { roundRect } from "./canvasDrawing";
 
+/**
+ * Three.js `renderOrder` of the tooltip mesh; high so it draws after scene geometry.
+ */
 export const xrObjectTooltipRenderOrder = 960;
+/**
+ * Vertical offset in meters (cell-local +z) added above the object's anchor point before placing the tooltip.
+ */
 export const xrObjectTooltipYOffsetMeters = 0.18;
 
+/**
+ * Creates a hidden (`visible = false`) billboard mesh showing `text`; only the first three newline-separated lines are drawn.
+ * Throws if a 2D canvas context cannot be created. Lifecycle: the caller owns the mesh and must dispose its geometry, material, and map
+ * (e.g. with `disposeObject3D`).
+ */
 export function createXrObjectTooltip(text: string): THREE.Object3D {
   const canvas = document.createElement("canvas");
   canvas.width = 768;
@@ -25,6 +40,7 @@ export function createXrObjectTooltip(text: string): THREE.Object3D {
   context.textAlign = "center";
   context.textBaseline = "middle";
 
+  // Fewer than three lines get a larger font; text is squeezed horizontally via maxWidth if too long.
   const lines = text.split("\n").slice(0, 3);
   const fontSize = lines.length > 2 ? 44 : 50;
   const lineHeight = fontSize * 1.18;

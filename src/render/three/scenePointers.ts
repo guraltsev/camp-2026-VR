@@ -1,12 +1,32 @@
+/**
+ * Per-source ray pointers that drive hover and select events on the XR scene palette (and desktop pointer sources).
+ * Each pointer source (a controller or desktop ray object) gets a `@pmndrs/pointer-events` ray pointer, created lazily and removed once the source disappears.
+ * Select events are derived from the source's `selectPressed` flag: a rising edge fires pointer-down and a falling edge pointer-up on whatever the ray hovers;
+ * the per-frame `selectStarted`/`selectEnded` flags report the same edges to the caller.
+ * Hovered targets are identified by `userData.scenePaletteItemId` (or `xrPaletteItemId`) on the intersected object.
+ */
 import * as THREE from "three";
 import { createRayPointer, type Pointer } from "@pmndrs/pointer-events";
 import type { ScenePalettePointerSource, ScenePalettePointerState } from "./scenePaletteInput";
 
+/**
+ * Pointer manager returned by `createScenePointers`.
+ */
 export interface ScenePointers {
+  /**
+   * Moves every source's ray through `scene`, dispatches down/up on select edges, and returns one state per source (in input order).
+   * Sources absent from this call are sent a pointer exit and forgotten. Each source's object has its world matrix updated first, so its transform defines the ray.
+   * Call once per frame.
+   */
   update(scene: THREE.Object3D, sources: readonly ScenePalettePointerSource[]): readonly ScenePalettePointerState[];
+  /** Sends an exit event to every live pointer and forgets them; the owner (scenePaletteController) must call it at teardown. */
   dispose(): void;
 }
 
+/**
+ * Creates the pointer manager. `getCamera` is read lazily by each ray pointer (createThreeApp#shell's scene palette controller passes `() => camera`);
+ * it is needed by the pointer-events library, not to define the ray direction.
+ */
 export function createScenePointers(
   getCamera: () => THREE.PerspectiveCamera | THREE.OrthographicCamera,
 ): ScenePointers {
@@ -42,6 +62,7 @@ export function createScenePointers(
         });
       }
 
+      // Drop pointers whose source vanished (controller disconnected).
       for (const [id, entry] of entries) {
         if (seenIds.has(id)) {
           continue;
@@ -62,6 +83,10 @@ export function createScenePointers(
   };
 }
 
+/**
+ * Picks the single pointer that should drive palette UI: first a pressed one, then a hovering dominant one, then any hovering one, then any dominant one, then the first.
+ * Returns `undefined` for an empty list.
+ */
 export function chooseActiveScenePointer(
   states: readonly ScenePalettePointerState[],
 ): ScenePalettePointerState | undefined {
@@ -96,6 +121,7 @@ function getOrCreatePointerEntry(
   return created;
 }
 
+// The library only reads a few fields of the event, so a minimal fake is used; every source shares pointerId 1 and is distinguished by sourceId.
 function createPointerEvent(sourceId: string): PointerEvent {
   return {
     pointerId: 1,

@@ -1,3 +1,8 @@
+/**
+ * Geodesic marmot: an autonomous creature that walks in a straight line (a locally straight geodesic) through the cell complex, crossing portals.
+ * Provides the authoring helper that produces a GeodesicMarmotObjectSpec, the runtime that owns its three.js proxy mesh and moves it each frame via moveDynamicObject with the autonomous portal-crossing mode, and the registry record kept in the RuntimeObjectRegistry.
+ * Units are meters and seconds; poses live in the current cell's local frame (x right, y forward, z up) and the heading is a yaw in radians derived from the authored velocity (yaw = atan2(vx, vy); the marmot walks along its body +y axis rotated counterclockwise by that yaw, i.e. towards (-vx, vy), so the sign of vx appears mirrored relative to the authored velocity; known defect, see docs/issues/41_documentation_audit_findings.md). Forward speed is the magnitude of the 2D velocity and is constant; the marmot never turns on its own.
+ */
 import * as THREE from "three";
 import type { CompiledCellComplex } from "../cell-complex/compileCellComplex";
 import type { CellObjectSpec, GeodesicMarmotObjectSpec } from "../cell-complex/specs";
@@ -23,6 +28,10 @@ import { runtimeObjectToDynamicObjectState, type RuntimeCreatureObject } from ".
 const defaultCollisionOffset = { x: 0, y: 0, z: 0.22 } as const;
 const defaultScale = 0.42;
 
+/**
+ * Inputs for createGeodesicMarmot.
+ * `position` is already in cell-local coordinates (meters; z is height) and `velocity` is the planar cell-local velocity in m/s whose direction fixes the initial heading and whose magnitude is the walking speed.
+ */
 export interface CreateGeodesicMarmotOptions {
   readonly id: string;
   readonly position: { readonly x: number; readonly y: number; readonly z: number };
@@ -33,17 +42,30 @@ export interface CreateGeodesicMarmotOptions {
   readonly displayHelpMessage?: string;
 }
 
+/**
+ * Per-marmot runtime handle owned by the renderer.
+ * `root` is the three.js group (reparented into the current cell's root by `syncParent`); `cellId` reports the marmot's current cell.
+ */
 export interface GeodesicMarmotRuntime {
   readonly root: THREE.Object3D;
   readonly objectId: string;
   readonly cellId: string;
+  /** Advances the marmot by `deltaSeconds` along its heading, crossing portals as needed; no-op for non-positive speed or time. */
   update(world: CompiledCellComplex, deltaSeconds: number): void;
+  /** Attaches `root` to the scene node of the marmot's current cell if it is not already there. */
   syncParent(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
+  /** Shows or hides the debug collision cylinder. */
   setCollisionWireframeVisible(visible: boolean): void;
+  /** Remaps the current and initial poses through per-cell deformation maps after a live geometry change; leaves state untouched if either pose cannot be mapped. */
   transformGeometry(mapByCellId: ReadonlyMap<string, CellDeformationMap>): void;
+  /** Restores the initial (possibly deformation-remapped) cell and pose and reattaches to that cell's root. */
   reset(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
 }
 
+/**
+ * Creates the authored spec for a geodesic marmot.
+ * Fixes the library-owned asset, a 0.36 m radius by 0.42 m collision cylinder, a default scale of 0.42 and the class "creature" unless overridden; the initial yaw is derived from `options.velocity`.
+ */
 export function createGeodesicMarmot(options: CreateGeodesicMarmotOptions): GeodesicMarmotObjectSpec {
   return {
     id: options.id,
@@ -64,10 +86,17 @@ export function createGeodesicMarmot(options: CreateGeodesicMarmotOptions): Geod
   };
 }
 
+/**
+ * Type guard: true when a cell object spec is a geodesic marmot.
+ */
 export function isGeodesicMarmotObjectSpec(objectSpec: CellObjectSpec): objectSpec is GeodesicMarmotObjectSpec {
   return objectSpec.kind === "geodesci-marmot";
 }
 
+/**
+ * Creates the runtime (three.js group, state machine, registry entry) for a marmot starting in `startCellId`.
+ * Registers the object in `registry` when given (so it throws if the id already exists there). The visual is a static proxy mesh, not the glTF in `objectSpec.assetPath`, so the `_assets` argument is unused. Movement follows the current heading in the cell's local frame, so the path is a geodesic: it stays straight as portals re-express the frame.
+ */
 export function createGeodesicMarmotRuntime(
   objectSpec: GeodesicMarmotObjectSpec,
   startCellId: string,
@@ -106,6 +135,7 @@ export function createGeodesicMarmotRuntime(
         return;
       }
 
+      // Heading is the body +y axis; rotate the per-frame step into the cell frame.
       const displacement = transformDirection3(state.localPose, vec3(0, forwardSpeedMetersPerSecond * deltaSeconds, 0));
       const result = moveDynamicObject({
         world,
@@ -163,6 +193,9 @@ export function createGeodesicMarmotRuntime(
   };
 }
 
+/**
+ * Builds the registry record for a marmot spec in the given cell without creating any three.js objects.
+ */
 export function createGeodesicMarmotRuntimeObject(
   objectSpec: GeodesicMarmotObjectSpec,
   cellId: string,
@@ -213,6 +246,7 @@ function syncRegistryObject(
   });
 }
 
+// Known mirrored convention: a yaw of psi heads towards (-sin psi, cos psi), so atan2(vx, vy) walks towards (-vx, vy). The correct value would be atan2(-vx, vy), but the existing marmot test and authored worlds depend on the current behavior (docs/issues/41).
 function yawFromVelocity(velocity: GeodesicMarmotObjectSpec["velocity"]): number {
   return Math.atan2(velocity.x, velocity.y);
 }

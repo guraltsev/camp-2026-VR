@@ -1,5 +1,13 @@
+/**
+ * Static asset authoring helper: converts author-facing parameters for a glTF decoration into an AssetObjectSpec.
+ * Authoring triples use [x, height, y] ordering (meters) and are reordered into cell-local (x, y, z) with z up; tilt and turn arrive in degrees and are stored in radians. Library wrappers (library.ts) supply asset-specific defaults before calling this.
+ */
 import type { AssetObjectSpec, SimpleCollisionCylinderSpec, TutorialPageSpec } from "../cell-complex/specs";
 
+/**
+ * Author-facing parameters shared by all static library objects.
+ * Tilt and turn are in degrees (turn rotates about the vertical axis; the same value fills both `turnRadians` and `yawRadians`).
+ */
 export interface StaticObjectAuthoringParams {
   /**
    * Position in authored [x, z, y] axes. The middle coordinate is height above the floor.
@@ -27,11 +35,18 @@ export interface StaticObjectAuthoringParams {
   readonly tutorialPages?: readonly TutorialPageSpec[];
   /** Optional pages shown by scenario-specific goal menus. */
   readonly goalPages?: readonly TutorialPageSpec[];
+  /** Tilt about the object's lateral axis, in degrees. */
   readonly forwardTilt?: number;
+  /** Tilt about the object's forward axis, in degrees. */
   readonly sideTilt?: number;
+  /** Yaw about the vertical axis, in degrees. */
   readonly turn?: number;
 }
 
+/**
+ * Builds an AssetObjectSpec from authoring parameters.
+ * Reorders `position` and `modelOffset` from [x, height, y] to {x, y, z=height}; `scaleXYZ` is passed through component-wise unreordered. Does no validation or defaulting of scale or collision.
+ */
 export function createStaticAssetObject(
   id: string,
   assetPath: string,
@@ -75,6 +90,9 @@ export function createStaticAssetObject(
   };
 }
 
+/**
+ * Converts degrees to radians.
+ */
 export function degreesToRadians(degrees: number): number {
   return (degrees * Math.PI) / 180;
 }

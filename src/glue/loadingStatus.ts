@@ -1,16 +1,30 @@
+/**
+ * Minimal DOM loading screen shown while a world loads: a log of phase lines with the latest highlighted, plus an error state.
+ * createLoadingStatus appends a "loading-screen" element to a container; track() yields to the browser for a paint before running a task so each phase message is visible before blocking work (such as compiling the world) begins.
+ */
+/** Handle to a loading screen that reports startup phases and errors. */
 export interface LoadingStatus {
+  /** Appends a new active log line for the phase, unless it repeats the current message. */
   setPhase(phase: string): void;
+  /**
+   * Shows the phase, waits for one animation frame so it paints, then runs the task and returns its result (rejections propagate).
+   */
   track<T>(phase: string, task: () => T | Promise<T>): Promise<T>;
+  /** Marks the screen as failed and logs "Could not load world: <message>". */
   showError(message: string): void;
+  /** Removes the loading screen from the DOM. */
   dispose(): void;
 }
 
+/** Options for createLoadingStatus. */
 export interface LoadingStatusOptions {
+  /** First log line; defaults to "Starting world". */
   readonly initialMessage?: string;
 }
 
 const defaultInitialMessage = "Starting world";
 
+/** Creates and mounts a loading screen inside the container and returns its controller. */
 export function createLoadingStatus(
   container: HTMLElement,
   options: LoadingStatusOptions = {},

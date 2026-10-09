@@ -1,3 +1,9 @@
+/**
+ * World builder: the imperative API behind the world-script DSL that assembles a CellComplexSpec.
+ * A world script (see src/examples/*.world.js) calls PolygonFace to declare prism rooms from convex base polygons, Portal to glue two sides of two faces (a rigid-transform gluing is derived later by the cell-complex compiler), OnFace to place library objects, and startingHouse / startingQuestionCube / startingPosition for the player's start; build() returns the CellComplexSpec that compileCellComplex consumes.
+ * Authoring conventions: base vertices are counterclockwise [x, y] pairs in meters in the cell's local plane, side i is the wall from vertex i to vertex i+1 (mod n), and object/start positions are [x, height, y] triples in meters (reordered here into cell-local x, y, z with z up); angles are degrees at this layer and radians in the spec. Every cell gets the same fixed height of 15 m.
+ * Invariants enforced eagerly (each violation throws): unique face names, unique object ids, each side belongs to at most one portal, portals are created in reciprocal pairs, and only library-built objects can be placed.
+ */
 import type {
   AuthoredPortalSpec,
   CellComplexSpec,
@@ -12,12 +18,18 @@ import { isWorldLibraryObjectSpec, type WorldLibraryObjectSpec } from "../world-
 import { normalizeFloorMaterial, type WorldFloorMaterialSpec } from "../world-assets/floorTextures";
 import { worldObjectLibrary } from "../world-objects/library";
 import { degreesToRadians, type StaticObjectAuthoringParams } from "../world-objects/staticAssets";
-import { helpHubHomeGuidance } from "../helpHubCopy";
+import { helpHubHomeGuidance } from "../world-objects/helpHubCopy";
 
 const defaultHeightMeters = 15;
 const startingHouseLookOffsetDegrees = 12;
+/**
+ * Default help message shown on the starting question cube when the author supplies none.
+ */
 export const defaultStartingQuestionCubeMessage =
   "Open this cube to page through the tutorial.";
+/**
+ * Default tutorial pages (movement, actions, help) of the starting question cube, with desktop and XR text variants.
+ */
 export const defaultStartingQuestionCubeTutorialPages: readonly TutorialPageSpec[] = [
   {
     title: "Move",
@@ -38,6 +50,9 @@ export const defaultStartingQuestionCubeTutorialPages: readonly TutorialPageSpec
     xrBody: `Press B while aiming at an object for its help. ${helpHubHomeGuidance}`,
   },
 ];
+/**
+ * Default goal pages of the starting question cube.
+ */
 export const defaultStartingQuestionCubeGoalPages: readonly TutorialPageSpec[] = [
   {
     title: "Goal",
@@ -47,6 +62,7 @@ export const defaultStartingQuestionCubeGoalPages: readonly TutorialPageSpec[] =
   },
 ];
 
+// Cell under construction; `portals` and `visuals.objects` are appended by later builder calls and copied out by build().
 interface MutableCell {
   readonly id: string;
   readonly heightMeters: number;
@@ -59,22 +75,41 @@ interface MutableCell {
   };
 }
 
+/**
+ * The set of calls available to world scripts for assembling a world.
+ * All methods throw an Error with an explanatory message on invalid input (unknown face, duplicate name or id, side already used, ...); compileWorldScript wraps such errors with the script name.
+ */
 export interface WorldBuilder {
+  /** Declares a prism cell `name` with the given floor and convex counterclockwise base polygon (3-8 vertices, meters); throws on duplicate names or invalid polygons. */
   PolygonFace(name: string, floor: string | WorldFloorMaterialSpec, vertices: ConvexPrismBaseVertices): void;
+  /** Glues side `side1` of `face1` to side `side2` of `face2` by creating reciprocal portals (ids "side-<n>"); throws if either face is unknown, a side is already used, or it would join a side to itself. */
   Portal(face1: string, side1: number, face2: string, side2: number): void;
+  /** Places library-built objects in a face; throws on unknown face, non-library objects, or duplicate object ids (unique across the whole world). */
   OnFace(faceName: string, objects: readonly WorldLibraryObjectSpec[]): void;
+  /** Places the landmark house (object id "startingHouse") and sets the player's start in front of it, looking back at it; replaces any earlier start position. */
   startingHouse(faceName: string, params: StaticObjectAuthoringParams): void;
+  /** Places the help question cube (object id "startingQuestionCube") with default or supplied tutorial and goal pages. */
   startingQuestionCube(faceName: string, params: StartingQuestionCubeAuthoringParams): void;
+  /** Sets the player's start explicitly; the last of startingHouse / startingPosition called wins. */
   startingPosition(faceName: string, params: StartingPositionAuthoringParams): void;
+  /** Snapshots the accumulated cells (copying their arrays) and start position into a CellComplexSpec; the builder remains usable. */
   build(): CellComplexSpec;
 }
 
+/**
+ * Parameters for startingQuestionCube: ordinary static-object parameters plus tutorial content.
+ * `message`, if given and no `tutorialPages` are supplied, becomes a single "Tutorial" page.
+ */
 export interface StartingQuestionCubeAuthoringParams extends StaticObjectAuthoringParams {
   readonly message?: string;
   readonly tutorialPages?: readonly TutorialPageSpec[];
   readonly goalPages?: readonly TutorialPageSpec[];
 }
 
+/**
+ * Parameters for startingPosition: where the player's eye reference point starts.
+ * `turn` (yaw) and `pitch` are in degrees and default to 0.
+ */
 export interface StartingPositionAuthoringParams {
   /**
    * Position in authored [x, height, y] axes, matching object library positions.
@@ -84,6 +119,10 @@ export interface StartingPositionAuthoringParams {
   readonly pitch?: number;
 }
 
+/**
+ * Creates an empty WorldBuilder.
+ * Each builder owns its state; calling `build` does not reset it. Cells are emitted in the order their PolygonFace calls were made.
+ */
 export function createWorldBuilder(): WorldBuilder {
   const cells = new Map<string, MutableCell>();
   const portalAssignments = new Map<string, Set<string>>();
@@ -101,6 +140,7 @@ export function createWorldBuilder(): WorldBuilder {
       }
 
       const validatedVertices = createConvexPrismBaseVertices(vertices);
+      // Convexity and orientation were validated above; this strips the type brand and checks that each vertex is a finite [x, y] pair.
       const normalizedVertices = validatedVertices.map((vertex, index) => normalizeVertex(name, vertex, index));
       const floorMaterial = normalizeFloorMaterial(floor);
 
@@ -133,6 +173,7 @@ export function createWorldBuilder(): WorldBuilder {
       const authoredSide1 = normalizeSideIndex(side1, cell1.baseVertices.length);
       const authoredSide2 = normalizeSideIndex(side2, cell2.baseVertices.length);
 
+      // Joining a side to itself would make a portal its own partner; two different sides of one face are allowed.
       if (face1 === face2 && authoredSide1.portalId === authoredSide2.portalId) {
         throw new Error(`Portal("${face1}", ${side1}, ...) cannot connect a side to itself.`);
       }
@@ -242,6 +283,10 @@ export function createWorldBuilder(): WorldBuilder {
   };
 }
 
+/**
+ * Validates an author-facing side number against a polygon's vertex count and returns it as the spec's `sideIndex`.
+ * Currently the identity mapping: side i is the wall from base vertex i to vertex i+1 (mod n). Throws if `side` is not an integer in [0, vertexCount).
+ */
 export function authorSideToSideIndex(vertexCount: number, side: number): number {
   if (!Number.isInteger(side)) {
     throw new Error(`Invalid side ${String(side)}; side index must be an integer.`);
@@ -310,13 +355,16 @@ function createStartingPositionInFrontOfHouse(
 ): StartingPositionSpec {
   const housePosition = authorPositionToWorld(params.position);
   const yawRadians = degreesToRadians(params.turn ?? 0);
+  // Player faces back towards the house (yaw + pi), rotated by a 12 degree look offset so the house is not dead centre.
   const playerYawRadians = yawRadians + Math.PI - degreesToRadians(startingHouseLookOffsetDegrees);
   const scale = params.scale ?? 1;
+  // Stand-off distance in front of the house grows with its scale.
   const distanceMeters = 2.15 * scale + 0.55;
 
   return {
     cellId: faceName,
     position: {
+      // The house front is its local +y axis rotated by yaw (counterclockwise), i.e. (-sin yaw, cos yaw); the start point is that far in front of it.
       x: housePosition.x - Math.sin(yawRadians) * distanceMeters,
       y: housePosition.y + Math.cos(yawRadians) * distanceMeters,
       z: housePosition.z,
@@ -326,6 +374,7 @@ function createStartingPositionInFrontOfHouse(
   };
 }
 
+// Reorders an authored [x, height, y] triple into cell-local {x, y, z} with z up.
 function authorPositionToWorld(
   position: readonly [x: number, height: number, y: number],
 ): StartingPositionSpec["position"] {

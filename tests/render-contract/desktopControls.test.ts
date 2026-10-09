@@ -90,6 +90,46 @@ describe("desktopControls", () => {
 
     controls.dispose();
   });
+
+  it("clears held keys when the window loses focus", () => {
+    const { canvas, windowTarget } = installPointerLockDom();
+    const controls = createDesktopControls(canvas);
+
+    dispatchKey(windowTarget, "keydown", "KeyW");
+    expect(controls.consumeFrame(1).localDisplacement.y).toBeGreaterThan(0);
+
+    windowTarget.dispatchEvent(new Event("blur"));
+    expect(controls.consumeFrame(1).localDisplacement.y).toBe(0);
+
+    controls.dispose();
+    dispatchKey(windowTarget, "keydown", "KeyW");
+    windowTarget.dispatchEvent(new Event("blur"));
+    // Listeners are removed: the key press after dispose is not tracked either.
+    expect(controls.consumeFrame(1).localDisplacement.y).toBe(0);
+  });
+
+  it("ignores gameplay keys targeted at editable elements without preventing default", () => {
+    const { canvas, windowTarget } = installPointerLockDom();
+    const controls = createDesktopControls(canvas);
+
+    for (const target of [{ tagName: "INPUT" }, { tagName: "TEXTAREA" }, { tagName: "SELECT" }, { tagName: "DIV", isContentEditable: true }]) {
+      const event = new Event("keydown", { cancelable: true }) as Event & { code: string };
+      event.code = "KeyW";
+      Object.defineProperty(event, "target", { value: target });
+      windowTarget.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(controls.consumeFrame(1).localDisplacement.y).toBe(0);
+
+    const canvasEvent = new Event("keydown", { cancelable: true }) as Event & { code: string };
+    canvasEvent.code = "KeyW";
+    Object.defineProperty(canvasEvent, "target", { value: { tagName: "CANVAS" } });
+    windowTarget.dispatchEvent(canvasEvent);
+    expect(canvasEvent.defaultPrevented).toBe(true);
+    expect(controls.consumeFrame(1).localDisplacement.y).toBeGreaterThan(0);
+
+    controls.dispose();
+  });
 });
 
 function installPointerLockDom(): {

@@ -98,6 +98,32 @@ describe("world geometry session", () => {
     expect(client.requests).toHaveLength(1);
     expect(session.state.buildInFlight).toBe(false);
   });
+
+  it("schedules builds again on the first setTarget after a cancel", () => {
+    const client = createDeferredBuildClient();
+    const session = createTestSession(client, { maxStepMeters: 0.05 });
+
+    session.setTarget(skewState(0.2));
+    session.cancel();
+    expect(session.state.target).toEqual(session.state.current);
+
+    session.setTarget(skewState(0.2));
+
+    expect(client.requests).toHaveLength(2);
+    expect(session.state.buildInFlight).toBe(true);
+  });
+
+  it("ignores nudge after dispose without recording an error", () => {
+    const client = createDeferredBuildClient();
+    const session = createTestSession(client);
+
+    session.dispose();
+    session.nudge({ kind: "static-world", target: { kind: "static-world" } });
+    session.nudge({ kind: "torus-skew", target: skewState(1) });
+
+    expect(client.requests).toHaveLength(0);
+    expect(session.state.lastError).toBeUndefined();
+  });
 });
 
 function createTestSession(

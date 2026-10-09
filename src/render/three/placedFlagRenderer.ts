@@ -1,18 +1,36 @@
+/**
+ * Renderer for player-placed text signs ("flags"): a glTF sign model with the user's message drawn on both faces.
+ *
+ * Each flag is a Three.js group posed by the flag's cell-local rigid transform (world axes: x right, y forward,
+ * z up, meters; converted to the Three.js frame by `applyWorldRigidTransform`) and parented under the root node of the
+ * cell it lives in. The message is rasterised into a shared 512x256 canvas texture that is mapped onto two
+ * transparent planes (front and back) laid over the sign board; the board rectangle is found by scanning the model's
+ * meshes for the most board-like bounding box, with per-sign-type calibration constants. Invariants: the flag id and
+ * flag type of a runtime never change. Disposal frees the canvas texture and also disposes every geometry and material under
+ * the root, including those of the cloned sign model, which are shared with the preloaded glTF (so they are re-uploaded lazily if used again).
+ */
 import * as THREE from "three";
 import type { PlacedFlagObject } from "../../world-objects/placedFlags";
 import { placedFlagAssetPaths } from "../../world-objects/placedFlags";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { applyWorldRigidTransform } from "./worldAxes";
 
+/** Lifecycle handle for one placed sign in the scene. */
 export interface PlacedFlagRuntime {
+  /** Sign group; stays the same object for the runtime's lifetime and is re-parented by {@link PlacedFlagRuntime.syncParent}. */
   readonly root: THREE.Object3D;
+  /** Id of the cell whose local frame the sign pose is expressed in (tracks the latest synced flag). */
   readonly cellId: string;
   readonly flagId: string;
+  /** Applies the flag's pose and, if changed, redraws its text; throws if the flag id or sign type differs from this runtime's. */
   syncFromObject(flag: PlacedFlagObject): void;
+  /** Attaches `root` under `cellRoots.get(cellId)`; does nothing if that cell has no root or the sign is already there. */
   syncParent(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
+  /** Detaches the sign and releases its geometries, materials and text texture. */
   dispose(): void;
 }
 
+// Mutable state of one rendered sign; message/fontColor cache what is currently painted on the canvas.
 interface RenderedFlag {
   readonly root: THREE.Group;
   readonly textTexture: THREE.CanvasTexture;
@@ -22,6 +40,7 @@ interface RenderedFlag {
   fontColor: string;
 }
 
+// Text-plane placement in the sign model's local (Three.js) frame, meters; front/back Z are the two face depths.
 interface FlagTextLayout {
   readonly centerX: number;
   readonly centerY: number;
@@ -31,6 +50,7 @@ interface FlagTextLayout {
   readonly height: number;
 }
 
+// Per-sign-type tuning: xScale/yScale are fractions of the board box width/height giving the text area size; xOffset/yOffset shift its centre by fractions of that width/height; zOffset is in meters.
 interface WritableAreaCalibration {
   readonly xScale: number;
   readonly yScale: number;
@@ -39,9 +59,13 @@ interface WritableAreaCalibration {
   readonly zOffset: number;
 }
 
+// Uniform scale applied to the sign glTF.
 const SIGN_MODEL_SCALE = 0.75;
+// Canvas pixels: line height tried first, shrunk in steps of 1 px down to 12 px until the wrapped text fits.
 const MAX_TEXT_LINE_HEIGHT = 96;
+// Font size = floor(line height * this ratio).
 const TEXT_LINE_HEIGHT_TO_FONT_SIZE = 0.82;
+// Hand-tuned per sign model: where the writable area sits on the board's bounding box.
 const writableAreaCalibrations: Record<PlacedFlagObject["flagType"], WritableAreaCalibration> = {
   WoodenSign1: {
     xScale: 0.53,
@@ -58,6 +82,7 @@ const writableAreaCalibrations: Record<PlacedFlagObject["flagType"], WritableAre
     zOffset: 0.00,
   },
 };
+// Used when no board-like mesh is found in the sign model (meters, sign local frame).
 const FALLBACK_TEXT_LAYOUT: FlagTextLayout = {
   centerX: 0,
   centerY: 1,
@@ -67,6 +92,12 @@ const FALLBACK_TEXT_LAYOUT: FlagTextLayout = {
   height: 0.4,
 };
 
+/**
+ * Creates the render runtime for `flag`, instantiating its sign model from `assets`.
+ *
+ * Throws if the sign glTF for `flag.flagType` was not preloaded. The returned `root` is detached;
+ * call `syncParent` to attach it. Allocates a canvas and texture per flag, which `dispose` releases.
+ */
 export function createPlacedFlagRuntime(flag: PlacedFlagObject, assets: PreparedWorldAssets): PlacedFlagRuntime {
   const rendered = createRenderedFlag(flag, assets);
 
@@ -107,6 +138,7 @@ function createRenderedFlag(flag: PlacedFlagObject, assets: PreparedWorldAssets)
 
   prepared.scene.name = `asset:${flag.id}`;
   prepared.scene.scale.setScalar(SIGN_MODEL_SCALE);
+  // Half-turn so the model's authored front faces the intended direction in the flag's local frame.
   prepared.scene.rotation.y = Math.PI;
   root.add(prepared.scene);
 
@@ -118,6 +150,7 @@ function createRenderedFlag(flag: PlacedFlagObject, assets: PreparedWorldAssets)
   textTexture.name = `placed-flag-text:${flag.id}`;
   const textLayout = resolveFlagTextLayout(prepared.scene, flag.flagType);
   root.add(
+    // Front plane is turned by pi to read correctly from the front; the back plane shares the same texture.
     createSignTextPlane(flag.id, "front", textTexture, textLayout, textLayout.frontZ, Math.PI),
     createSignTextPlane(flag.id, "back", textTexture, textLayout, textLayout.backZ, 0),
   );
@@ -155,6 +188,7 @@ function redrawText(rendered: RenderedFlag, flag: PlacedFlagObject): void {
   }
 
   context.clearRect(0, 0, canvas.width, canvas.height);
+  // Text is centred; lines are stacked as a block centred vertically on the canvas.
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillStyle = flag.fontColor;
@@ -174,6 +208,7 @@ function redrawText(rendered: RenderedFlag, flag: PlacedFlagObject): void {
   rendered.textTexture.needsUpdate = true;
 }
 
+// Picks the largest font whose character-wrapped lines fit within `maxWidth` x `maxHeight` (canvas pixels).
 function fitTextToCanvas(
   context: CanvasRenderingContext2D,
   message: string,
@@ -189,6 +224,7 @@ function fitTextToCanvas(
     };
   }
 
+  // Choose the largest line height whose wrapped text fits the canvas height.
   for (let lineHeight = MAX_TEXT_LINE_HEIGHT; lineHeight >= 12; lineHeight -= 1) {
     const fontSize = Math.floor(lineHeight * TEXT_LINE_HEIGHT_TO_FONT_SIZE);
     context.font = `bold ${fontSize}px sans-serif`;
@@ -198,6 +234,7 @@ function fitTextToCanvas(
     }
   }
 
+  // Nothing fit even at the minimum size; fall back to the minimum and let the text overflow.
   const lineHeight = 12;
   const fontSize = Math.floor(lineHeight * TEXT_LINE_HEIGHT_TO_FONT_SIZE);
   context.font = `bold ${fontSize}px sans-serif`;
@@ -208,6 +245,7 @@ function fitTextToCanvas(
   };
 }
 
+// Greedy per-character wrapping (no word boundaries); explicit newlines are honoured and empty lines kept.
 function wrapTextToWidth(context: CanvasRenderingContext2D, text: string, maxWidth: number): readonly string[] {
   const lines: string[] = [];
 
@@ -233,6 +271,7 @@ function wrapTextToWidth(context: CanvasRenderingContext2D, text: string, maxWid
 
 function measureTextWidth(context: CanvasRenderingContext2D, text: string): number {
   const measurement = context.measureText?.(text);
+  // Fallback estimate (16 px per character) for canvas implementations without measureText.
   return measurement?.width ?? text.length * 16;
 }
 
@@ -266,6 +305,7 @@ function createSignTextPlane(
     transparent: true,
     side: THREE.FrontSide,
     depthWrite: false,
+    // Pull the text towards the camera in depth to avoid z-fighting with the sign board.
     polygonOffset: true,
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
@@ -279,6 +319,7 @@ function createSignTextPlane(
 }
 
 function resolveFlagTextLayout(scene: THREE.Object3D, flagType: PlacedFlagObject["flagType"]): FlagTextLayout {
+  // World matrices are needed so Box3.setFromObject measures the scaled/rotated model.
   scene.updateMatrixWorld(true);
   const boardBox = findReadableBoardBox(scene);
 
@@ -288,6 +329,7 @@ function resolveFlagTextLayout(scene: THREE.Object3D, flagType: PlacedFlagObject
 
   const center = boardBox.getCenter(new THREE.Vector3());
   const size = boardBox.getSize(new THREE.Vector3());
+  // Front face lies at -z of the board box and back face at +z; calibration.zOffset pushes the planes outward.
   const halfDepth = size.z / 2;
   const calibration = writableAreaCalibrations[flagType];
 
@@ -301,6 +343,8 @@ function resolveFlagTextLayout(scene: THREE.Object3D, flagType: PlacedFlagObject
   };
 }
 
+// Heuristic: among meshes that are wide, tall and thin (depth < 40% of the larger face dimension),
+// pick the one maximising area * squareness * flatness, i.e. the large flat board rather than the post.
 function findReadableBoardBox(scene: THREE.Object3D): THREE.Box3 | undefined {
   let best: { readonly box: THREE.Box3; readonly score: number } | undefined;
 

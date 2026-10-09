@@ -1,53 +1,61 @@
+/**
+ * Comfort settings for VR locomotion and the anti-nausea vignette.
+ * `VrComfortOptions` is the single tunable set (speeds in meters/radians per second, dead zone, vignette shape/timing) shared by stick locomotion,
+ * turn, physical-step limits, and the vignette; partial overrides are always merged over `defaultVrComfortOptions`.
+ * The vignette is a camera-attached inverted sphere that darkens everything outside a cone around the view direction while artificial locomotion
+ * (stick move or turn) is active, which reduces the visual-vestibular mismatch.
+ */
 import * as THREE from "three";
 import type { RuntimeInputFrame } from "./renderState";
+import { defaultVrComfortOptions, type VrComfortOptions } from "../../glue/vrComfortOptions";
 
-export interface VrComfortOptions {
-  readonly moveSpeedMetersPerSecond: number;
-  readonly joystickDeadZone: number;
-  readonly turnSpeedRadiansPerSecond: number;
-  readonly maxPhysicalStepMeters: number;
-  readonly antiNauseaModeEnabled: boolean;
-  readonly antiNauseaVisibleFovScale: number;
-  readonly antiNauseaFadeFovDegrees: number;
-  readonly antiNauseaFadeSeconds: number;
-  readonly antiNauseaMaxOpacity: number;
-}
+export { defaultVrComfortOptions, type VrComfortOptions };
 
-export const defaultVrComfortOptions: VrComfortOptions = {
-  moveSpeedMetersPerSecond: 1.5,
-  joystickDeadZone: 0.18,
-  turnSpeedRadiansPerSecond: 1.35,
-  maxPhysicalStepMeters: 0.75,
-  antiNauseaModeEnabled: true,
-  antiNauseaVisibleFovScale: 0.5,
-  antiNauseaFadeFovDegrees: 6,
-  antiNauseaFadeSeconds: 0.14,
-  antiNauseaMaxOpacity: 0.96,
-};
-
+/**
+ * Handle for the vignette mesh created by `createVrComfortVignette`.
+ */
 export interface VrComfortVignette {
+  /** Inverted sphere (radius 0.5) parented to the camera; hidden while fully transparent. */
   readonly root: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
+  /** Merges new comfort options over the current ones; takes effect at the next `update`. */
   setOptions(options: Partial<VrComfortOptions>): void;
+  /**
+   * Advances the fade and refreshes the shader cones. `active` should be true while artificial locomotion occurs, `deltaSeconds` is the frame time,
+   * and `normalFovDegrees` is the camera's full vertical field of view in degrees. Call every frame.
+   */
   update(options: {
     readonly active: boolean;
     readonly deltaSeconds: number;
     readonly normalFovDegrees: number;
   }): void;
+  /** Detaches the mesh from the camera and frees its geometry and material; the creator must call it. */
   dispose(): void;
 }
 
+/**
+ * Cone angles describing the vignette's clear and fade regions.
+ */
 export interface ComfortVignetteAngles {
+  /** Half-angle in radians inside which nothing is darkened. */
   readonly innerConeRadians: number;
+  /** Half-angle in radians beyond which the vignette is fully dark; never less than the inner angle nor more than half the full FOV. */
   readonly outerConeRadians: number;
+  /** Full field of view, in degrees, that remains clear. */
   readonly visibleFovDegrees: number;
 }
 
+// Clamp ranges for the vignette math; locomotionEpsilon is the threshold for treating input as motion.
 const minVisibleFovScale = 0.05;
 const maxVisibleFovScale = 1;
 const minFovDegrees = 1;
 const maxFovDegrees = 179;
 const locomotionEpsilon = 1e-5;
 
+/**
+ * Creates the vignette mesh and adds it as a child of `camera` (so it follows the view); initial state is invisible.
+ * The cones are measured from the camera's -z (forward) axis. The renderOrder is high, depth test is off, so it draws over the scene.
+ * Lifecycle: the caller must call `dispose()` on the returned handle.
+ */
 export function createVrComfortVignette(
   camera: THREE.Camera,
   options: Partial<VrComfortOptions> = {},
@@ -101,6 +109,7 @@ export function createVrComfortVignette(
       comfort = { ...comfort, ...nextOptions };
     },
     update(updateOptions) {
+      // Fade toward 1 or 0, then hide the mesh when effectively transparent to skip drawing it.
       const targetActive = updateOptions.active && comfort.antiNauseaModeEnabled;
       opacity = advanceComfortVignetteOpacity(opacity, targetActive, updateOptions.deltaSeconds, comfort);
       uniforms.uOpacity.value = opacity * clamp01(comfort.antiNauseaMaxOpacity);
@@ -122,6 +131,10 @@ export function createVrComfortVignette(
   };
 }
 
+/**
+ * Computes inner/outer cone half-angles from the full vertical FOV in degrees (clamped to 1..179) and the options.
+ * Inner = half of FOV times visible-scale; outer = inner plus the fade width, capped at half the FOV.
+ */
 export function resolveComfortVignetteAngles(
   normalFovDegrees: number,
   options: Partial<VrComfortOptions> = {},
@@ -146,6 +159,10 @@ export function resolveComfortVignetteAngles(
   };
 }
 
+/**
+ * True when the frame's local displacement (meters) or yaw delta (radians) exceeds a small epsilon, i.e. the player is moved or turned artificially.
+ * Physical head motion is not part of such a frame, so it does not trigger comfort effects.
+ */
 export function isArtificialLocomotionActive(
   frame: Pick<RuntimeInputFrame, "localDisplacement" | "yawDeltaRadians">,
 ): boolean {
@@ -153,6 +170,9 @@ export function isArtificialLocomotionActive(
     Math.abs(frame.yawDeltaRadians) > locomotionEpsilon;
 }
 
+/**
+ * Moves `currentOpacity` toward 1 (if `active`) or 0 at a rate of one full range per `antiNauseaFadeSeconds`; negative `deltaSeconds` is treated as 0. Returns a value in [0, 1] (given an input in range).
+ */
 export function advanceComfortVignetteOpacity(
   currentOpacity: number,
   active: boolean,

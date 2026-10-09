@@ -1,3 +1,8 @@
+/**
+ * Policy for derived objects (geodesics, measured geodesic lengths, protractor angles, geodesic intersection markers) when a newly deformed world geometry is committed.
+ * A geodesic traced in the old geometry is generally not a geodesic of the new one, so unlocked geodesics are deleted together with the measurements and angles that depend on them. Locked geodesics (connecting two emitters) are re-solved with rebuildConnectedGeodesicBetweenEmitters in the new world; if that finds no connection they are deleted and reported as failed. Surviving measurements and protractor angles are recomputed, and orphaned intersection objects are pruned.
+ * The function mutates the runtime object registry in place and reports what changed through renderer-agnostic callbacks and a result record of id lists; it does not touch the renderer itself.
+ */
 import type { CompiledCellComplex } from "../cell-complex/compileCellComplex";
 import type { Vec3 } from "../math/vec3";
 import {
@@ -16,24 +21,42 @@ import {
 } from "../world-objects/protractorTool";
 import type { RuntimeObjectRegistry, RuntimeWorldObject } from "../world-objects/runtimeObjectRegistry";
 
+/**
+ * Optional renderer hooks invoked as the policy removes or updates dependent objects so visuals can follow.
+ */
 export interface GeometryCommitComputedObjectPolicyCallbacks {
+  /** Called with the id of a measured-length object just removed from the registry. */
   readonly removeMeasuredGeodesicLength?: (objectId: string) => void;
+  /** Called with a measured-length object whose recomputed value replaced the old one in the registry. */
   readonly syncMeasuredGeodesicLength?: (object: MeasuredGeodesicLengthObject) => void;
+  /** Called with the id of a protractor angle just removed from the registry. */
   readonly removeProtractorAngle?: (objectId: string) => void;
+  /** Called with a refreshed protractor angle after it replaced the old one in the registry. */
   readonly syncProtractorAngle?: (object: ProtractorAngleObject) => void;
 }
 
+/** Inputs for applying the post-commit policy. */
 export interface ApplyGeometryCommitComputedObjectPolicyOptions {
+  /** Newly committed compiled world in which locked geodesics are re-solved. */
   readonly world: CompiledCellComplex;
+  /** Runtime object registry that is mutated in place. */
   readonly registry: RuntimeObjectRegistry;
+  /** Cell containing the player, used to recompute measured lengths relative to the player. */
   readonly playerCellId: string;
+  /** Player position in playerCellId's local frame (meters), after the commit. */
   readonly playerPoint: Vec3;
   readonly callbacks?: GeometryCommitComputedObjectPolicyCallbacks;
 }
 
+/**
+ * Ids (deduplicated, in first-seen order) of the objects the policy removed, rebuilt, refreshed or pruned.
+ */
 export interface GeometryCommitComputedObjectPolicyResult {
   readonly removedGeodesicIds: readonly string[];
   readonly rebuiltGeodesicIds: readonly string[];
+  /**
+   * Locked geodesics that could not be re-solved in the new geometry; these are also listed in removedGeodesicIds.
+   */
   readonly failedLockedGeodesicIds: readonly string[];
   readonly removedMeasuredGeodesicLengthIds: readonly string[];
   readonly refreshedMeasuredGeodesicLengthIds: readonly string[];
@@ -42,6 +65,9 @@ export interface GeometryCommitComputedObjectPolicyResult {
   readonly prunedIntersectionIds: readonly string[];
 }
 
+/**
+ * Applies the post-commit policy to the registry (delete unlocked geodesics, re-solve locked ones, refresh dependent measurements and angles, prune stale intersections) and returns what changed.
+ */
 export function applyGeometryCommitComputedObjectPolicy(
   options: ApplyGeometryCommitComputedObjectPolicyOptions,
 ): GeometryCommitComputedObjectPolicyResult {

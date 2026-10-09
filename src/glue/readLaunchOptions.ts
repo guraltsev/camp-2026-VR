@@ -1,3 +1,8 @@
+/**
+ * Parses the page URL's query string into a LaunchOptions record, with precedence: explicit URL parameter, then the app config's value, then the built-in default.
+ * Recognized parameters include world, ui, debugLevel (legacy debug), portalPanels (legacy debugOptions containing portal-panels), debugOptions, debugOverlay, debugOverlayItems, renderQuality, antiNausea and antiNauseaFovScale. Unknown or invalid values fall back silently; numbers are clamped.
+ * The result is immutable and is the single description of how a run was launched; main.ts passes it to the renderer and updates it as the user changes settings.
+ */
 import { defaultWorldId, findWorldCatalogEntry, normalizeWorldId } from "../authoring/worldCatalog";
 import { parseDebugOptions, type DebugOptionId } from "./debugOptions";
 import { parseDebugLevel, type DebugLevelId } from "./debugLevels";
@@ -8,12 +13,23 @@ import {
   type RuntimeDebugOverlayItemId,
 } from "../runtime/runtimeMenuState";
 import { defaultAppConfig, defaultAppConfigName, type AppConfig } from "./appConfig";
-import { defaultVrComfortOptions, type VrComfortOptions } from "../render/three/vrComfort";
+import { defaultVrComfortOptions, type VrComfortOptions } from "./vrComfortOptions";
 
+/**
+ * Resolved settings for one run of the app: world, UI toggles, debug settings, comfort options and the app config they came from.
+ */
 export interface LaunchOptions {
+  /** Id of a known world catalog entry (unknown requests fall back to the default world). */
   readonly selectedWorldId: string;
+  /** Enabled UI widgets, in canonical order; derived from renderWorldPicker and renderDebugButton. */
   readonly uiOptions: readonly UiOptionId[];
+  /**
+   * Whether the world picker is shown: the ui parameter if present, otherwise the app config's menu flag.
+   */
   readonly renderWorldPicker: boolean;
+  /**
+   * Whether the debug button is shown: the ui parameter if present, otherwise the app config's menu flag.
+   */
   readonly renderDebugButton: boolean;
   readonly debugLevel: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
@@ -21,11 +37,17 @@ export interface LaunchOptions {
   readonly debugOverlayEnabled: boolean;
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
   readonly renderQualityEnabled: boolean;
+  /** VR comfort settings; antiNauseaVisibleFovScale is clamped to [0.05, 1]. */
   readonly vrComfortOptions: VrComfortOptions;
+  /** The normalized app config in effect. */
   readonly appConfig: AppConfig;
+  /** Name of the config the appConfig was loaded from. */
   readonly appConfigName: string;
 }
 
+/**
+ * Builds LaunchOptions from a location's query string, the loaded app config and its name, applying URL > config > default precedence for each field.
+ */
 export function readLaunchOptions(
   location: Location,
   appConfig: AppConfig = defaultAppConfig,

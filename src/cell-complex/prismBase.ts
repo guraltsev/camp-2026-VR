@@ -1,7 +1,17 @@
+/**
+ * Type-level and runtime validation of the base polygon of a prism cell.
+ * A base is a list of 3 to 8 [x, y] vertices in cell-local meters that must be strictly convex and listed counterclockwise when viewed from +z. The tuple types fix the vertex count at compile time and a branded type records that a base passed validation; the runtime validator is the same rule enforced on authored specs.
+ */
 import { geometryTolerance } from "../math/tolerances";
 
+/**
+ * A base corner as an [x, y] pair in cell-local meters.
+ */
 export type PrismBaseVertex = readonly [number, number];
 
+/**
+ * Tuple of 3 to 8 base vertices.
+ */
 export type PrismBaseVertices =
   | readonly [PrismBaseVertex, PrismBaseVertex, PrismBaseVertex]
   | readonly [PrismBaseVertex, PrismBaseVertex, PrismBaseVertex, PrismBaseVertex]
@@ -29,10 +39,17 @@ export type PrismBaseVertices =
 
 declare const convexPrismBaseBrand: unique symbol;
 
+/**
+ * A vertex tuple branded as having passed {@link validatePrismBaseVertices}; the brand exists only at the type level.
+ */
 export type ConvexPrismBaseVertices<TVertices extends PrismBaseVertices = PrismBaseVertices> = TVertices & {
   readonly [convexPrismBaseBrand]: true;
 };
 
+/**
+ * Validates the vertices and returns them branded as convex and counterclockwise.
+ * @throws Error with the validation message if {@link validatePrismBaseVertices} reports a problem.
+ */
 export function createConvexPrismBaseVertices<const TVertices extends PrismBaseVertices>(
   vertices: TVertices,
 ): ConvexPrismBaseVertices<TVertices> {
@@ -45,6 +62,10 @@ export function createConvexPrismBaseVertices<const TVertices extends PrismBaseV
   return vertices as ConvexPrismBaseVertices<TVertices>;
 }
 
+/**
+ * Returns an error message if the vertices are not 3-8 strictly convex counterclockwise points, or undefined if valid.
+ * Requires positive signed area (> geometryTolerance) and a strictly left turn (cross product > geometryTolerance) at every vertex, so collinear consecutive vertices are rejected.
+ */
 export function validatePrismBaseVertices(vertices: readonly PrismBaseVertex[]): string | undefined {
   if (vertices.length < 3) {
     return "must have at least 3 base vertices.";

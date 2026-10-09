@@ -1,3 +1,73 @@
+/**
+ * Geodesic emitters ("cannons"), geodesic intervals and curve shortening on a glued cell complex.
+ *
+ * ## Setting
+ * The world is a cell complex: convex prism cells, each with its own local frame (x right, y forward, z up, meters), glued along
+ * portals. A portal carries a rigid map `transformToTarget` from its cell's frame to the neighbouring cell's frame. A geodesic is a
+ * locally straight horizontal line: it is a straight ray inside each cell and continues across a portal as the image of that ray under
+ * `transformToTarget`. Radians are counter-clockwise from +x (`yaw`); lengths are meters; all beams lie at a constant height
+ * (`geodesicRayBeamHeightMeters` above the emitter floor point).
+ *
+ * ## Objects (all live in a `RuntimeObjectRegistry`)
+ * - `GeodesicCannonObject` (emitter): a placed object that geodesic endpoints can attach to.
+ * - `FreeGeodesicEndObject`: an invisible anchor for an endpoint that is not on an emitter.
+ * - `GeodesicIntervalObject`: THE authoritative geodesic. It has two endpoint attachments (`start`, `end`; each names an anchor object, an
+ *   emitter or a free end) and a PORTAL WORD: the ordered list of portal traversals from `start` to `end`. Nothing else is stored.
+ * - `GeodesicSegmentObject`: derived, per-cell straight pieces of an interval, regenerated from the interval whenever it changes.
+ *   Never edit them directly. Their `terminal` says why a piece stops: `open` (the length was used up), `portal-hit` (continues in the
+ *   next segment), `wall-hit`, `forbidden-zone-hit` (cylinder of a junction) or `emitter-hit`. Each interval's segments are also
+ *   labelled with a `halfRole` (the first half of the total length belongs to the `start` role, the second to `end`), so that a click
+ *   on a segment resolves to an endpoint (`resolveGeodesicEndpointSelectionFromSegmentHit`).
+ * - `GeodesicIntersectionObject`: computed markers where segments of two different geodesics cross in a cell.
+ * - `CurveShorteningPairObject`: bookkeeping of one shortening process (see below).
+ *
+ * ## Development: how a portal word fixes the geometry
+ * Let the word read from `a` be `t_1 ... t_n`, with `T_i` the `transformToTarget` of the portal of `t_i`. The destination anchor `b`
+ * lives in the frame of the last cell. Its pull-back `T_1^{-1}(... T_n^{-1}(b))` expresses it in the frame of `a`'s cell
+ * (`liftGeodesicEndpoint`). The geodesic of that class is the straight segment from `a` to the pull-back; its direction is the launch
+ * yaw and its length is the geodesic length (`rebuildDerivedGeodesicSegments`). To obtain the per-cell segments, that chord is traced
+ * through the world (`traceGeodesicSegment` per cell, restarted in the target cell at each `portal-hit`), and the trace is accepted only
+ * if the portals it actually crosses reproduce the stored word, otherwise it would be a different homotopy class. Reading the word
+ * from `end` uses `reverseGeodesicPortalWord`. A chord shorter than `GEODESIC_MIN_LENGTH_METERS` is degenerate. Free ends (not on emitters) are
+ * "free" because shooting (`shootGeodesic`) fixes the word by tracing the ray first and then recording what it crossed.
+ *
+ * ## Locked and moving intervals
+ * An interval whose both endpoints are emitters is LOCKED (`isGeodesicLocked`): carrying an emitter keeps the interval and updates its
+ * word by the portal the emitter crossed (`rebuildLockedGeodesicFromEndpointsAndPortalWord`). An interval with an emitter and a free end
+ * is an aimable free geodesic (`aimFreeGeodesicFromEndpoint`, `extendGeodesic`, split by `splitGeodesicIntervalAtSegmentHit`).
+ * `motionState: "moving"` marks intervals owned by a curve-shortening pair; `"stable"` is everything else.
+ *
+ * ## Curve shortening (issue 31/32)
+ * `tieAndDetachGeodesicEndpoints` detaches two endpoint roles (possibly the two roles of one loop) from an emitter and ties them to one
+ * shared free end F, creating a `CurveShorteningPairObject`. Each tick (`advanceCurveShorteningPairs`) moves F in the direction
+ * `normalize(u + v)` (`u`, `v` unit tangents of the two arcs at F, pointing away from F), which is the steepest descent of total length
+ * (first variation `dL = -(u + v) . dF`), by a bounded step; when F crosses a portal, each arc's word is extended by that portal
+ * (`updatePortalWordForMovedEndpoint`), otherwise the words stay fixed (no search over homotopy classes). Every arc is re-traced as a
+ * preview before anything is written (`previewRebuildGeodesicInterval`). When the corner at F is straight (`u + v` vanishes, or the angle
+ * is within `curveShorteningFuseAngleToleranceRadians` of pi) the pair becomes `"ready-to-fuse"` and `fuseCurveShorteningPair` merges the
+ * arcs into one stable geodesic whose word is the role-aware concatenation of the two arcs' words, freely reduced
+ * (`getPortalWordBetweenEndpointRoles`, `reduceAdjacentInversePortalTraversals`). A single interval whose two roles share F is a
+ * free loop; fusing it keeps it as a stable free loop. A very short arc is absorbed into the other (`absorbShortCurveShorteningHalf`);
+ * forbidden-zone hits delete the offending arc (the other survives as a stable free geodesic).
+ * Monotone descent: a previewed tick whose total length exceeds the pair's recorded `previousTotalLengthMeters` by more than
+ * `curveShorteningLengthIncreaseToleranceMeters` is not committed. A ready pair whose fusion fails without a forbidden zone reverts to
+ * `"moving"`, and a free loop shorter than `GEODESIC_MIN_LENGTH_METERS` is deleted.
+ *
+ * ## Intersections and bookkeeping
+ * `updateGeodesicIntersectionObjects` recomputes the crossing markers of all segments (same cell, different geodesics) and keeps marker ids
+ * stable. Emitter objects also carry caches (`geodesicIds`, `activeGeodesicId`, per-geodesic yaw) that `syncLegacyEmitterGeodesicFields`
+ * keeps in line with the intervals.
+ *
+ * ## Legacy
+ * The pre-interval model (emitter-to-emitter `geodesicConnectionsById`, `"straightening"` same-cell polylines, `tieAndDetachIncidentGeodesics`,
+ * `advanceStraighteningGeodesics`) is still present in several functions; those parts are marked `Legacy:`.
+ *
+ * ## Constants
+ * Meters unless stated. `GEODESIC_MIN_LENGTH_METERS` (0.15) minimum chord of a geodesic; `minGeodesicSegmentLengthMeters` (0.05) minimum
+ * piece when splitting; `intersectionTolerance` (1e-7) numerical zero; `portalStartEpsilonMeters` (1e-4) nudge past a portal;
+ * `emitterConnectionToleranceMeters` (0.3) capture radius around an emitter; `curveShortening*` (speed 0.4 m/s, angle 0.03 rad, absorb
+ * tolerance 0.165 m, minimum step 0.002 m) parameters of the shortening tick.
+ */
 import type { CompiledCellComplex } from "../cell-complex/compileCellComplex";
 import { getDynamicObjectCollisionBounds, simpleCylinderIntersectsSimpleCylinder, testCellCollision } from "../movement/collision";
 import type { SimpleCollisionCylinder } from "../movement/dynamicObject";
@@ -15,22 +85,53 @@ import { addVec3, distanceVec3, normalizeVec3, scaleVec3, subVec3, type Vec3 } f
 import type { RuntimeObjectRegistry, RuntimeWorldObject, RuntimeWorldObjectBase } from "./runtimeObjectRegistry";
 import { runtimeObjectToDynamicObjectState } from "./runtimeObjectRegistry";
 
+// ---- Runtime object shapes ----
+
+/**
+ * A geodesic emitter ("cannon"): a placeable runtime object that geodesic intervals attach their endpoints to.
+ *
+ * The cannon sits on the cell floor (`localPose.translation.z` is the floor height); the beam it emits starts
+ * `geodesicRayBeamHeightMeters` above that. Frames are cell-local (x right, y forward, z up). The cannon does NOT own
+ * geometry: the authoritative geodesic data are the `GeodesicIntervalObject`s whose `start`/`end` attachments reference
+ * this cannon's id; `geodesicIds`, `activeGeodesicId`, `geodesicEmitterYawRadiansById` and `geodesicConnectionsById` are
+ * menu/UI caches kept in sync by `syncLegacyEmitterGeodesicFields` and may lag behind the registry.
+ */
 export interface GeodesicCannonObject extends RuntimeWorldObjectBase {
   readonly kind: "geodesic-cannon";
+  /** Marker consumed by `canObjectAttachGeodesics`: this object may be the anchor of an interval endpoint. */
   readonly canAttachGeodesics?: true;
+  /** Geodesic currently selected in the emitter menu (cache; may name a geodesic that no longer exists). */
   readonly activeGeodesicId?: string;
+  /** Ids of geodesics listed under this cannon (cache of the interval attachments). */
   readonly geodesicIds: readonly string[];
+  /** Per-geodesic launch yaw in radians (cell-local, 0 = +x, counter-clockwise); overrides `aimYawRadians` for that geodesic. */
   readonly geodesicEmitterYawRadiansById?: Readonly<Record<string, number>>;
+  /** Legacy: per-geodesic connection state from the pre-interval model; superseded by interval endpoint attachments (see `getGeodesicConnection`). */
   readonly geodesicConnectionsById?: Readonly<Record<string, GeodesicEmitterConnection>>;
+  /** Default launch yaw in radians, normalized by `sanitizeYaw`; equals the yaw of `localPose.rotation`. */
   readonly aimYawRadians: number;
 }
 
+/**
+ * Legacy: connection record of the pre-interval model describing how a geodesic leaves and (maybe) re-enters emitters.
+ *
+ * In the current model this is derived from interval attachments by `getGeodesicConnection`; the stored `"straightening"`
+ * state belongs to the retired same-cell straightening path (see `advanceStraighteningGeodesics`).
+ */
 export interface GeodesicEmitterConnection {
   readonly outgoingEmitterId: string;
   readonly incomingEmitterId?: string;
   readonly state: "open" | "connected" | "straightening";
 }
 
+/**
+ * One crossing of a portal, recorded by the ids on both sides; a sequence of these is a portal word.
+ *
+ * Invariant for a valid word: consecutive traversals chain, i.e. `word[i].targetCellId === word[i+1].sourceCellId`.
+ * The rigid transform is not stored; it is recovered from the compiled world as
+ * `world.cellsById.get(sourceCellId).portalsById.get(sourcePortalId).transformToTarget`, which maps
+ * source-cell-local coordinates to target-cell-local coordinates.
+ */
 export interface GeodesicPortalTraversal {
   readonly sourceCellId: string;
   readonly sourcePortalId: string;
@@ -38,58 +139,115 @@ export interface GeodesicPortalTraversal {
   readonly targetPortalId: string;
 }
 
+/** A `GeodesicPortalTraversal` that also carries the portal's rigid transform, reported when a carried emitter crosses a portal. */
 export interface GeodesicCarryPortalTransition extends GeodesicPortalTraversal {
   readonly transformToTarget: RigidTransform3;
 }
 
+/** Which end of a geodesic interval: `"start"` is the end the portal word is read from, `"end"` the one it arrives at. */
 export type GeodesicEndRole = "start" | "end";
+/**
+ * Which half of an interval a derived segment belongs to (split at the midpoint of the total length).
+ *
+ * A `"start"` half is attached to `interval.start`, an `"end"` half to `interval.end`; used so a clicked segment can be
+ * resolved to an endpoint (see `resolveGeodesicEndpointSelectionFromSegmentHit`).
+ */
 export type GeodesicHalfRole = "start" | "end";
 
+/** Attachment of one endpoint role of one geodesic interval to an anchor object (emitter or free end). */
 export interface GeodesicEndpointAttachment {
   readonly geodesicId: string;
   readonly role: GeodesicEndRole;
   readonly anchorObjectId: string;
 }
 
+/** An endpoint attachment picked by the user (typically from a segment hit) as input to tie-and-detach. */
 export interface GeodesicEndpointSelection extends GeodesicEndpointAttachment {}
 
+/**
+ * An invisible, non-colliding anchor object marking a geodesic endpoint that is not on an emitter.
+ *
+ * Its `localPose.translation` is the endpoint position in cell `cellId` (cell-local meters, including beam height in z).
+ * It is deleted automatically once no interval refers to it (`removeUnusedFreeGeodesicEnds`). A shared free end (two
+ * attached roles) is the moving vertex of a curve-shortening pair.
+ */
 export interface FreeGeodesicEndObject extends RuntimeWorldObjectBase {
   readonly kind: "free-geodesic-end";
   readonly canAttachGeodesics: true;
+  /** Optional face the end was authored on; informational, not used by the tracing math. */
   readonly faceId?: string;
 }
 
+/**
+ * The authoritative description of one geodesic: two endpoint attachments plus the portal word joining them.
+ *
+ * Invariants: `start.geodesicId === end.geodesicId === id`; `startCellId` (= `cellId`) is the cell of the `start`
+ * anchor; `portalWord` is ordered from `start` toward `end`, chains cell to cell, begins in `startCellId` and ends
+ * in the `end` anchor's cell (see `portalWordMatchesCurrentEndpointCells`). The geometry (a straight line in the
+ * development along `portalWord`) is fully determined by these data and is materialized as
+ * `GeodesicSegmentObject`s by `rebuildDerivedGeodesicSegments`. The interval itself is invisible and not collidable.
+ */
 export interface GeodesicIntervalObject extends RuntimeWorldObjectBase {
   readonly kind: "geodesic-interval";
   readonly start: GeodesicEndpointAttachment;
   readonly end: GeodesicEndpointAttachment;
+  /** Cell containing the `start` anchor; the tracing of the interval begins here. Mirrors `cellId`. */
   readonly startCellId: string;
+  /** Ordered `start` -> `end` list of portals crossed; it fixes the homotopy class of the geodesic (empty when both ends are in one cell and the path stays inside it). */
   readonly portalWord: readonly GeodesicPortalTraversal[];
+  /** `"moving"` while the interval belongs to a curve-shortening pair and is being retraced each tick; `"stable"` otherwise. */
   readonly motionState: "stable" | "moving";
 }
 
+/**
+ * Bookkeeping object owning one curve-shortening process: two endpoint roles glued at a shared free end that slides downhill.
+ *
+ * Invariants (see issue 32): `first` and `second` are different endpoint roles attached to `freeEndAnchorId`
+ * (they may belong to the same interval, which is then a free loop); every referenced interval is `"moving"`.
+ * The object is invisible; `cellId`/`localPose` merely mirror `lastGoodFreeEndCellId`/`lastGoodFreeEndPoint`.
+ */
 export interface CurveShorteningPairObject extends RuntimeWorldObjectBase {
   readonly kind: "curve-shortening-pair";
   readonly first: GeodesicEndpointAttachment;
   readonly second: GeodesicEndpointAttachment;
+  /** Id of the shared `FreeGeodesicEndObject` that both roles attach to. */
   readonly freeEndAnchorId: string;
+  /** Total length (meters) of the owned intervals after the last committed tick; the monotonicity reference. Updated only on a successful tick. */
   readonly previousTotalLengthMeters?: number;
+  /** Cell of the shared free end at the last committed tick; rollback target. */
   readonly lastGoodFreeEndCellId: string;
+  /** Cell-local position (meters) of the shared free end at the last committed tick; rollback target. */
   readonly lastGoodFreeEndPoint: Vec3;
+  /** `"ready-to-fuse"` once the free end is (nearly) straight; `fuseCurveShorteningPair` consumes it. */
   readonly state: "moving" | "ready-to-fuse";
 }
 
+/**
+ * An interval's far endpoint pulled back into the cell of a chosen source endpoint (the "development" of the interval).
+ *
+ * Within the source cell's local frame, the geodesic is the straight segment from `sourcePoint` to
+ * `targetPointInSourceCell`; its length is the interval's length and its direction is the launch direction.
+ */
 export interface LiftedGeodesicEndpoint {
   readonly sourceRole: GeodesicEndRole;
   readonly targetRole: GeodesicEndRole;
   readonly sourceAnchorObjectId: string;
   readonly targetAnchorObjectId: string;
+  /** Cell containing the source anchor (frame of `sourcePoint` and `targetPointInSourceCell`). */
   readonly sourceCellId: string;
   readonly sourcePoint: Vec3;
+  /** Target anchor position expressed in the source cell's frame after undoing the portal word (meters). */
   readonly targetPointInSourceCell: Vec3;
+  /** The interval's word read from `sourceRole` to `targetRole` (reversed if the source is `"end"`). */
   readonly portalWordFromSourceToTarget: readonly GeodesicPortalTraversal[];
 }
 
+/**
+ * Outcome of rebuilding an interval's derived geometry: the interval, its new segments, and how the trace ended.
+ *
+ * `terminal` classifies the last trace: `free-end` (reached a free end), `emitter-hit` (reached an emitter), or a failure
+ * kind (`wall-hit`, `forbidden-zone-hit`) when the path was cut short.
+ */
 export interface GeodesicTraceBuildResult {
   readonly interval: GeodesicIntervalObject;
   readonly segments: readonly GeodesicSegmentObject[];
@@ -100,26 +258,60 @@ export interface GeodesicTraceBuildResult {
     | { readonly kind: "wall-hit"; readonly sideIndex: number };
 }
 
+/**
+ * A derived, per-cell straight piece of a geodesic: a ray inside one cell from `start` along `direction` for `lengthMeters`.
+ *
+ * A geodesic crossing portals is represented by consecutive segments (ids `<geodesicId>:segment:<n>`), each ending at a
+ * portal (terminal `portal-hit`) except the last. Segments are computed data (regenerated by `rebuildDerivedGeodesicSegments`
+ * and friends); never edit them to change a geodesic. `cellId` is the cell whose frame `start`/`direction` use.
+ */
 export interface GeodesicSegmentObject extends RuntimeWorldObjectBase {
   readonly kind: "geodesic-segment";
+  /** Id of the owning `GeodesicIntervalObject` (or, for legacy data, of the emitter-side geodesic). */
   readonly geodesicId: string;
+  /** Display number ("G1", "G2", ...) assigned by `getGlobalGeodesicNumbers`; optional cache. */
   readonly geodesicNumber?: number;
+  /** 0-based position along the geodesic from its `start`; segments sort by this. */
   readonly segmentIndex: number;
+  /** Set when the segment belongs to the start or end half of the interval (halves split at half the total length). */
   readonly halfRole?: GeodesicHalfRole;
+  /** Segment origin in `cellId`'s frame (meters; z is the constant beam height). */
   readonly start: Vec3;
+  /** Unit horizontal travel direction (z = 0) in `cellId`'s frame. */
   readonly direction: Vec3;
+  /** Length in meters, measured along `direction` from `start`. */
   readonly lengthMeters: number;
+  /** What stops this segment; `portal-hit` means the geodesic continues in the next segment. */
   readonly terminal: GeodesicSegmentTerminal;
+  /** Display state of the owning geodesic: `"connected"` (emitter at both ends), `"open"`, or `"straightening"`, which is now also used for `"moving"` curve-shortening intervals (see `resolveDerivedSegmentConnectionState`). */
   readonly connectionState?: "open" | "connected" | "straightening";
+  /** UI-only highlight for a half chosen in the tie-and-detach flow. */
   readonly highlightState?: "tie-detach-selected";
 }
 
+/**
+ * A computed marker where two distinct geodesics' segments cross in the same cell.
+ *
+ * Derived data maintained by `updateGeodesicIntersectionObjects`; ids are remembered per geodesic/segment pair so markers stay stable between frames.
+ */
 export interface GeodesicIntersectionObject extends RuntimeWorldObjectBase {
   readonly kind: "geodesic-intersection";
+  /** The two crossing geodesics (distinct ids). */
   readonly geodesicIds: readonly [string, string];
+  /** The two crossing segments, in the same order as `geodesicIds`. */
   readonly segmentIds: readonly [string, string];
 }
 
+/**
+ * How a single per-cell segment ends.
+ *
+ * - `open`: the traced length was used up inside the cell (the requested length, or the lifted chord, ends here).
+ * - `emitter-hit`: the segment ends at an emitter (when emitter connection is enabled or the anchored target is an emitter).
+ * - `portal-hit`: the ray reached a portal side; `targetStart`/`targetDirection` are the continuation in the target cell,
+ *   already pushed `portalStartEpsilonMeters` past the portal so the next trace does not re-hit it.
+ * - `wall-hit`: the ray reached a side without a portal (`sideIndex` of the cell's side list).
+ * - `forbidden-zone-hit`: the ray entered a forbidden collision zone of a junction (`junctionId`).
+ */
 export type GeodesicSegmentTerminal =
   | { readonly kind: "open" }
   | { readonly kind: "emitter-hit"; readonly emitterId: string }
@@ -134,6 +326,7 @@ export type GeodesicSegmentTerminal =
   | { readonly kind: "wall-hit"; readonly sideIndex: number }
   | { readonly kind: "forbidden-zone-hit"; readonly junctionId: string };
 
+/** Construction options for `createGeodesicCannonObject`; omitted optional fields get the defaults documented there. */
 export interface CreateGeodesicCannonOptions {
   readonly id: string;
   readonly cellId: string;
@@ -146,20 +339,29 @@ export interface CreateGeodesicCannonOptions {
   readonly collision?: SimpleCollisionCylinder;
 }
 
+/** Input for `traceGeodesicSegment`: trace one ray inside one cell, up to `maxLengthMeters`. */
 export interface TraceGeodesicSegmentInput {
   readonly world: CompiledCellComplex;
+  /** Cell whose frame `start` and `direction` use; must exist in `world`. */
   readonly cellId: string;
+  /** Ray origin, cell-local meters; only x and y affect the tracing (the ray is horizontal). */
   readonly start: Vec3;
+  /** Travel direction; its z is ignored and it is normalized horizontally. A zero horizontal direction is invalid input. */
   readonly direction: Vec3;
+  /** Maximum ray length in meters; must be finite and > 0 or `traceGeodesicSegment` throws. */
   readonly maxLengthMeters: number;
 }
 
+/** Input for `traceGeodesicSegmentWithEmitters`: a plain trace that also stops at emitters near the ray. */
 export interface TraceGeodesicSegmentWithEmittersInput extends TraceGeodesicSegmentInput {
   readonly registry: RuntimeObjectRegistry;
+  /** Geodesic being traced; emitters already listing this geodesic (other than the source) are not treated as hits. */
   readonly geodesicId: string;
+  /** Emitter the geodesic leaves from; unlike other emitters of the geodesic it may be hit again by the ray. */
   readonly sourceEmitterId: string;
 }
 
+/** One traced piece: the cell, the (normalized) ray used, the length actually travelled, and why it stopped. */
 export interface TraceGeodesicSegmentResult {
   readonly cellId: string;
   readonly start: Vec3;
@@ -168,92 +370,138 @@ export interface TraceGeodesicSegmentResult {
   readonly terminal: GeodesicSegmentTerminal;
 }
 
+/**
+ * Input for `shootGeodesic`: aim a cannon's geodesic along the cannon's yaw and trace it for `maxLengthMeters`.
+ */
 export interface ShootGeodesicInput {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
+  /** Emitter snapshot to shoot from; its pose, cell and `aimYawRadians` are written back to the registry copy. */
   readonly cannon: GeodesicCannonObject;
+  /** Id of the geodesic interval to create (or to re-aim if it already exists). */
   readonly geodesicId: string;
+  /** Total chord length to trace in meters; defaults to `defaultTraceLengthMeters` (2). */
   readonly maxLengthMeters?: number;
+  /** If true (default), a trace that ends at another emitter attaches the free end to it, producing a locked geodesic. */
   readonly connectEmitters?: boolean;
 }
 
+/**
+ * Input for `extendGeodesic`: lengthen an aimable free geodesic by `maxLengthMeters` along its emitter tangent.
+ */
 export interface ExtendGeodesicInput {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
+  /** Id of the geodesic interval to extend. */
   readonly geodesicId: string;
+  /** Extra length in meters added beyond the current total; defaults to `defaultTraceLengthMeters` (2). */
   readonly maxLengthMeters?: number;
   readonly connectEmitters?: boolean;
 }
 
+/**
+ * Input for `rebuildGeodesicToLength`: re-shoot a geodesic from its cannon with a new total length.
+ */
 export interface RebuildGeodesicToLengthInput {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
   readonly cannon: GeodesicCannonObject;
   readonly geodesicId: string;
+  /** Desired total length in meters; a non-positive or non-finite value clears the geodesic's segments and returns `[]`. */
   readonly totalLengthMeters: number;
+  /** If true (default), the trace may end by attaching to an emitter it reaches. */
   readonly connectEmitters?: boolean;
+  /** If true, the cannon is first re-aimed at the nearest emitter lying on its straight ray (within tolerance). */
   readonly snapToEmitter?: boolean;
+  /** If true, the geodesic is deleted when its trace ends in a forbidden zone. */
   readonly breakOnForbiddenZone?: boolean;
+  /** If false/absent, a locked (emitter-to-emitter) geodesic is returned unchanged instead of being re-shot. */
   readonly rebuildLocked?: boolean;
 }
 
+/** Request for `placeGeodesicCannonAtFloorPoint`: put a new cannon with id `id` on the floor of `cellId`. */
 export interface PlaceGeodesicCannonAtFloorPointRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
   readonly cellId: string;
+  /** Floor position in `cellId`'s frame (meters); only x and y are used, z is forced to 0. */
   readonly floorPoint: Vec3;
   readonly aimYawRadians: number;
   readonly id: string;
 }
 
+/** Request for `placeGeodesicCannonOnGeodesic`: put a new cannon on a segment of an existing free geodesic, splitting it there. */
 export interface PlaceGeodesicCannonOnGeodesicRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
+  /** Id of the geodesic interval to split. */
   readonly geodesicId: string;
+  /** Segment of that geodesic that carries the placement point; must belong to `geodesicId`. */
   readonly segmentId: string;
+  /** Distance from the segment start to the placement point, meters; clamped to `[0, segment.lengthMeters]`. */
   readonly distanceAlongSegmentMeters: number;
   readonly aimYawRadians: number;
   readonly id: string;
 }
 
+/** Request for `placeGeodesicCannonAtGeodesicVertex`: put a cannon at a point where geodesics cross in a cell, cutting each passing geodesic there. */
 export interface PlaceGeodesicCannonAtGeodesicVertexRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
   readonly cellId: string;
+  /** Vertex position in `cellId`'s frame, meters (z ignored). */
   readonly vertexPoint: Vec3;
   readonly aimYawRadians: number;
   readonly id: string;
+  /** Id factory for the geodesic that continues beyond the new cannon; `sideIndex` counts continuations created so far in this request. */
   readonly createContinuationGeodesicId: (sourceGeodesicId: string, sideIndex: number) => string;
 }
 
+/** Request for `connectGeodesicToEmitter`: close a free geodesic onto a second emitter. */
 export interface ConnectGeodesicToEmitterRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
+  /** Geodesic to close. */
   readonly geodesicId: string;
+  /** Emitter the geodesic must end at. */
   readonly incomingEmitterId: string;
+  /** Length in meters to trace from the source emitter along its tangent when looking for the incoming emitter. */
   readonly totalLengthMeters: number;
 }
 
+/** Request for `rebuildConnectedGeodesicBetweenEmitters`: recompute a locked geodesic after one of its emitters moved. */
 export interface RebuildConnectedGeodesicBetweenEmittersRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
+  /** The locked geodesic to rebuild. */
   readonly geodesicId: string;
+  /** Emitter that was just carried (moved); a portal crossing it made is folded into the portal word. Absent: rebuild with the stored word. */
   readonly carriedEmitterId?: string;
+  /** Snapshot of the carried emitter before the move; used to infer which portal it crossed. */
   readonly carriedEmitterBeforeMove?: GeodesicCannonObject;
+  /** Portal crossing reported by the mover; used when it matches the cells of the move. */
   readonly carriedEmitterPortalTransition?: GeodesicCarryPortalTransition;
+  /** Explicit replacement portal word (highest precedence); must chain from the start anchor's cell to the end anchor's cell. */
   readonly carriedPortalWord?: readonly GeodesicPortalTraversal[];
+  /** If true, a failed rebuild keeps the old geodesic instead of deleting it (a forbidden-zone hit still deletes it). */
   readonly preserveGeodesicOnRebuildFailure?: boolean;
+  /** If true, the rebuild may realize a different portal word than the expected one (the carried endpoint may leave the expected cell chain). */
   readonly allowOutOfBoundsCarriedEndpoint?: boolean;
 }
 
+/** Legacy: request for `tieAndDetachIncidentGeodesics`, the geodesic-id-keyed entry point kept for the retired straightening model. */
 export interface TieAndDetachIncidentGeodesicsRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
+  /** Emitter being detached. */
   readonly emitterId: string;
+  /** Id reused for the pair object (and `<id>:free-end`) created, and for the legacy straightening geodesic. */
   readonly geodesicId: string;
+  /** The two locked geodesics to tie; if omitted, the emitter must have exactly two selectable attachments. */
   readonly incidentGeodesicIds?: readonly [string, string];
 }
 
+/** Request for `tieAndDetachGeodesicEndpoints`: detach two endpoint roles from one emitter and tie them at a new shared free end. */
 export interface TieAndDetachGeodesicEndpointsRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -264,6 +512,7 @@ export interface TieAndDetachGeodesicEndpointsRequest {
   readonly createFreeEndId: () => string;
 }
 
+/** Legacy: request for `advanceStraighteningGeodesics`; same shape as `AdvanceCurveShorteningPairsRequest` without the debug sink. */
 export interface AdvanceStraighteningGeodesicsRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -271,6 +520,7 @@ export interface AdvanceStraighteningGeodesicsRequest {
   readonly speedMetersPerSecond?: number;
 }
 
+/** Request for `advanceCurveShorteningPairs`: advance every moving pair by `deltaSeconds`. */
 export interface AdvanceCurveShorteningPairsRequest {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -279,35 +529,78 @@ export interface AdvanceCurveShorteningPairsRequest {
   readonly onDebugMessage?: (message: string, detail?: unknown) => void;
 }
 
+/**
+ * Result of the cannon placement functions: the placed (registry) cannon, or `placed: false` with a coarse `reason`.
+ *
+ * `reason` is overloaded: besides real collisions, `"missing-cell"` is also returned when the segment/vertex to split does not exist and
+ * `"cell-collision"` when the split point is too close to a segment start or the split failed.
+ */
 export interface PlaceGeodesicCannonResult {
+  /** Whether a cannon was added to the registry. */
   readonly placed: boolean;
+  /** The cannon as stored in the registry (set when `placed`). */
   readonly object?: GeodesicCannonObject;
+  /** Why placement was refused (set when `!placed`). */
   readonly reason?: "missing-cell" | "cell-collision" | "runtime-object-collision";
 }
 
+// ---- Constants ----
+
+/** Collision cylinder of a new cannon: radius 0.3 m, height 0.75 m, standing on the floor. */
 const defaultCannonCollision: SimpleCollisionCylinder = {
   radius: 0.3,
   height: 0.75,
   offset: { x: 0, y: 0, z: 0.375 },
 };
+/** Height of the geodesic beam above an emitter's floor point, in meters. */
 export const geodesicRayBeamHeightMeters = 1.08;
+/** Horizontal distance (meters) by which a beam starts away from its emitter center along the launch direction; currently 0. */
 export const geodesicRayBeamStartOffsetMeters = 0;
+/** Smallest lifted chord length (meters) of a valid interval; shorter intervals are degenerate and are deleted or rejected. */
 export const GEODESIC_MIN_LENGTH_METERS = 0.15;
+/** Default total trace length (meters) when a caller passes no `maxLengthMeters`. */
 const defaultTraceLengthMeters = 2;
+/** Distance (meters) a continuation ray is pushed past a portal so the next trace does not immediately re-hit it. */
 const portalStartEpsilonMeters = 1e-4;
+/** Numerical tolerance for ray/side parallelism, hit parameters and length comparisons (meters / unitless). */
 const intersectionTolerance = 1e-7;
+/** Smallest segment/continuation length (meters) worth creating when splitting or building free geodesics. */
 export const minGeodesicSegmentLengthMeters = 0.05;
+/** Maximum distance (meters) between two geodesic points for them to count as one vertex when placing at a vertex; deliberately generous. */
 const vertexContinuityToleranceMeters = 10;
+/** Perpendicular distance (meters) within which a ray counts as hitting an emitter; equal to the cannon collision radius. */
 const emitterConnectionToleranceMeters = 0.3;
+/** Extra height (meters) above the beam at which an intersection marker is placed. */
 const geodesicIntersectionBalloonHeightOffsetMeters = 0.25;
+/** Legacy: default speed (m/s) of the retired same-cell straightening model. */
 export const geodesicStraighteningSpeedMetersPerSecond = 0.4;
+/** Legacy: distance (meters) at which the retired straightening model considers a geodesic straight. */
 const geodesicStraighteningToleranceMeters = 0.01;
+/** Default speed (m/s) at which a curve-shortening pair's shared free end moves downhill. */
 export const curveShorteningDefaultSpeedMetersPerSecond = 0.4;
+/** Turn-angle tolerance (radians) below which the free end counts as locally straight, so the pair is ready to fuse. */
 export const curveShorteningFuseAngleToleranceRadians = 0.03;
+/** Length tolerance (meters): a moving half shorter than this is absorbed when fusing; slightly above the minimum geodesic length. */
 export const curveShorteningFuseStepToleranceMeters = 1.1 * GEODESIC_MIN_LENGTH_METERS;
+/** Smallest free-end step (meters) worth taking; a smaller step stalls the tick (the pair may become ready to fuse). */
 export const curveShorteningMinStepMeters = 0.002;
+/**
+ * Length tolerance (meters) for the monotone-descent check of curve shortening: a previewed step is committed only if the new total
+ * length of the pair's arcs is at most `previousTotalLengthMeters + curveShorteningLengthIncreaseToleranceMeters`.
+ */
+export const curveShorteningLengthIncreaseToleranceMeters = 1e-4;
+/** Per-registry memory of intersection markers so ids remain stable while two segments keep crossing. */
 const geodesicIntersectionMemoryByRegistry = new WeakMap<RuntimeObjectRegistry, Map<string, GeodesicIntersectionObject>>();
 
+// ---- Construction and type guards ----
+
+/**
+ * Builds a geodesic emitter object from options, filling defaults.
+ *
+ * `aimYawRadians` defaults to the yaw of `localPose` and is sanitized; the stored pose rotation is replaced by a pure
+ * yaw rotation of that angle (so pitch/roll are discarded). `geodesicIds` defaults to `[activeGeodesicId]` or empty.
+ * Pure; does not touch any registry.
+ */
 export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions): GeodesicCannonObject {
   const aimYawRadians = sanitizeYaw(options.aimYawRadians ?? yawFromPose(options.localPose));
 
@@ -335,6 +628,13 @@ export function createGeodesicCannonObject(options: CreateGeodesicCannonOptions)
   };
 }
 
+/**
+ * Adds a new cannon standing on the floor at `floorPoint` unless the spot is blocked.
+ *
+ * Returns `{ placed: false, reason }` with `"missing-cell"` (unknown cell), `"cell-collision"` (cannon cylinder would
+ * intersect walls/forbidden zones, per `testCellCollision`) or `"runtime-object-collision"` (overlaps another collidable
+ * object in the cell); never throws. On success the cannon is added to the registry. Frame: cell-local, z forced to 0.
+ */
 export function placeGeodesicCannonAtFloorPoint(
   request: PlaceGeodesicCannonAtFloorPointRequest,
 ): PlaceGeodesicCannonResult {
@@ -373,30 +673,41 @@ export function placeGeodesicCannonAtFloorPoint(
   return { placed: true, object: candidate };
 }
 
+/** Type guard: true when the object is a `GeodesicSegmentObject` (`kind === "geodesic-segment"`). */
 export function isGeodesicSegmentObject(object: { readonly kind: string }): object is GeodesicSegmentObject {
   return object.kind === "geodesic-segment";
 }
 
+/** Type guard: true when the object is a `GeodesicIntersectionObject`. */
 export function isGeodesicIntersectionObject(object: { readonly kind: string }): object is GeodesicIntersectionObject {
   return object.kind === "geodesic-intersection";
 }
 
+/** Type guard: true when the object is a `GeodesicCannonObject`. */
 export function isGeodesicCannonObject(object: { readonly kind: string }): object is GeodesicCannonObject {
   return object.kind === "geodesic-cannon";
 }
 
+/** Type guard: true when the object is a `GeodesicIntervalObject`. */
 export function isGeodesicIntervalObject(object: { readonly kind: string }): object is GeodesicIntervalObject {
   return object.kind === "geodesic-interval";
 }
 
+/** Type guard: true when the object is a `FreeGeodesicEndObject`. */
 export function isFreeGeodesicEndObject(object: { readonly kind: string }): object is FreeGeodesicEndObject {
   return object.kind === "free-geodesic-end";
 }
 
+/** Type guard: true when the object is a `CurveShorteningPairObject`. */
 export function isCurveShorteningPairObject(object: { readonly kind: string }): object is CurveShorteningPairObject {
   return object.kind === "curve-shortening-pair";
 }
 
+/**
+ * Builds a free-end anchor at `point` (cell-local meters, including its beam height in z) in cell `cellId`.
+ *
+ * Pure; the caller adds it to the registry. The object is non-renderable through portals and can attach geodesics.
+ */
 export function createFreeGeodesicEndObject(input: {
   readonly id: string;
   readonly cellId: string;
@@ -412,6 +723,12 @@ export function createFreeGeodesicEndObject(input: {
   };
 }
 
+/**
+ * Builds a geodesic interval from two anchor ids, a start cell and an optional portal word.
+ *
+ * Defaults: empty `portalWord`, `motionState: "stable"`. Does not validate that the word matches the anchors' cells and
+ * does not generate segments; call `rebuildDerivedGeodesicSegments` afterwards. Pure; the caller adds it to the registry.
+ */
 export function createGeodesicIntervalObject(input: {
   readonly id: string;
   readonly startAnchorObjectId: string;
@@ -442,6 +759,11 @@ export function createGeodesicIntervalObject(input: {
   };
 }
 
+/**
+ * Builds a curve-shortening pair object (see `CurveShorteningPairObject`); `state` defaults to `"moving"`.
+ *
+ * Pure; the caller adds it to the registry. The pose mirrors the last-good free-end location.
+ */
 export function createCurveShorteningPairObject(input: {
   readonly id: string;
   readonly first: GeodesicEndpointAttachment;
@@ -468,6 +790,13 @@ export function createCurveShorteningPairObject(input: {
   };
 }
 
+// ---- Registry queries and edits of endpoint attachments ----
+
+/**
+ * Lists every interval endpoint attachment (start or end of any interval) whose anchor is `anchorObjectId`.
+ *
+ * An interval whose both ends attach to the same anchor appears twice (once per role). Order follows registry order.
+ */
 export function getGeodesicEndpointAttachmentsForAnchor(
   registry: RuntimeObjectRegistry,
   anchorObjectId: string,
@@ -478,6 +807,7 @@ export function getGeodesicEndpointAttachmentsForAnchor(
     .filter((attachment) => attachment.anchorObjectId === anchorObjectId);
 }
 
+/** Returns `[start, end]` attachments of the interval `geodesicId`, or `undefined` if no such interval exists. */
 export function getGeodesicEndpoints(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -486,6 +816,14 @@ export function getGeodesicEndpoints(
   return interval?.kind === "geodesic-interval" ? [interval.start, interval.end] : undefined;
 }
 
+/**
+ * Re-attaches one endpoint role of an interval to another anchor object and returns the updated interval.
+ *
+ * Returns `undefined` (and changes nothing) if the interval does not exist or the new anchor cannot attach geodesics.
+ * Does NOT update `startCellId`, the portal word or the derived segments: the caller must keep them consistent and
+ * rebuild. Side effects: drops the geodesic id from the previous emitter's lists when no role still uses it, and
+ * deletes free ends that became unreferenced.
+ */
 export function replaceGeodesicEndpointAttachment(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -517,6 +855,13 @@ export function replaceGeodesicEndpointAttachment(
   return next;
 }
 
+/**
+ * Deletes an interval together with everything derived from or pointing at it.
+ *
+ * Removes its segments, the interval, measurements and protractor angles referring to it, intersection markers
+ * involving it, emitter list entries, and any free ends left unreferenced; then refreshes intersection markers.
+ * No-op for unknown ids (the sweeps simply find nothing).
+ */
 export function removeGeodesicIntervalAndDerivedObjects(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -538,6 +883,7 @@ export function removeGeodesicIntervalAndDerivedObjects(
   updateGeodesicIntersectionObjects(registry);
 }
 
+/** Returns the stored portal word of an interval (ordered `start` -> `end`), or `undefined` if `geodesicId` is not an interval. */
 export function getGeodesicPortalWord(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -546,6 +892,12 @@ export function getGeodesicPortalWord(
   return interval?.kind === "geodesic-interval" ? interval.portalWord : undefined;
 }
 
+/**
+ * Returns the inverse portal word: reversed order, with each traversal's source and target swapped.
+ *
+ * Reading an interval's word from its `end` toward its `start` uses this. Pure; involutive
+ * (`reverse(reverse(w))` equals `w`).
+ */
 export function reverseGeodesicPortalWord(
   word: readonly GeodesicPortalTraversal[],
 ): readonly GeodesicPortalTraversal[] {
@@ -557,6 +909,19 @@ export function reverseGeodesicPortalWord(
   }));
 }
 
+/**
+ * Develops an interval into the source endpoint's cell: pulls the opposite endpoint back through the inverse portal transforms.
+ *
+ * Math: let the word read from the source be `t_1 ... t_n` with `T_i` = `transformToTarget` of the portal of `t_i`
+ * (source-cell frame to target-cell frame). The target anchor lives in the frame of the last target cell; applying
+ * `T_n^{-1}`, then `T_{n-1}^{-1}`, ... , `T_1^{-1}` expresses it in the source cell's frame. The geodesic is then the
+ * straight segment from `sourcePoint` to that pulled-back point (so both its direction and its length are read off the
+ * x/y difference), and it is the unique locally straight path realizing this word between the two anchors.
+ *
+ * Returns `undefined` if either anchor is missing or cannot attach geodesics, or a traversal names a portal not in
+ * `world`. It does not check that the word chains between cells or that the lifted chord is long enough.
+ * Units: meters; z of both points is the anchors' beam height.
+ */
 export function liftGeodesicEndpoint(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -577,6 +942,9 @@ export function liftGeodesicEndpoint(input: {
     : reverseGeodesicPortalWord(input.interval.portalWord);
   const sourcePoint = getAnchorBeamPoint(sourceAnchor);
   let targetPointInSourceCell = getAnchorBeamPoint(targetAnchor);
+  // Pull-back (development): the target anchor is expressed in the frame of the LAST target cell, so undo the traversals from the last
+  // to the first: p <- T_i^{-1}(p). After the loop `targetPointInSourceCell` is in the source cell's frame and the geodesic is the
+  // straight segment from `sourcePoint` to it. A traversal that names an unknown portal makes the lift fail.
   for (const traversal of portalWordFromSourceToTarget.slice().reverse()) {
     const portal = input.world.cellsById.get(traversal.sourceCellId)?.portalsById.get(traversal.sourcePortalId);
     if (!portal) {
@@ -597,6 +965,8 @@ export function liftGeodesicEndpoint(input: {
   };
 }
 
+// Same as `liftGeodesicEndpoint`, but anchors found in `candidateAnchorsById` shadow the registry, so a tick can be
+// previewed with a hypothetical free-end position without mutating the registry.
 function liftGeodesicEndpointWithAnchors(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -640,6 +1010,12 @@ function liftGeodesicEndpointWithAnchors(input: {
   };
 }
 
+/**
+ * True when the interval's lifted start-to-end chord is at least `GEODESIC_MIN_LENGTH_METERS` long (horizontally).
+ *
+ * False also when the lift fails (missing anchors/portals). Used to reject degenerate (point-like) geodesics, e.g. a
+ * closed loop that has shrunk to nothing.
+ */
 export function geodesicHasNonzeroLiftedDisplacement(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -655,6 +1031,9 @@ export function geodesicHasNonzeroLiftedDisplacement(input: {
   ) >= GEODESIC_MIN_LENGTH_METERS - intersectionTolerance;
 }
 
+// ---- Derived-segment and connection queries ----
+
+/** Returns the derived segments of a geodesic sorted by `segmentIndex` (empty if none). */
 export function getGeodesicSegments(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -665,6 +1044,7 @@ export function getGeodesicSegments(
     .sort((a, b) => a.segmentIndex - b.segmentIndex);
 }
 
+/** Returns the last (highest `segmentIndex`) segment of a geodesic, or `undefined` if it has none. */
 export function getGeodesicTail(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -672,6 +1052,14 @@ export function getGeodesicTail(
   return getGeodesicSegments(registry, geodesicId).at(-1);
 }
 
+/**
+ * Describes the emitter connection of a geodesic.
+ *
+ * For an interval it is derived from the attachments: start on an emitter gives `outgoing = start`, and `connected`
+ * when the end is also an emitter (else `open`); an interval with only its end on an emitter reports that emitter as
+ * outgoing and `open`. Legacy: otherwise falls back to the cannon-stored `geodesicConnectionsById` records and finally to
+ * the source emitter, reporting `open`. Returns `undefined` when nothing owns the geodesic.
+ */
 export function getGeodesicConnection(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -710,6 +1098,11 @@ export function getGeodesicConnection(
   return source ? { outgoingEmitterId: source.id, state: "open" } : undefined;
 }
 
+/**
+ * True when both endpoints of the geodesic are emitters (a "locked" geodesic that cannot be extended or aimed freely).
+ *
+ * Legacy: for non-interval geodesics, falls back to `connected`/`straightening` connection state or an `emitter-hit` tail.
+ */
 export function isGeodesicLocked(registry: RuntimeObjectRegistry, geodesicId: string): boolean {
   const interval = registry.get(geodesicId);
   if (interval?.kind === "geodesic-interval") {
@@ -725,6 +1118,7 @@ export function isGeodesicLocked(registry: RuntimeObjectRegistry, geodesicId: st
   return getGeodesicTail(registry, geodesicId)?.terminal.kind === "emitter-hit";
 }
 
+/** Legacy: true when the geodesic (or any segment) is in the retired `"straightening"` connection state. */
 export function isGeodesicStraightening(registry: RuntimeObjectRegistry, geodesicId: string): boolean {
   if (getGeodesicConnection(registry, geodesicId)?.state === "straightening") {
     return true;
@@ -733,6 +1127,7 @@ export function isGeodesicStraightening(registry: RuntimeObjectRegistry, geodesi
   return getGeodesicSegments(registry, geodesicId).some((segment) => segment.connectionState === "straightening");
 }
 
+/** Lists the ids of locked geodesics (see `isGeodesicLocked`) that have an endpoint on the emitter. */
 export function collectLockedIncidentGeodesicIdsForEmitter(
   registry: RuntimeObjectRegistry,
   emitterId: string,
@@ -741,10 +1136,14 @@ export function collectLockedIncidentGeodesicIdsForEmitter(
     .filter((geodesicId) => isGeodesicLocked(registry, geodesicId));
 }
 
+/** Returns the 1-based display number of a geodesic, defaulting to 1 when it has none. */
 export function resolveGeodesicNumber(registry: RuntimeObjectRegistry, geodesicId: string): number {
   return getGlobalGeodesicNumbers(registry, geodesicId).get(geodesicId) ?? 1;
 }
 
+// ---- Removal ----
+
+/** Removes a geodesic and its derived objects (interval path via `removeGeodesicIntervalAndDerivedObjects`; legacy path removes segments and emitter associations), then refreshes intersections. */
 export function removeGeodesic(registry: RuntimeObjectRegistry, geodesicId: string): void {
   if (registry.get(geodesicId)?.kind === "geodesic-interval") {
     removeGeodesicIntervalAndDerivedObjects(registry, geodesicId);
@@ -755,6 +1154,7 @@ export function removeGeodesic(registry: RuntimeObjectRegistry, geodesicId: stri
   updateGeodesicIntersectionObjects(registry);
 }
 
+/** Removes every non-locked geodesic listed on the cannon and returns the removed ids (empty if the id is not a cannon). */
 export function removeUnlockedGeodesicsFromCannon(
   registry: RuntimeObjectRegistry,
   cannonId: string,
@@ -777,11 +1177,18 @@ export function removeUnlockedGeodesicsFromCannon(
   return removed;
 }
 
+/** Legacy: true when any geodesic incident on the emitter is in the retired straightening state. */
 export function hasStraighteningIncidentGeodesic(registry: RuntimeObjectRegistry, emitterId: string): boolean {
   return collectIncidentGeodesicIdsForEmitter(registry, emitterId)
     .some((geodesicId) => isGeodesicStraightening(registry, geodesicId));
 }
 
+/**
+ * Deletes a cannon and every geodesic that starts, ends, or connects (as incoming emitter) on it.
+ *
+ * Geodesics owned by other emitters but arriving here are removed as well. Safe for non-cannon ids (only the final
+ * remove and intersection refresh run).
+ */
 export function removeGeodesicCannonAndSegments(registry: RuntimeObjectRegistry, cannonId: string): void {
   const cannon = registry.get(cannonId);
   if (cannon?.kind === "geodesic-cannon") {
@@ -815,16 +1222,23 @@ export function removeGeodesicCannonAndSegments(registry: RuntimeObjectRegistry,
   updateGeodesicIntersectionObjects(registry);
 }
 
+/** Returns the segment's end point, `start + direction * lengthMeters`, in the segment's cell frame (meters). */
 export function getGeodesicSegmentEnd(segment: GeodesicSegmentObject): Vec3 {
   return addVec3(segment.start, scaleVec3(segment.direction, segment.lengthMeters));
 }
 
+/** True unless the segment ended at a wall, forbidden zone or emitter (those terminals cannot be continued). */
 export function canExtendGeodesicSegment(segment: GeodesicSegmentObject): boolean {
   return segment.terminal.kind !== "wall-hit" &&
     segment.terminal.kind !== "forbidden-zone-hit" &&
     segment.terminal.kind !== "emitter-hit";
 }
 
+/**
+ * Yaw (radians, normalized by `sanitizeYaw`) from the cannon toward a cell-local target point.
+ *
+ * Returns `undefined` if the target is non-finite or horizontally within `intersectionTolerance` of the cannon.
+ */
 export function resolveGeodesicCannonAimYawRadians(
   cannon: GeodesicCannonObject,
   targetLocalPoint: Vec3,
@@ -838,6 +1252,21 @@ export function resolveGeodesicCannonAimYawRadians(
   return sanitizeYaw(Math.atan2(dy, dx));
 }
 
+// ---- Tracing ----
+
+/**
+ * Traces one straight ray inside a single cell and reports where and why it stops.
+ *
+ * The ray is horizontal: `direction` is normalized in x/y (z dropped) and `start.z` is irrelevant. The nearest of the
+ * cell's side segments and forbidden zones decides the terminal: a side with a portal gives `portal-hit` (with the
+ * continuation start/direction already mapped into the target cell by `transformToTarget`), a plain side gives
+ * `wall-hit`, a zone gives `forbidden-zone-hit`, and no hit within `maxLengthMeters` gives `open` with
+ * `lengthMeters === maxLengthMeters`. A hit at distance beyond `maxLengthMeters` (within tolerance) is clamped to it.
+ * Hits with `t <= intersectionTolerance` are ignored so a ray starting on a side does not re-hit it.
+ *
+ * Throws `Error` if `cellId` is not in `world`, or `maxLengthMeters` is not a finite positive number. Does not
+ * look at runtime objects; see `traceGeodesicSegmentWithEmitters` for emitter hits. Units: meters, cell-local frame.
+ */
 export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeodesicSegmentResult {
   const cell = input.world.cellsById.get(input.cellId);
   if (!cell) {
@@ -848,14 +1277,19 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
   }
 
   const direction = normalizeHorizontalDirection(input.direction);
+  // `nearest` = earliest hit found so far along the ray (smallest parameter t, in meters since `direction` has unit length).
   let nearest:
     | { readonly kind: "side"; readonly sideIndex: number; readonly t: number; readonly portal?: NonNullable<typeof cell.sides[number]["portal"]> }
     | { readonly kind: "forbidden-zone"; readonly junctionId: string; readonly t: number }
     | undefined;
 
+  // Ray vs. cell sides. The ray is P(t) = S + t d (d unit, horizontal) and a side is Q(u) = A + u e with e = B - A, |e| = side length.
+  // Solving S + t d = A + u e with 2D cross products (w = A - S):  t = (w x e) / (d x e),  u = (w x d) / (d x e).
+  // The cell is a convex prism, so the first side with t > 0 is where the ray leaves the cell.
   for (const side of cell.sides) {
     const edgeX = side.end.x - side.start.x;
     const edgeY = side.end.y - side.start.y;
+    // d x e: zero when the ray is parallel to the side; those sides are skipped (a collinear graze is not a hit).
     const denominator = cross2(direction.x, direction.y, edgeX, edgeY);
     if (Math.abs(denominator) <= intersectionTolerance) {
       continue;
@@ -863,10 +1297,13 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
 
     const startToSideX = side.start.x - input.start.x;
     const startToSideY = side.start.y - input.start.y;
+    // t: distance along the ray to the side's supporting line. sideU: position along the side, in [0, 1] when the ray crosses the side itself.
     const t = cross2(startToSideX, startToSideY, edgeX, edgeY) / denominator;
     const sideU = cross2(startToSideX, startToSideY, direction.x, direction.y) / denominator;
     const sideMeters = sideU * side.lengthMeters;
 
+    // Reject: behind or on the start point (so a ray that starts on a side does not re-hit it), beyond the requested length, or
+    // crossing the supporting line outside the side segment. Tolerances are in meters.
     if (
       t <= intersectionTolerance ||
       t > input.maxLengthMeters + intersectionTolerance ||
@@ -877,10 +1314,12 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
     }
 
     if (!nearest || t < nearest.t) {
+      // A hit slightly beyond `maxLengthMeters` (within tolerance) is clamped to it. Ties keep the first side.
       nearest = { kind: "side", sideIndex: side.sideIndex, t: Math.min(t, input.maxLengthMeters), portal: side.portal };
     }
   }
 
+  // Forbidden zones are vertical cylinders; they compete with the sides for the nearest hit (strictly closer wins).
   for (const zone of cell.forbiddenZones) {
     const t = intersectRayWithForbiddenZone(input.start, direction, zone.collision);
     if (t === undefined || t > input.maxLengthMeters + intersectionTolerance) {
@@ -892,6 +1331,7 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
     }
   }
 
+  // Nothing reached within the requested length: the whole length is used inside this cell.
   if (!nearest) {
     return {
       cellId: input.cellId,
@@ -922,9 +1362,14 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
     };
   }
 
+  // Portal crossing. The portal's rigid transform maps this cell's frame to the target cell's frame, taking the hit point to the
+  // matching point on the target portal and the direction to the (rotated) continuation direction. The direction is renormalized
+  // horizontally to remove numerical drift.
   const hitPoint = addVec3(input.start, scaleVec3(direction, nearest.t));
   const targetDirection = normalizeHorizontalDirection(transformDirection3(nearest.portal.transformToTarget, direction));
   const transformedStart = transformPoint3(nearest.portal.transformToTarget, hitPoint);
+  // Nudge the continuation a tiny step along the new direction so it starts strictly inside the target cell and does not re-hit
+  // the target portal's own side (hits with t <= intersectionTolerance are ignored).
   const targetStart = addVec3(transformedStart, scaleVec3(targetDirection, portalStartEpsilonMeters));
 
   return {
@@ -943,6 +1388,12 @@ export function traceGeodesicSegment(input: TraceGeodesicSegmentInput): TraceGeo
   };
 }
 
+/**
+ * Like `traceGeodesicSegment`, but shortens the result to an `emitter-hit` when an eligible emitter lies on the ray.
+ *
+ * Eligibility and tolerance are those of `findNearestEmitterHitOnTrace`. The emitter hit only applies if it is closer
+ * than the wall/portal/zone/open end already found (the search is bounded by the traced length). Throws like `traceGeodesicSegment`.
+ */
 export function traceGeodesicSegmentWithEmitters(
   input: TraceGeodesicSegmentWithEmittersInput,
 ): TraceGeodesicSegmentResult {
@@ -968,6 +1419,14 @@ export function traceGeodesicSegmentWithEmitters(
   };
 }
 
+/**
+ * Finds the closest emitter in the cell lying within `emitterConnectionToleranceMeters` of the ray and ahead of its start.
+ *
+ * Math: for each cannon, project the horizontal offset from `start` onto the unit direction (`projected`, must be in
+ * `(intersectionTolerance, maxLengthMeters]`) and require the perpendicular remainder to be at most the tolerance. The
+ * returned distance is `projected` (clamped), i.e. the emitter is hit at its closest-approach point. Emitters that
+ * already list `geodesicId` are skipped unless they are the source emitter. Returns `undefined` if there is none.
+ */
 export function findNearestEmitterHitOnTrace(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly sourceEmitterId: string;
@@ -1021,6 +1480,9 @@ function traceGeodesicSegmentForConnectionMode(
     : traceGeodesicSegment(input);
 }
 
+// Traces a geodesic across portals: repeatedly calls the single-cell tracer, restarting in the target cell from the
+// `portal-hit` continuation with the remaining length, until the length is used up or a non-portal terminal occurs.
+// Returned traces are consecutive pieces; the concatenation of their portal hits is the realized portal word.
 function traceGeodesicPathForConnectionMode(
   input: TraceGeodesicSegmentWithEmittersInput & { readonly connectEmitters: boolean },
 ): readonly TraceGeodesicSegmentResult[] {
@@ -1039,12 +1501,14 @@ function traceGeodesicPathForConnectionMode(
       maxLengthMeters: remainingLengthMeters,
     });
     traces.push(trace);
+    // Length budget shrinks by what was travelled in this cell; the loop ends on any non-portal terminal or when the budget is spent.
     remainingLengthMeters -= trace.lengthMeters;
 
     if (trace.terminal.kind !== "portal-hit" || remainingLengthMeters <= intersectionTolerance) {
       break;
     }
 
+    // Continue in the target cell from the transformed hit point and direction (the straight line "unfolds" across the portal).
     currentCellId = trace.terminal.targetCellId;
     currentStart = trace.terminal.targetStart;
     currentDirection = trace.terminal.targetDirection;
@@ -1053,6 +1517,16 @@ function traceGeodesicPathForConnectionMode(
   return traces;
 }
 
+/**
+ * Realizes an interval's geometry by tracing the lifted chord, and replaces the interval's derived segments with it.
+ *
+ * Traces from `sourcePoint` in cell `sourceCellId` along `yawRadians` for exactly `lengthMeters`. Returns `undefined`
+ * (leaving existing segments untouched) when the interval is missing, `lengthMeters < minGeodesicSegmentLengthMeters`,
+ * the realized portal word differs from `expectedPortalWord` (unless `allowUnexpectedPortalWord`), or any piece hits a
+ * forbidden zone or a wall (consistent with `previewRebuildGeodesicInterval`).
+ * Side effect: on success the segments are rewritten (an `open` last piece becomes `emitter-hit` if the end anchor is an
+ * emitter).
+ */
 export function traceGeodesicFromLiftedChord(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -1068,6 +1542,7 @@ export function traceGeodesicFromLiftedChord(input: {
   if (interval?.kind !== "geodesic-interval" || input.lengthMeters < minGeodesicSegmentLengthMeters) {
     return undefined;
   }
+  // Emitter connection is disabled for this trace (chord already encodes the endpoint), so the id is only used for bookkeeping.
   const sourceAnchorId = interval.start.anchorObjectId;
   const traces = traceGeodesicPathForConnectionMode({
     connectEmitters: false,
@@ -1081,13 +1556,15 @@ export function traceGeodesicFromLiftedChord(input: {
     maxLengthMeters: input.lengthMeters,
   });
   const portalWord = collectPortalWordFromTraces(input.world, traces);
+  // Homotopy check: the straight chord must cross exactly the portals of the stored word, else it realizes a different class and is refused.
   if (input.expectedPortalWord && !input.allowUnexpectedPortalWord && !samePortalWord(portalWord, input.expectedPortalWord)) {
     return undefined;
   }
-  if (traces.some((trace) => trace.terminal.kind === "forbidden-zone-hit")) {
+  if (traces.some((trace) => trace.terminal.kind === "forbidden-zone-hit" || trace.terminal.kind === "wall-hit")) {
     return undefined;
   }
 
+  // Commit: the segments are replaced only after all checks passed.
   const realizedTraces = withAnchoredTargetTerminal(input.registry, interval, traces);
   const segments = replaceDerivedSegmentsFromTraces({
     registry: input.registry,
@@ -1097,10 +1574,20 @@ export function traceGeodesicFromLiftedChord(input: {
   return {
     interval,
     segments,
-    terminal: traceTerminalToBuildTerminalForInterval(interval, realizedTraces.at(-1)),
+    terminal: traceTerminalToBuildTerminalForInterval(interval, realizedTraces.at(-1), input.registry),
   };
 }
 
+/**
+ * Re-aims a free geodesic (emitter at one role, a singly attached free end at the other) toward a target point.
+ *
+ * The free end is moved to wherever the new ray ends (cell, position), the interval's start cell and portal word are
+ * recomputed from the actual trace, and segments are replaced. If `connectEmitters` (default true) and the ray ends at
+ * another emitter, the free role is re-attached to that emitter and the interval is rebuilt as a locked geodesic.
+ * Returns `undefined` for non-interval ids, non-(emitter, free end) attachments, a free end shared with other
+ * attachments, or a target within `intersectionTolerance` of the emitter (length is otherwise at least `minGeodesicSegmentLengthMeters`).
+ * Mutates the registry.
+ */
 export function aimFreeGeodesicFromEndpoint(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -1121,6 +1608,7 @@ export function aimFreeGeodesicFromEndpoint(input: {
   if (emitter?.kind !== "geodesic-cannon" || freeEnd?.kind !== "free-geodesic-end") {
     return undefined;
   }
+  // A free end shared with another attachment (e.g. a curve-shortening vertex) must not be dragged around.
   if (getGeodesicEndpointAttachmentsForAnchor(input.registry, freeEnd.id).length !== 1) {
     return undefined;
   }
@@ -1131,6 +1619,7 @@ export function aimFreeGeodesicFromEndpoint(input: {
   if (Math.hypot(dx, dy) <= intersectionTolerance) {
     return undefined;
   }
+  // Direction and length of the chord in the emitter's cell; the length is floored so tiny aims still produce a visible geodesic.
   const lengthMeters = Math.max(Math.hypot(dx, dy), minGeodesicSegmentLengthMeters);
   const traces = traceGeodesicPathForConnectionMode({
     connectEmitters: input.connectEmitters ?? true,
@@ -1151,6 +1640,10 @@ export function aimFreeGeodesicFromEndpoint(input: {
   const portalWord = collectPortalWordFromTraces(input.world, traces);
   const terminalPoint = addVec3(tail.start, scaleVec3(tail.direction, tail.lengthMeters));
   const terminalCellId = tail.cellId;
+  // The free end moves to wherever the trace actually ended, possibly in another cell after portal crossings; the portal word
+  // below is read off the realized traces, so the interval's homotopy class always matches the picture.
+  // Caveat: the traces start at the EMITTER. The stored word/`startCellId` follow that order, which equals the interval's
+  // start-to-end convention only when the emitter holds the `start` role.
   const nextFreeEnd = {
     ...freeEnd,
     cellId: terminalCellId,
@@ -1204,6 +1697,15 @@ export function aimFreeGeodesicFromEndpoint(input: {
   };
 }
 
+/**
+ * Regenerates an interval's segments from its endpoint anchors and portal word (the fundamental "development" step).
+ *
+ * Lifts the end anchor into the start anchor's cell with `liftGeodesicEndpoint`, takes the straight chord, and traces
+ * it with `traceGeodesicFromLiftedChord` expecting the stored portal word. Returns `undefined` when the lift fails or
+ * the trace is rejected (missing interval, wrong word, forbidden zone).
+ * Destructive failure: if the lifted chord is shorter than `GEODESIC_MIN_LENGTH_METERS` the whole interval and its
+ * derived objects are DELETED before returning `undefined`. `allowUnexpectedPortalWord` accepts a different realized word.
+ */
 export function rebuildDerivedGeodesicSegments(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -1223,6 +1725,9 @@ export function rebuildDerivedGeodesicSegments(input: {
   if (!lifted) {
     return undefined;
   }
+  // Chord of the development: direction yaw = atan2(dy, dx) and length = |(dx, dy)| (horizontal; heights are equal by construction).
+  // A chord shorter than the minimum means the endpoints (essentially) coincide in the development: the geodesic is degenerate, so the
+  // interval and everything derived from it is DELETED (destructive failure path).
   const dx = lifted.targetPointInSourceCell.x - lifted.sourcePoint.x;
   const dy = lifted.targetPointInSourceCell.y - lifted.sourcePoint.y;
   const lengthMeters = Math.hypot(dx, dy);
@@ -1230,6 +1735,7 @@ export function rebuildDerivedGeodesicSegments(input: {
     removeGeodesicIntervalAndDerivedObjects(input.registry, input.geodesicId);
     return undefined;
   }
+  // Trace the chord through the world. Success requires crossing exactly the stored portal word (unless explicitly allowed otherwise).
   return traceGeodesicFromLiftedChord({
     world: input.world,
     registry: input.registry,
@@ -1243,6 +1749,8 @@ export function rebuildDerivedGeodesicSegments(input: {
   });
 }
 
+// Read-only dry run of the rebuild trace: true if the chord realizing the interval would enter a forbidden zone.
+// Returns false (not "unknown") when the lift fails or the chord is degenerate; callers must treat that as "no zone hit".
 function lockedIntervalRebuildHitsForbiddenZone(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -1283,10 +1791,18 @@ function lockedIntervalRebuildHitsForbiddenZone(input: {
   return traces.some((trace) => trace.terminal.kind === "forbidden-zone-hit");
 }
 
+/**
+ * Labels segments with `halfRole`, cutting the one that straddles the midpoint of the total length into two.
+ *
+ * Output ids are renumbered `<geodesicId>:segment:<i>` with consecutive indices. A cut segment's first piece gets
+ * terminal `open`; its second piece keeps the original terminal. Pieces ending at or before the midpoint are the `start`
+ * half, the rest the `end` half. Pure.
+ */
 export function splitDerivedSegmentsIntoEndpointHalves(
   segments: readonly GeodesicSegmentObject[],
 ): readonly GeodesicSegmentObject[] {
   const totalLengthMeters = totalGeodesicLengthFromSegments(segments);
+  // Halves are defined by arc length: everything before the midpoint is attached to the `start` role, everything after to `end`.
   const midpointMeters = totalLengthMeters / 2;
   let beforeMeters = 0;
   const split: GeodesicSegmentObject[] = [];
@@ -1332,6 +1848,7 @@ export function splitDerivedSegmentsIntoEndpointHalves(
   return split;
 }
 
+/** Maps a clicked segment (by id) to the endpoint attachment of its half, or `undefined` if it is not a half-labelled segment of an existing interval. */
 export function resolveGeodesicEndpointSelectionFromSegmentHit(
   registry: RuntimeObjectRegistry,
   segmentId: string,
@@ -1344,6 +1861,13 @@ export function resolveGeodesicEndpointSelectionFromSegmentHit(
   return interval?.kind === "geodesic-interval" ? interval[segment.halfRole] : undefined;
 }
 
+/**
+ * Yaw (radians) of the geodesic's tangent at the anchor of the given role, pointing away from the anchor along the geodesic.
+ *
+ * For `start` it is the first segment's direction; for `end` it is the last segment's direction rotated by pi (so it
+ * points back into the geodesic). The yaw is expressed in the frame of that segment's cell, which is the anchor's
+ * cell. Returns `undefined` if the interval or its segments are missing.
+ */
 export function resolveEndpointTangentAtAnchor(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly geodesicId: string;
@@ -1360,6 +1884,8 @@ export function resolveEndpointTangentAtAnchor(input: {
   if (!segment) {
     return undefined;
   }
+  // Outward tangent at the anchor: the first segment's direction at `start`; at `end` the last segment points INTO the anchor, so reverse it.
+  // Relies on segments being ordered from `start` to `end`.
   const yawRadians = Math.atan2(segment.direction.y, segment.direction.x) + (input.endRole === "start" ? 0 : Math.PI);
   return {
     anchorObjectId: attachment.anchorObjectId,
@@ -1367,6 +1893,17 @@ export function resolveEndpointTangentAtAnchor(input: {
   };
 }
 
+/**
+ * Splits a free geodesic at a point on one of its segments, ending the first part at a newly placed emitter.
+ *
+ * Preconditions: the interval is an aimable free geodesic (emitter at one role, free end at the other; see
+ * `isAimableFreeGeodesic`), the segment belongs to it, `placedEmitterId` is a cannon in the registry, and the clamped
+ * cut distance leaves a long enough prefix (`canConnectGeodesicSegmentAtDistance`). Otherwise returns `[]` and changes
+ * nothing. The original interval is shortened so its free role now attaches to the placed emitter (its portal word becomes
+ * the word of the prefix traces); the remainder (if at least `minGeodesicSegmentLengthMeters`) becomes a new interval from
+ * the placed emitter to the old free end, rebuilt along the same direction. Returns the surviving intervals
+ * (prefix first, continuation second if created). Mutates the registry.
+ */
 export function splitGeodesicIntervalAtSegmentHit(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -1388,6 +1925,8 @@ export function splitGeodesicIntervalAtSegmentHit(input: {
   ) {
     return [];
   }
+  // Cut point: arc length `prefixLengthMeters` from the geodesic's emitter-side start (all earlier segments plus the distance in this one).
+  // The prefix must be at least the minimum length, otherwise the new emitter would sit on the old one.
   const clampedDistance = Math.min(segment.lengthMeters, Math.max(0, input.distanceAlongSegmentMeters));
   if (!canConnectGeodesicSegmentAtDistance(clampedDistance)) {
     return [];
@@ -1397,6 +1936,7 @@ export function splitGeodesicIntervalAtSegmentHit(input: {
   const totalLengthMeters = totalGeodesicLengthFromSegments(segments);
   const prefixLengthMeters = totalLengthThroughSegment(segments, segment, clampedDistance);
   const continuationLengthMeters = totalLengthMeters - prefixLengthMeters;
+  // `freeRole` holds the free end, the other role is the original source emitter.
   const freeRole: GeodesicEndRole = input.registry.get(interval.start.anchorObjectId)?.kind === "free-geodesic-end"
     ? "start"
     : "end";
@@ -1407,6 +1947,8 @@ export function splitGeodesicIntervalAtSegmentHit(input: {
     return [];
   }
 
+  // Prefix path = the whole segments before the hit plus the hit segment truncated at the cut point, ending at the new emitter.
+  // Its portal word is the word of the shortened geodesic (portal-hit terminals of the whole segments).
   const prefixTraces = segments
     .filter((entry) => entry.segmentIndex < segment.segmentIndex)
     .map(segmentToTrace);
@@ -1421,6 +1963,7 @@ export function splitGeodesicIntervalAtSegmentHit(input: {
   const continuationId = continuationLengthMeters >= minGeodesicSegmentLengthMeters - intersectionTolerance
     ? input.createContinuationGeodesicId(input.geodesicId, 0)
     : undefined;
+  // The continuation takes over the old free end: placed emitter -> old free end. Its word/geometry is filled in by rebuildContinuationFromCut.
   if (continuationId) {
     input.registry.add(createGeodesicIntervalObject({
       id: continuationId,
@@ -1430,6 +1973,8 @@ export function splitGeodesicIntervalAtSegmentHit(input: {
       motionState: "stable",
     }));
   }
+  // Shorten the original interval: its free role now attaches to the placed emitter, and its portal word becomes the prefix word.
+  // Caveat: the prefix word is ordered from the source emitter, which matches the start-to-end convention only if the source holds `start`.
   input.registry.update({
     ...interval,
     [freeRole]: {
@@ -1468,6 +2013,16 @@ export function splitGeodesicIntervalAtSegmentHit(input: {
     .filter((object): object is GeodesicIntervalObject => object?.kind === "geodesic-interval");
 }
 
+/**
+ * Rebuilds a locked (emitter-to-emitter) interval after an endpoint was carried, updating its portal word first.
+ *
+ * The new portal word is, in order of precedence: the explicit `carriedPortalWord`; otherwise the old word extended
+ * by the portal the carried anchor crossed (inferred by `resolveCarriedPortalTraversalFromAnchorMotion` or taken from
+ * `carriedPortalTransition`) at the end (append) or start (prepend the inverse), with adjacent inverse traversals
+ * cancelled; otherwise the old word. The interval's `startCellId` follows the start anchor's current cell. Then
+ * `rebuildDerivedGeodesicSegments` runs (with `allowUnexpectedPortalWord = allowOutOfBoundsCarriedEndpoint`).
+ * Returns `undefined` on failure; note the interval may already have been updated (and a degenerate one deleted).
+ */
 export function rebuildLockedGeodesicFromEndpointsAndPortalWord(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -1483,6 +2038,7 @@ export function rebuildLockedGeodesicFromEndpointsAndPortalWord(input: {
     return undefined;
   }
 
+  // Step 1: decide the portal word after the move (explicit word, inferred or reported portal traversal, else unchanged).
   const carriedPortalWord = resolveCarriedIntervalPortalWord({
     world: input.world,
     interval,
@@ -1507,6 +2063,7 @@ export function rebuildLockedGeodesicFromEndpointsAndPortalWord(input: {
     });
   }
 
+  // Step 2: re-develop the interval with the (possibly updated) word and the anchors' current positions.
   const result = rebuildDerivedGeodesicSegments({
     ...input,
     allowUnexpectedPortalWord: input.allowOutOfBoundsCarriedEndpoint,
@@ -1518,6 +2075,14 @@ export function rebuildLockedGeodesicFromEndpointsAndPortalWord(input: {
   return result;
 }
 
+/**
+ * Extends an interval's stored portal word with one portal crossing made by a carried anchor, and saves it.
+ *
+ * Appends the traversal when the carried anchor is the `end` anchor; prepends the inverse traversal when it is the
+ * `start` anchor (an interval whose both ends are the anchor uses the `end` branch). Adjacent inverse traversals
+ * cancel. Returns the new word, or `undefined` (nothing written) if the anchor is not an endpoint or the resulting word
+ * does not chain between the endpoint anchors' current cells.
+ */
 export function updateLockedGeodesicPortalWordForCarriedAnchorTraversal(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly geodesicId: string;
@@ -1529,6 +2094,8 @@ export function updateLockedGeodesicPortalWordForCarriedAnchorTraversal(input: {
     return undefined;
   }
 
+  // The path from the start anchor to the moved end anchor gains the crossed portal at its end; for the moved start anchor the path
+  // from its new location first has to go back through that portal, so the inverse is prepended. Free reduction cancels re-crossings.
   let portalWord: readonly GeodesicPortalTraversal[] | undefined;
   if (interval.end.anchorObjectId === input.carriedAnchorObjectId) {
     portalWord = reduceAdjacentInversePortalTraversals([...interval.portalWord, input.traversal]);
@@ -1553,6 +2120,7 @@ export function updateLockedGeodesicPortalWordForCarriedAnchorTraversal(input: {
   return portalWord;
 }
 
+/** Returns the interval's portal word read from `sourceRole` to `targetRole`: the stored word, its inverse, or empty when the roles are equal. */
 export function getPortalWordBetweenEndpointRoles(input: {
   readonly interval: GeodesicIntervalObject;
   readonly sourceRole: GeodesicEndRole;
@@ -1566,12 +2134,20 @@ export function getPortalWordBetweenEndpointRoles(input: {
     : reverseGeodesicPortalWord(input.interval.portalWord);
 }
 
+/**
+ * Returns the interval's portal word after one of its endpoints crossed a portal, or `undefined` if the result is inconsistent.
+ *
+ * `movedRole === "end"` appends `traversal`; `"start"` prepends its inverse. Adjacent inverse traversals are cancelled
+ * (so walking back through the same portal restores the old word), then the word must chain from the start anchor's cell
+ * to the end anchor's cell as currently stored in the registry. Does not write anything.
+ */
 export function updatePortalWordForMovedEndpoint(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly interval: GeodesicIntervalObject;
   readonly movedRole: GeodesicEndRole;
   readonly traversal: GeodesicPortalTraversal;
 }): readonly GeodesicPortalTraversal[] | undefined {
+  // Same rule as in updateLockedGeodesicPortalWordForCarriedAnchorTraversal: append at the end role, prepend the inverse at the start role.
   const word = input.movedRole === "end"
     ? reduceAdjacentInversePortalTraversals([...input.interval.portalWord, input.traversal])
     : reduceAdjacentInversePortalTraversals([
@@ -1581,6 +2157,8 @@ export function updatePortalWordForMovedEndpoint(input: {
   return portalWordMatchesCurrentEndpointCells(input.registry, input.interval, word) ? word : undefined;
 }
 
+// Same as `updatePortalWordForMovedEndpoint`, but cell checks use `candidateAnchorsById` in place of registry anchors
+// (the moved free end already sits in its candidate cell during a preview).
 function updatePortalWordForMovedEndpointWithAnchors(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly interval: GeodesicIntervalObject;
@@ -1604,6 +2182,14 @@ function updatePortalWordForMovedEndpointWithAnchors(input: {
     : undefined;
 }
 
+/**
+ * Computes the segments an interval would have, without touching the registry (rollback-safe).
+ *
+ * Same chord construction as `rebuildDerivedGeodesicSegments`, but anchors can be shadowed by `candidateAnchorsById`
+ * and the stored word must be realized exactly. Returns `undefined` if the lift fails, the chord is shorter than
+ * `GEODESIC_MIN_LENGTH_METERS`, the realized word differs, or any piece hits a wall or forbidden zone. The returned
+ * segments are detached (not in the registry) and the interval is returned unchanged.
+ */
 export function previewRebuildGeodesicInterval(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -1637,6 +2223,7 @@ export function previewRebuildGeodesicInterval(input: {
     direction: directionFromYaw(Math.atan2(dy, dx)),
     maxLengthMeters: lengthMeters,
   });
+  // The realized path must cross exactly the stored word; a wall hit or zone hit anywhere along the way also rejects the preview.
   const portalWord = collectPortalWordFromTraces(input.world, traces);
   if (!samePortalWord(portalWord, lifted.portalWordFromSourceToTarget)) {
     return undefined;
@@ -1657,10 +2244,11 @@ export function previewRebuildGeodesicInterval(input: {
       geodesicId: input.interval.id,
       traces: realizedTraces,
     }),
-    terminal: traceTerminalToBuildTerminalForInterval(input.interval, realizedTraces.at(-1)),
+    terminal: traceTerminalToBuildTerminalForInterval(input.interval, realizedTraces.at(-1), input.registry),
   };
 }
 
+/** Lists one menu row (`G<n>` label) per distinct geodesic attached to the emitter, in attachment order. */
 export function collectGeodesicMenuRowsForEmitter(
   registry: RuntimeObjectRegistry,
   emitterId: string,
@@ -1674,6 +2262,8 @@ export function collectGeodesicMenuRowsForEmitter(
   }));
 }
 
+// Reads the portal word off a trace chain: one traversal per `portal-hit` terminal, ids resolved from the world's portal table.
+// A portal-hit whose portal is unknown to the world is skipped, which would silently shorten the word.
 function collectPortalWordFromTraces(
   world: CompiledCellComplex,
   traces: readonly TraceGeodesicSegmentResult[],
@@ -1694,6 +2284,7 @@ function collectPortalWordFromTraces(
   });
 }
 
+// Element-wise equality of two portal words by all four ids.
 function samePortalWord(
   left: readonly GeodesicPortalTraversal[],
   right: readonly GeodesicPortalTraversal[],
@@ -1707,6 +2298,10 @@ function samePortalWord(
   });
 }
 
+// Determines the new portal word of an interval whose endpoint anchor was carried. Precedence: explicit word (reduced and
+// validated) > traversal inferred from the anchor's motion > traversal reported by the mover > undefined (no change).
+// The traversal is appended for the `end` anchor and prepended inverted for the `start` anchor, then reduced and validated
+// against the endpoint cells. Returns `undefined` whenever the candidate word is inconsistent.
 function resolveCarriedIntervalPortalWord(input: {
   readonly world: CompiledCellComplex;
   readonly interval: GeodesicIntervalObject;
@@ -1761,6 +2356,10 @@ function resolveCarriedIntervalPortalWord(input: {
   return undefined;
 }
 
+// Infers which portal a carried emitter crossed by comparing the previous and current beam points: among portals of the
+// previous cell leading to the current cell, picks the one whose transform maps the old point closest to the new point.
+// When the portal leads back into the same cell (self-gluing) the match is only accepted within `emitterConnectionToleranceMeters`,
+// since otherwise a tiny non-crossing move would be misread as a crossing.
 function resolveCarriedPortalTraversalFromAnchorMotion(
   world: CompiledCellComplex,
   registry: RuntimeObjectRegistry,
@@ -1873,6 +2472,8 @@ function portalWordMatchesCurrentEndpointCells(
   return portalWordMatchesEndpointCellsWithAnchors({ registry, interval, word });
 }
 
+// A word is consistent when it chains (each target cell equals the next source cell) and runs from the start anchor's cell
+// to the end anchor's cell; the empty word requires both anchors to share one cell. `candidateAnchorsById` shadows registry anchors.
 function portalWordMatchesEndpointCellsWithAnchors(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly interval: GeodesicIntervalObject;
@@ -1897,6 +2498,8 @@ function portalWordMatchesEndpointCellsWithAnchors(input: {
   );
 }
 
+// Free reduction of a word: cancels each traversal against an immediately preceding inverse one (a stack-based pass), so
+// crossing a portal and returning through it leaves no trace in the homotopy class.
 function reduceAdjacentInversePortalTraversals(
   word: readonly GeodesicPortalTraversal[],
 ): readonly GeodesicPortalTraversal[] {
@@ -1940,18 +2543,24 @@ function traceTerminalToBuildTerminal(
   return { kind: "free-end", freeEndObjectId: "" };
 }
 
+// Names the free-end object of a trace that simply ran out. With a registry the end anchor is identified by its object kind
+// (`isFreeGeodesicEndObject`); the "free-end" id-substring heuristic is only a fallback when no registry is available or the anchor
+// is not registered. A non-free anchor yields an empty `freeEndObjectId`.
 function traceTerminalToBuildTerminalForInterval(
   interval: GeodesicIntervalObject,
   tail: TraceGeodesicSegmentResult | undefined,
+  registry?: RuntimeObjectRegistry,
 ): GeodesicTraceBuildResult["terminal"] {
   const terminal = traceTerminalToBuildTerminal(tail);
   if (terminal.kind !== "free-end") {
     return terminal;
   }
-  return interval.end.anchorObjectId.startsWith(`${interval.id}:free-end`) ||
-    interval.end.anchorObjectId.includes("free-end")
-    ? { kind: "free-end", freeEndObjectId: interval.end.anchorObjectId }
-    : terminal;
+  const endAnchorId = interval.end.anchorObjectId;
+  const endAnchor = registry?.get(endAnchorId);
+  const endsAtFreeEnd = endAnchor
+    ? isFreeGeodesicEndObject(endAnchor)
+    : endAnchorId.startsWith(`${interval.id}:free-end`) || endAnchorId.includes("free-end");
+  return endsAtFreeEnd ? { kind: "free-end", freeEndObjectId: endAnchorId } : terminal;
 }
 
 function withAnchoredTargetTerminal(
@@ -1962,6 +2571,8 @@ function withAnchoredTargetTerminal(
   return withAnchoredTargetTerminalForAnchors(registry, interval, traces);
 }
 
+// When the end anchor is an emitter and the trace simply ran out (`open`), relabels the last piece as `emitter-hit`, since
+// by construction the chord ends exactly at that emitter.
 function withAnchoredTargetTerminalForAnchors(
   registry: RuntimeObjectRegistry,
   interval: GeodesicIntervalObject,
@@ -1982,6 +2593,10 @@ function withAnchoredTargetTerminalForAnchors(
   );
 }
 
+// ---- Building derived segments from traces ----
+
+// Writes the registry's segment chain for a geodesic: deletes the old segments, builds new ones from `traces`, and adds them.
+// Not rollback-safe by itself; use `buildDerivedSegmentsFromTraces` for a side-effect-free preview.
 function replaceDerivedSegmentsFromTraces(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly geodesicId: string;
@@ -1995,6 +2610,8 @@ function replaceDerivedSegmentsFromTraces(input: {
   return splitSegments;
 }
 
+// Pure counterpart of `replaceDerivedSegmentsFromTraces`: converts traces to segment objects (ids `<geodesicId>:segment:<i>`),
+// splits them at the length midpoint into start/end halves, and stamps connection state and tooltip. Nothing is added to the registry.
 function buildDerivedSegmentsFromTraces(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly geodesicId: string;
@@ -2018,6 +2635,9 @@ function buildDerivedSegmentsFromTraces(input: {
   return splitSegments;
 }
 
+// Display state of a geodesic's segments. A `"moving"` interval is reported as `"straightening"` (the renderer's moving
+// color); a stable emitter-to-emitter interval is `"connected"`; everything else is `"open"`. So `"straightening"` is still
+// produced for curve-shortening intervals, even though the old same-cell straightening model is retired.
 function resolveDerivedSegmentConnectionState(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -2044,6 +2664,9 @@ function segmentToTrace(segment: GeodesicSegmentObject): TraceGeodesicSegmentRes
   };
 }
 
+// Retraces the part of a split free geodesic beyond a newly placed emitter: from the placed emitter along the original yaw
+// for the remaining length, moving the old free end to the new terminal point. Deletes the continuation interval if no trace
+// came out; if the trace reaches an emitter, the free end is re-attached to that emitter (the interval becomes locked).
 function rebuildContinuationFromCut(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -2101,6 +2724,7 @@ function getGeodesicTotalLengthMeters(registry: RuntimeObjectRegistry, geodesicI
     .reduce((total, segment) => total + segment.lengthMeters, 0);
 }
 
+// "Aimable free": a stable interval with exactly one emitter endpoint and one free-end endpoint that no other attachment shares.
 function isAimableFreeGeodesic(registry: RuntimeObjectRegistry, interval: GeodesicIntervalObject): boolean {
   if (interval.motionState !== "stable") {
     return false;
@@ -2113,6 +2737,8 @@ function isAimableFreeGeodesic(registry: RuntimeObjectRegistry, interval: Geodes
     getGeodesicEndpointAttachmentsForAnchor(registry, freeEnd.id).length === 1;
 }
 
+// Refreshes the emitter-side caches (`geodesicIds`, `activeGeodesicId`, per-geodesic yaw) from the interval: each emitter endpoint
+// lists the geodesic and records the tangent yaw at its anchor. The registry attachments remain the source of truth.
 function syncLegacyEmitterGeodesicFields(registry: RuntimeObjectRegistry, geodesicId: string): void {
   const interval = registry.get(geodesicId);
   if (interval?.kind !== "geodesic-interval") {
@@ -2138,6 +2764,17 @@ function syncLegacyEmitterGeodesicFields(registry: RuntimeObjectRegistry, geodes
   }
 }
 
+// ---- Shooting, extending, rebuilding by length ----
+
+/**
+ * Emits (or re-aims) a free geodesic from a cannon along its yaw and returns its first derived segment.
+ *
+ * If the interval `geodesicId` does not exist, creates a free end `<geodesicId>:free-end` at the straight-line target point and a
+ * stable interval from the cannon to it, then re-aims it with `aimFreeGeodesicFromEndpoint`, which develops the ray through
+ * portals and fixes the portal word from the actual trace. Updates the cannon's caches (active geodesic, yaw) and refreshes
+ * intersections. Throws `Error` if the trace produced no segment (for example the existing interval is not an aimable free
+ * geodesic, or the length is below the minimum). Units: meters, radians.
+ */
 export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject {
   const aimYawRadians = sanitizeYaw(input.cannon.aimYawRadians);
   const direction = directionFromYaw(aimYawRadians);
@@ -2195,6 +2832,13 @@ export function shootGeodesic(input: ShootGeodesicInput): GeodesicSegmentObject 
   return segment;
 }
 
+/**
+ * Lengthens an aimable free geodesic by re-aiming it from its emitter along the current tangent, and returns its new last segment.
+ *
+ * The new target is the emitter point plus the tangent direction times (current total length + extension); tracing through
+ * portals then yields the new portal word. Returns `undefined` if the interval is not an aimable free geodesic, the emitter is
+ * missing, the tail segment ended at a wall/zone/emitter (see `canExtendGeodesicSegment`), or the re-aim fails.
+ */
 export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObject | undefined {
   const interval = input.registry.get(input.geodesicId);
   if (interval?.kind !== "geodesic-interval" || !isAimableFreeGeodesic(input.registry, interval)) {
@@ -2229,6 +2873,12 @@ export function extendGeodesic(input: ExtendGeodesicInput): GeodesicSegmentObjec
   return result?.segments.at(-1);
 }
 
+/**
+ * Re-shoots a geodesic from its cannon so that its total length is `totalLengthMeters`, returning the new segments.
+ *
+ * Locked geodesics are returned unchanged unless `rebuildLocked` is set. Never throws on bad lengths (clears and returns `[]`),
+ * but may throw via `shootGeodesic` if the shot yields nothing.
+ */
 export function rebuildGeodesicToLength(input: RebuildGeodesicToLengthInput): readonly GeodesicSegmentObject[] {
   if (!input.rebuildLocked && isGeodesicLocked(input.registry, input.geodesicId)) {
     return getGeodesicSegments(input.registry, input.geodesicId);
@@ -2237,6 +2887,8 @@ export function rebuildGeodesicToLength(input: RebuildGeodesicToLengthInput): re
   return rebuildUnlockedGeodesicToLength(input);
 }
 
+// Core of `rebuildGeodesicToLength`: optionally snap the aim to an emitter, delete the old segments, re-shoot, and optionally
+// delete the geodesic if it ended in a forbidden zone.
 function rebuildUnlockedGeodesicToLength(input: RebuildGeodesicToLengthInput): readonly GeodesicSegmentObject[] {
   if (!(input.totalLengthMeters > 0) || !Number.isFinite(input.totalLengthMeters)) {
     removeGeodesicSegments(input.registry, input.geodesicId);
@@ -2269,6 +2921,9 @@ function rebuildUnlockedGeodesicToLength(input: RebuildGeodesicToLengthInput): r
   return getGeodesicSegments(input.registry, input.geodesicId);
 }
 
+// Re-aims the cannon at the nearest emitter that lies within `emitterConnectionToleranceMeters` of the first straight piece
+// (an unconnected single-cell trace), so a geodesic aimed almost exactly at an emitter is snapped onto it.
+// Only the first cell's piece is examined; emitters beyond a portal are not candidates.
 function resolveCannonSnappedToEmitter(input: RebuildGeodesicToLengthInput): GeodesicCannonObject | undefined {
   if (!(input.totalLengthMeters > 0) || !Number.isFinite(input.totalLengthMeters)) {
     return undefined;
@@ -2366,6 +3021,17 @@ function resolveCannonForGeodesic(cannon: GeodesicCannonObject, geodesicId: stri
   };
 }
 
+// ---- Connection and locking ----
+
+/**
+ * Tries to close a free geodesic onto the emitter `incomingEmitterId`, producing a locked geodesic.
+ *
+ * Interval path: re-aims along the emitter tangent for `totalLengthMeters` with emitter connection enabled and only keeps the
+ * result if the trace ends exactly at `incomingEmitterId` (otherwise the free geodesic is re-aimed but no connection is made;
+ * the current segments are returned). Legacy: for non-interval geodesics it rebuilds the cannon's geodesic to the length,
+ * forces the tail terminal to `emitter-hit` and marks the connection `"connected"`. Always returns the geodesic's segments
+ * (possibly empty); does not throw.
+ */
 export function connectGeodesicToEmitter(
   request: ConnectGeodesicToEmitterRequest,
 ): readonly GeodesicSegmentObject[] {
@@ -2454,6 +3120,16 @@ export function connectGeodesicToEmitter(
   return getGeodesicSegments(request.registry, request.geodesicId);
 }
 
+/**
+ * Recomputes a locked geodesic after one of its emitters moved, keeping its homotopy class when possible.
+ *
+ * Interval path: delegates to `rebuildLockedGeodesicFromEndpointsAndPortalWord`. On failure the geodesic is deleted if the new chord
+ * would hit a forbidden zone (checked read-only by `lockedIntervalRebuildHitsForbiddenZone`), kept as is when
+ * `preserveGeodesicOnRebuildFailure`, and otherwise deleted. Returns the segments (empty when deleted).
+ * Legacy: for non-interval connected geodesics the incoming emitter is unfolded into the source cell
+ * (`unfoldIncomingEmitterPointToSourceCell`), the source is re-aimed at it, and the chord is retraced; a chord shorter
+ * than `minGeodesicSegmentLengthMeters` deletes the geodesic unless an emitter is being carried (then the old segments stay).
+ */
 export function rebuildConnectedGeodesicBetweenEmitters(
   request: RebuildConnectedGeodesicBetweenEmittersRequest,
 ): readonly GeodesicSegmentObject[] {
@@ -2582,6 +3258,17 @@ export function rebuildConnectedGeodesicBetweenEmitters(
   return rebuilt ?? getGeodesicSegments(request.registry, request.geodesicId);
 }
 
+// ---- Tie and detach ----
+
+/**
+ * Legacy entry point of tie-and-detach, keyed by geodesic ids; forwards to the endpoint-role API when it can.
+ *
+ * Selects two locked, non-straightening endpoint attachments at the emitter (the given `incidentGeodesicIds`, or the only two
+ * available) and, if two were found, calls `tieAndDetachGeodesicEndpoints` using `geodesicId` as the pair id and
+ * `<geodesicId>:free-end` as the shared free-end id; returns all segments of the resulting moving intervals (empty on failure).
+ * If fewer than two attachments are selectable it falls back to the retired same-cell straightening model
+ * (`tieAndDetachIncidentGeodesicsLegacy`). Prefer `tieAndDetachGeodesicEndpoints`.
+ */
 export function tieAndDetachIncidentGeodesics(
   request: TieAndDetachIncidentGeodesicsRequest,
 ): readonly GeodesicSegmentObject[] {
@@ -2617,6 +3304,20 @@ export function tieAndDetachIncidentGeodesics(
   return tieAndDetachIncidentGeodesicsLegacy(request);
 }
 
+/**
+ * Detaches two endpoint roles from one emitter and ties them to a new shared free end, starting a curve-shortening pair.
+ *
+ * Preconditions: `first` and `second` are different `(geodesicId, role)` pairs (the two roles of ONE interval are allowed: a loop
+ * based at the emitter); both attachments currently point at `detachedEmitterId`; every affected interval exists and is locked
+ * (emitter at both ends). Effects on success: a `FreeGeodesicEndObject` is created at the emitter's beam point (so the geometry does
+ * not change at detach time), the selected roles are re-attached to it, the affected intervals become `"moving"`, their segments are
+ * rebuilt from the stored portal word (the homotopy class is preserved), and a `CurveShorteningPairObject` is added with
+ * `previousTotalLengthMeters` equal to the sum of the affected lengths. Returns that pair.
+ *
+ * Returns `undefined` on failed preconditions (nothing changed) or when a rebuild fails. Rebuild failure rolls back all intervals and
+ * segments and removes the free end, EXCEPT when the failure is a forbidden-zone hit, in which case the affected geodesics are deleted
+ * (they cannot exist at all). Ids come from `createFreeEndId`/`createPairId`, each called at most once.
+ */
 export function tieAndDetachGeodesicEndpoints(
   request: TieAndDetachGeodesicEndpointsRequest,
 ): CurveShorteningPairObject | undefined {
@@ -2636,6 +3337,7 @@ export function tieAndDetachGeodesicEndpoints(
   if (firstInterval?.kind !== "geodesic-interval" || secondInterval?.kind !== "geodesic-interval") {
     return undefined;
   }
+  // Distinct intervals only: when both selections name the same interval (start and end of a loop) it is rewired and rebuilt once.
   const affected = uniqueIntervals([firstInterval, secondInterval]);
   if (!affected.every((interval) => isGeodesicLocked(request.registry, interval.id))) {
     return undefined;
@@ -2647,16 +3349,21 @@ export function tieAndDetachGeodesicEndpoints(
     return undefined;
   }
 
+  // The shared free end is born exactly at the emitter's beam point, so the two endpoint roles (which already coincide there) move
+  // from the emitter to the free end without any visible change; the first shortening tick then slides it away.
   const freeEnd = createFreeGeodesicEndObject({
     id: request.createFreeEndId(),
     cellId: detached.cellId,
     point: getGeodesicCannonEmitterPoint(detached),
   });
+  // Snapshot for rollback: the intervals themselves are in `affected`, their derived segment chains are saved here.
   const originalSegmentsByGeodesicId = new Map(
     affected.map((interval) => [interval.id, getGeodesicSegments(request.registry, interval.id)]),
   );
   request.registry.add(freeEnd);
   for (const interval of affected) {
+    // Re-wire only the selected roles; each interval keeps its portalWord and the other end's anchor. For a loop, both `start` and
+    // `end` of the same interval end up on the free end.
     const next: GeodesicIntervalObject = {
       ...interval,
       motionState: "moving",
@@ -2670,6 +3377,9 @@ export function tieAndDetachGeodesicEndpoints(
         : interval.end,
     };
     request.registry.update(next);
+    // Rebuild failed (note: rebuildDerivedGeodesicSegments itself deletes a degenerate interval). Forbidden zone: the geodesic cannot
+    // legally exist, so delete everything. Anything else (wrong word, wall hit): restore the original intervals, segments and
+    // emitter attachments and discard the free end, leaving the world as before the request.
     if (!rebuildDerivedGeodesicSegments({ world: request.world, registry: request.registry, geodesicId: interval.id })) {
       if (previewGeodesicIntervalHitsForbiddenZone({ world: request.world, registry: request.registry, interval: next })) {
         cleanupCurveShorteningFailure(request.registry, affected.map(({ id }) => id), freeEnd.id, undefined);
@@ -2684,6 +3394,7 @@ export function tieAndDetachGeodesicEndpoints(
     syncLegacyEmitterGeodesicFields(request.registry, interval.id);
   }
 
+  // The pair records the shared vertex's state as "last good" and the starting total length (used for bookkeeping by the tick).
   const pair = createCurveShorteningPairObject({
     id: request.createPairId(),
     first: { geodesicId: request.first.geodesicId, role: request.first.role, anchorObjectId: freeEnd.id },
@@ -2698,6 +3409,9 @@ export function tieAndDetachGeodesicEndpoints(
   return pair;
 }
 
+// Legacy: the retired same-cell straightening model. Removes the two locked geodesics at the emitter and replaces them by a two-segment
+// polyline emitter A -> detached emitter position -> emitter B, all in ONE cell (so no portals are handled), marked `"straightening"`.
+// Returns [] unless both geodesics' other ends are emitters in the same cell as the detached emitter and far enough from it.
 function tieAndDetachIncidentGeodesicsLegacy(
   request: TieAndDetachIncidentGeodesicsRequest,
 ): readonly GeodesicSegmentObject[] {
@@ -2770,6 +3484,14 @@ function tieAndDetachIncidentGeodesicsLegacy(
   return getGeodesicSegments(request.registry, request.geodesicId);
 }
 
+/**
+ * Legacy: advances curve-shortening pairs, and only if none changed, the retired same-cell straightening polylines. Returns changed ids.
+ *
+ * Calls `advanceCurveShorteningPairs` first and returns its result when non-empty. Otherwise (and when `deltaSeconds > 0`) it moves the
+ * vertex of each two-segment, single-cell `"straightening"` polyline toward the chord of its endpoints by at most speed times
+ * `deltaSeconds`; when the vertex is on the chord the polyline is replaced by a locked geodesic (`lockStraightenedGeodesic`), and a
+ * polyline entering a forbidden zone or with an unexpected shape is deleted. New code should call `advanceCurveShorteningPairs`.
+ */
 export function advanceStraighteningGeodesics(
   request: AdvanceStraighteningGeodesicsRequest,
 ): readonly string[] {
@@ -2808,6 +3530,7 @@ export function advanceStraighteningGeodesics(
     const start = first.start;
     const vertex = getGeodesicSegmentEnd(first);
     const end = getGeodesicSegmentEnd(second);
+    // Legacy step: slide the vertex toward the straight chord start->end; `undefined` means it has arrived.
     const nextVertex = moveStraighteningVertex({
       start,
       vertex,
@@ -2871,6 +3594,37 @@ export function advanceStraighteningGeodesics(
   return advanced;
 }
 
+// ---- Curve shortening ----
+
+/**
+ * Advances every curve-shortening pair by one tick of `deltaSeconds`, sliding its shared free end downhill, and returns the changed ids.
+ *
+ * Model: a pair glues two endpoint roles at one free end F; the unit tangents `u`, `v` of the two geodesic arcs at F (pointing away
+ * from F) give the first variation of the total length L under a displacement `d` of F: `dL = -(u + v) . d`. So the steepest
+ * descent direction is `normalize(u + v)`; when `u + v` vanishes (or the angle between `u` and `v` is within
+ * `curveShorteningFuseAngleToleranceRadians` of pi) the corner is locally straight. The portal words keep each arc in its homotopy
+ * class, while F crossing a portal is the only allowed change of the words.
+ *
+ * Per pair, in this order: (1) a `"ready-to-fuse"` pair is fused with `fuseCurveShorteningPair` (fusion happens one call after the
+ * pair was flagged); (2) structurally invalid pairs (missing free end, intervals gone, no longer `"moving"`, missing tangents) are
+ * silently removed; (3) a straight corner flags the pair `"ready-to-fuse"`; (4) step length = min(speed times `deltaSeconds`,
+ * a quarter of the shortest incident arc); a step below `curveShorteningMinStepMeters` instead tries `absorbShortCurveShorteningHalf`;
+ * (5) F is moved with `moveDynamicObject` (autonomous portal crossing, forbidden zones ignored); a blocked move skips the tick;
+ * (6) if F crossed a portal each interval's word is updated by that traversal; (7) every interval is re-traced against the candidate
+ * F position WITHOUT touching the registry (`previewRebuildGeodesicInterval`); (8) on success, and if the total length did not grow
+ * beyond the tolerance, the free end, the changed intervals,
+ * their segments and the pair's `previousTotalLengthMeters`/last-good fields are committed together.
+ *
+ * Failures of the preview: a degenerate (too short) half is absorbed into the other; a forbidden-zone hit deletes the failing half
+ * (the other half survives as a stable free geodesic, see `cleanupCurveShorteningPreviewFailure`); a wall hit or wrong portal word
+ * leaves the pair and free end exactly as they were and is NOT reported as a change (the same step is retried next tick). A step is also
+ * not committed (and not reported) when the previewed total length exceeds `previousTotalLengthMeters` by more than
+ * `curveShorteningLengthIncreaseToleranceMeters`; `previousTotalLengthMeters` is recorded only by committed ticks. A single-interval
+ * free loop shorter than `GEODESIC_MIN_LENGTH_METERS` (or whose preview is degenerate and cannot be absorbed) is deleted with its free
+ * end and pair. If fusing a `"ready-to-fuse"` pair fails for a reason other than a forbidden zone, the pair reverts to `"moving"`.
+ *
+ * Returns the unique ids (intervals or pairs) that changed; returns `[]` when `deltaSeconds` is not positive. Units: seconds, meters/second.
+ */
 export function advanceCurveShorteningPairs(
   request: AdvanceCurveShorteningPairsRequest,
 ): readonly string[] {
@@ -2879,6 +3633,7 @@ export function advanceCurveShorteningPairs(
   }
   const changed: string[] = [];
   for (const pair of request.registry.getAll().filter(isCurveShorteningPairObject)) {
+    // Two-phase finish: a pair flagged on an earlier call is fused now. The returned id is the fused interval (or the pair if fusion failed).
     if (pair.state === "ready-to-fuse") {
       request.onDebugMessage?.("curve-shortening pair fused after ready state", {
         pairId: pair.id,
@@ -2888,9 +3643,17 @@ export function advanceCurveShorteningPairs(
         previousTotalLengthMeters: pair.previousTotalLengthMeters,
       });
       const fused = fuseCurveShorteningPair({ world: request.world, registry: request.registry, pairId: pair.id });
+      const survivingPair = request.registry.get(pair.id);
+      if (!fused && survivingPair?.kind === "curve-shortening-pair" && survivingPair.state === "ready-to-fuse") {
+        // Fusion failed for a reason other than a forbidden zone (wall hit, wrong word, degenerate chord): hand the pair back to the
+        // descent instead of retrying the same failing fusion forever.
+        request.registry.update({ ...survivingPair, state: "moving" });
+        request.onDebugMessage?.("curve-shortening pair fusion failed; pair reverted to moving", { pairId: pair.id });
+      }
       changed.push(fused?.id ?? pair.id);
       continue;
     }
+    // Structural validation. Broken pairs are dropped (the pair object only; intervals are left as they are).
     const freeEnd = request.registry.get(pair.freeEndAnchorId);
     if (freeEnd?.kind !== "free-geodesic-end") {
       request.registry.remove(pair.id);
@@ -2902,6 +3665,8 @@ export function advanceCurveShorteningPairs(
       changed.push(pair.id);
       continue;
     }
+    // Unit tangents u, v of the two arcs at the shared free end, pointing away from it. Both are in the free end's cell frame
+    // because each arc's end segment lives in the cell of its anchor, and both anchors are the free end.
     const firstTangent = endpointDirectionAwayFromAnchor(request.registry, pair.first);
     const secondTangent = endpointDirectionAwayFromAnchor(request.registry, pair.second);
     if (!firstTangent || !secondTangent) {
@@ -2909,8 +3674,10 @@ export function advanceCurveShorteningPairs(
       changed.push(pair.id);
       continue;
     }
+    // -(u + v) is the gradient of the total length with respect to the free end's position (first variation of arc length).
     const sum = addVec3(firstTangent, secondTangent);
     const sumLength = Math.hypot(sum.x, sum.y);
+    // Angle between u and v in [0, pi]; pi means the two arcs continue each other, i.e. the corner at F is straight.
     const turnAngle = Math.acos(Math.max(-1, Math.min(1, firstTangent.x * secondTangent.x + firstTangent.y * secondTangent.y)));
     const angleDeltaFromPiRadians = Math.abs(Math.PI - turnAngle);
     if (sumLength <= intersectionTolerance || Math.abs(Math.PI - turnAngle) <= curveShorteningFuseAngleToleranceRadians) {
@@ -2935,6 +3702,7 @@ export function advanceCurveShorteningPairs(
       changed.push(pair.id);
       continue;
     }
+    // Cap the step by a quarter of the shortest incident arc so a step never overshoots the opposite endpoint's neighbourhood.
     const shortestIncidentLength = Math.max(
       curveShorteningMinStepMeters,
       Math.min(...owned.intervals.map((interval) => totalGeodesicLengthFromSegments(getGeodesicSegments(request.registry, interval.id)))),
@@ -2953,10 +3721,14 @@ export function advanceCurveShorteningPairs(
       });
       if (absorbed) {
         changed.push(absorbed.id);
+      } else if (removeDegenerateFreeLoop(request.registry, pair, owned.intervals)) {
+        changed.push(pair.id);
       }
+      // TODO(issue 41): a free loop whose length lies between GEODESIC_MIN_LENGTH_METERS and 4 * curveShorteningMinStepMeters stalls here forever.
       continue;
     }
 
+    // Steepest-descent direction of total length. The displacement is horizontal (z unchanged).
     const descent = normalizeHorizontalDirection(sum);
     const moveResult = moveDynamicObject({
       world: request.world,
@@ -2968,12 +3740,19 @@ export function advanceCurveShorteningPairs(
     if (moveResult.blocked) {
       continue;
     }
+    // Candidate state of F after the move (not yet committed). `candidateAnchors` makes the previews see it instead of the registry copy.
     const candidateFreeEnd: FreeGeodesicEndObject = {
       ...freeEnd,
       cellId: moveResult.object.cellId,
       localPose: moveResult.object.localPose,
     };
     const candidateAnchors = new Map<string, RuntimeWorldObject>([[candidateFreeEnd.id, candidateFreeEnd]]);
+    // If F crossed a portal during the move, F now lives in the neighbouring cell. Each arc's portal word to F must therefore grow
+    // by this traversal (append for the `end` role, prepend the inverse for the `start` role) so that the arc still ends at F.
+    // This is the only change of homotopy class a tick may make. Words that fail the cell-chain check are left unchanged.
+    // Known gap: for a free loop (one interval with both roles on F) only the `start` branch is applied, so the end cell no longer
+    // matches the word and the preview normally fails.
+    // TODO(issue 41): a free loop whose free end crosses a portal stalls; update the word for both roles of a single interval.
     const traversal = moveResult.crossedPortal && moveResult.crossedPortalId
       ? getPortalTraversalFromSource(request.world, freeEnd.cellId, moveResult.crossedPortalId)
       : undefined;
@@ -3002,6 +3781,7 @@ export function advanceCurveShorteningPairs(
           }
         : interval;
     });
+    // Dry-run re-trace of every arc from its candidate anchors/word: each must realize its word exactly without hitting a wall or zone.
     const previews = candidateIntervals.map((interval) =>
       previewRebuildGeodesicInterval({
         world: request.world,
@@ -3010,6 +3790,8 @@ export function advanceCurveShorteningPairs(
         candidateAnchorsById: candidateAnchors,
       })
     );
+    // At least one arc cannot follow F to the candidate position. If one arc has become shorter than the minimum length it is merged
+    // into the other (absorb); otherwise a forbidden-zone hit removes the offending half; any other failure changes nothing.
     if (previews.some((preview) => !preview)) {
       const degenerateInterval = candidateIntervals.find((interval, index) =>
         previews[index] === undefined &&
@@ -3031,10 +3813,13 @@ export function advanceCurveShorteningPairs(
         });
         if (absorbed) {
           changed.push(absorbed.id);
+        } else if (owned.intervals.length === 1 && removeDegenerateFreeLoop(request.registry, pair, owned.intervals, true)) {
+          changed.push(pair.id);
         }
         continue;
       }
-      cleanupCurveShorteningPreviewFailure({
+      // Only a forbidden-zone failure changes the registry; any other failure leaves the tick uncommitted and unreported.
+      const cleanedUp = cleanupCurveShorteningPreviewFailure({
         world: request.world,
         registry: request.registry,
         pair,
@@ -3042,12 +3827,30 @@ export function advanceCurveShorteningPairs(
         previews,
         candidateAnchorsById: candidateAnchors,
       });
-      changed.push(pair.id);
+      if (cleanedUp) {
+        changed.push(pair.id);
+      }
       continue;
     }
+    // All arcs realized: sum their new lengths. Monotone descent: a step that makes the total longer than the last recorded total
+    // (beyond the tolerance) is not committed. The corner is already known to be outside the fuse angle tolerance here (a straight
+    // corner was flagged `ready-to-fuse` above), so the tick is simply skipped: free end, arcs and recorded total stay as they were.
     const nextTotal = previews.reduce((total, preview) =>
       total + (preview?.segments.reduce((sumMeters, segment) => sumMeters + segment.lengthMeters, 0) ?? 0), 0);
+    if (
+      pair.previousTotalLengthMeters !== undefined &&
+      nextTotal > pair.previousTotalLengthMeters + curveShorteningLengthIncreaseToleranceMeters
+    ) {
+      request.onDebugMessage?.("curve-shortening step skipped: total length would increase", {
+        pairId: pair.id,
+        previousTotalLengthMeters: pair.previousTotalLengthMeters,
+        candidateTotalLengthMeters: nextTotal,
+        toleranceMeters: curveShorteningLengthIncreaseToleranceMeters,
+      });
+      continue;
+    }
 
+    // Commit. Order matters only in that the free end and (possibly new) words are written before the new segments replace the old.
     request.registry.update(candidateFreeEnd);
     for (const preview of previews) {
       if (!preview) {
@@ -3086,6 +3889,20 @@ export function advanceCurveShorteningPairs(
   return [...new Set(changed)];
 }
 
+/**
+ * Finishes a curve-shortening pair: merges its moving arcs into one stable geodesic and deletes the pair and its free end.
+ *
+ * Free loop (one interval): the interval becomes `"stable"` with both roles still on the shared free end, only the pair object is
+ * deleted. Ordinary pair (two intervals): both non-free anchors must be emitters; the surviving interval takes the
+ * lexicographically smallest of the two ids (plain string sort), runs from the first arc's non-free emitter to the second arc's
+ * non-free emitter, and its portal word is `word(first: nonFree -> free) + word(second: free -> nonFree)` with adjacent inverse
+ * traversals cancelled (so a vertex that wrapped back through a portal collapses). The new geometry is previewed first.
+ *
+ * Returns the stable interval, or `undefined`. Failure semantics: structural problems remove the pair object only; a preview failure
+ * caused by a forbidden zone deletes the geodesics, free end and pair; ANY OTHER preview failure (wall hit, wrong word, degenerate
+ * chord) returns `undefined` and leaves the pair in `"ready-to-fuse"` state; `advanceCurveShorteningPairs` then reverts it to `"moving"`.
+ * A failure of the final destructive rebuild (after the preview succeeded) also returns `undefined` with the pair already gone.
+ */
 export function fuseCurveShorteningPair(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -3101,6 +3918,8 @@ export function fuseCurveShorteningPair(input: {
     return undefined;
   }
 
+  // One interval owning both roles = a free loop. Its geometry already ends at the shared free end, so fusion only has to make it
+  // stable (verifying that it is still realizable) and drop the pair.
   if (owned.intervals.length === 1) {
     const loop = owned.intervals[0];
     const stableLoop: GeodesicIntervalObject = { ...loop, motionState: "stable" };
@@ -3132,6 +3951,8 @@ export function fuseCurveShorteningPair(input: {
     input.registry.remove(pair.id);
     return undefined;
   }
+  // Each arc's "other end" (not at the shared vertex) must be an emitter; it becomes an endpoint of the fused geodesic.
+  // TODO(issue 41): the emitter-at-the-non-free-end assumption (here and in absorbShortCurveShorteningHalf) rejects other anchors.
   const firstNonFreeRole = getOppositeEndRole(pair.first.role);
   const secondNonFreeRole = getOppositeEndRole(pair.second.role);
   const firstAnchor = input.registry.get(firstInterval[firstNonFreeRole].anchorObjectId);
@@ -3141,8 +3962,11 @@ export function fuseCurveShorteningPair(input: {
     return undefined;
   }
 
+  // Reuse the smaller id (string order) for the fused geodesic; the other interval is deleted after the fused one is validated.
   const fusedId = [firstInterval.id, secondInterval.id].sort()[0];
   const removedId = fusedId === firstInterval.id ? secondInterval.id : firstInterval.id;
+  // Role-aware word composition: read the first arc from its non-free end to the vertex, then the second arc from the vertex to its
+  // non-free end. Both pieces meet in the free end's cell, so the concatenation chains; free reduction cancels back-tracking at the vertex.
   const fusedWord = reduceAdjacentInversePortalTraversals([
     ...getPortalWordBetweenEndpointRoles({
       interval: firstInterval,
@@ -3165,6 +3989,7 @@ export function fuseCurveShorteningPair(input: {
     start: { geodesicId: fusedId, role: "start", anchorObjectId: firstAnchor.id },
     end: { geodesicId: fusedId, role: "end", anchorObjectId: secondAnchor.id },
   };
+  // Validate the fused geodesic as a pure preview first so a failure leaves the moving arcs intact.
   const preview = previewRebuildGeodesicInterval({
     world: input.world,
     registry: input.registry,
@@ -3176,6 +4001,7 @@ export function fuseCurveShorteningPair(input: {
     }
     return undefined;
   }
+  // Commit: overwrite the surviving interval, delete the other arc, the free end and the pair, then regenerate the segments.
   input.registry.update(fusedInterval);
   removeGeodesicIntervalAndDerivedObjects(input.registry, removedId);
   input.registry.remove(pair.freeEndAnchorId);
@@ -3190,6 +4016,13 @@ export function fuseCurveShorteningPair(input: {
   return finalInterval;
 }
 
+// Absorbs a nearly vanished arc of a two-arc pair into the other arc, fusing them into one stable geodesic on the survivor's id.
+//
+// The short arc (shortest of the two, or `preferredShortGeodesicId`, e.g. one found degenerate in a preview) is below
+// `curveShorteningFuseStepToleranceMeters`, so the free end is practically at that arc's emitter: the geodesic then runs from the survivor's
+// far emitter to the short arc's far emitter with word = survivor(nonFree -> free) + short(free -> nonFree). Same preview-then-commit
+// structure as `fuseCurveShorteningPair` (forbidden-zone failure deletes everything, other failures return undefined and change nothing).
+// Unlike fusion, the LONGER arc's id survives. Returns the stable interval or undefined.
 function absorbShortCurveShorteningHalf(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -3318,6 +4151,12 @@ function getPairFreeRoleForInterval(
   return undefined;
 }
 
+/**
+ * Returns the portal word of a geodesic: the stored word for an interval, else (legacy) the traversals read off the segment chain.
+ *
+ * For legacy chains each `portal-hit` terminal contributes its traversal; hits whose portal is unknown to `world` are skipped.
+ * Returns `[]` for unknown ids or geodesics that never cross a portal.
+ */
 export function collectGeodesicPortalWord(
   world: CompiledCellComplex,
   registry: RuntimeObjectRegistry,
@@ -3350,6 +4189,7 @@ export function collectGeodesicPortalWord(
   return word;
 }
 
+// De-duplicates intervals by id (a loop pair names the same interval twice), keeping the last occurrence.
 function uniqueIntervals(intervals: readonly GeodesicIntervalObject[]): readonly GeodesicIntervalObject[] {
   const byId = new Map<string, GeodesicIntervalObject>();
   for (const interval of intervals) {
@@ -3358,6 +4198,8 @@ function uniqueIntervals(intervals: readonly GeodesicIntervalObject[]): readonly
   return [...byId.values()];
 }
 
+// Resolves and validates the intervals owned by a pair: both exist, the named role of each is attached to the pair's free end, and
+// every interval is `"moving"`. Returns `undefined` otherwise. One interval is returned for a free loop.
 function resolvePairIntervals(
   registry: RuntimeObjectRegistry,
   pair: CurveShorteningPairObject,
@@ -3377,6 +4219,7 @@ function resolvePairIntervals(
   return intervals.every((interval) => interval.motionState === "moving") ? { intervals } : undefined;
 }
 
+// Unit horizontal direction (cell frame of the anchor) in which the geodesic leaves the anchor of the given endpoint role.
 function endpointDirectionAwayFromAnchor(
   registry: RuntimeObjectRegistry,
   attachment: GeodesicEndpointAttachment,
@@ -3389,6 +4232,7 @@ function endpointDirectionAwayFromAnchor(
   return tangent ? directionFromYaw(tangent.yawRadians) : undefined;
 }
 
+// Sum of the derived-segment lengths of the distinct geodesic ids (meters).
 function totalLengthForGeodesicIds(
   registry: RuntimeObjectRegistry,
   geodesicIds: readonly string[],
@@ -3399,6 +4243,8 @@ function totalLengthForGeodesicIds(
   );
 }
 
+// Destructive failure cleanup: deletes the given intervals with their derived objects, the shared free end and optionally the pair,
+// then refreshes intersection markers. No survivor is kept.
 function cleanupCurveShorteningFailure(
   registry: RuntimeObjectRegistry,
   geodesicIds: readonly string[],
@@ -3415,6 +4261,7 @@ function cleanupCurveShorteningFailure(
   updateGeodesicIntersectionObjects(registry);
 }
 
+// Rollback helper: puts back saved interval objects (re-adding any that were deleted) together with their saved segment chains.
 function restoreGeodesicIntervalsAndSegments(
   registry: RuntimeObjectRegistry,
   intervals: readonly GeodesicIntervalObject[],
@@ -3434,6 +4281,11 @@ function restoreGeodesicIntervalsAndSegments(
   }
 }
 
+// Handles a failed preview tick. Only forbidden-zone failures are acted upon; with none, nothing changes and `false` is returned.
+// Returns `true` when objects were deleted or rewritten.
+// If every arc failed, or the situation is not "exactly one of two arcs failed", the failing arcs, free end and pair are deleted.
+// Otherwise (one arc failed, one succeeded): the failed arc and the pair are deleted and the surviving arc is detached from the
+// shared free end onto a NEW free end at the pair's last-good position, set `"stable"`, and rebuilt: it becomes an ordinary free geodesic.
 function cleanupCurveShorteningPreviewFailure(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -3441,7 +4293,7 @@ function cleanupCurveShorteningPreviewFailure(input: {
   readonly intervals: readonly GeodesicIntervalObject[];
   readonly previews: readonly (GeodesicTraceBuildResult | undefined)[];
   readonly candidateAnchorsById?: ReadonlyMap<string, RuntimeWorldObject>;
-}): void {
+}): boolean {
   const successes = input.intervals.filter((_interval, index) => input.previews[index] !== undefined);
   const failures = input.intervals.filter((_interval, index) => input.previews[index] === undefined);
   const forbiddenFailures = failures.filter((interval) =>
@@ -3453,7 +4305,7 @@ function cleanupCurveShorteningPreviewFailure(input: {
     })
   );
   if (forbiddenFailures.length === 0) {
-    return;
+    return false;
   }
   if (
     forbiddenFailures.length === input.intervals.length ||
@@ -3466,7 +4318,7 @@ function cleanupCurveShorteningPreviewFailure(input: {
       input.pair.freeEndAnchorId,
       input.pair.id,
     );
-    return;
+    return true;
   }
 
   const survivor = successes[0];
@@ -3485,7 +4337,7 @@ function cleanupCurveShorteningPreviewFailure(input: {
   if (currentSurvivor?.kind !== "geodesic-interval") {
     removeUnusedFreeGeodesicEnds(input.registry);
     updateGeodesicIntersectionObjects(input.registry);
-    return;
+    return true;
   }
   const nextSurvivor: GeodesicIntervalObject = freeRole === "start"
     ? {
@@ -3510,8 +4362,34 @@ function cleanupCurveShorteningPreviewFailure(input: {
   rebuildDerivedGeodesicSegments({ world: input.world, registry: input.registry, geodesicId: survivor.id });
   syncLegacyEmitterGeodesicFields(input.registry, survivor.id);
   updateGeodesicIntersectionObjects(input.registry);
+  return true;
 }
 
+// Deletes a pair's single interval (a free loop: both roles on the shared free end) with its derived objects, the free end and the pair,
+// when the loop is shorter than `GEODESIC_MIN_LENGTH_METERS` or the caller already knows it is degenerate (`assumeDegenerate`).
+// A two-interval pair is never touched. Returns whether anything was deleted.
+function removeDegenerateFreeLoop(
+  registry: RuntimeObjectRegistry,
+  pair: CurveShorteningPairObject,
+  intervals: readonly GeodesicIntervalObject[],
+  assumeDegenerate = false,
+): boolean {
+  if (intervals.length !== 1) {
+    return false;
+  }
+  const loop = intervals[0];
+  if (loop.start.anchorObjectId !== pair.freeEndAnchorId || loop.end.anchorObjectId !== pair.freeEndAnchorId) {
+    return false;
+  }
+  if (!assumeDegenerate && totalGeodesicLengthFromSegments(getGeodesicSegments(registry, loop.id)) >= GEODESIC_MIN_LENGTH_METERS) {
+    return false;
+  }
+  cleanupCurveShorteningFailure(registry, [loop.id], pair.freeEndAnchorId, pair.id);
+  return true;
+}
+
+// Read-only: would tracing this interval (with optional candidate anchors) enter a forbidden zone? False if the lift fails or the chord
+// is shorter than the minimum length.
 function previewGeodesicIntervalHitsForbiddenZone(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -3548,6 +4426,7 @@ function previewGeodesicIntervalHitsForbiddenZone(input: {
   return traces.some((trace) => trace.terminal.kind === "forbidden-zone-hit");
 }
 
+// Read-only: is the lifted start-to-end chord shorter than `GEODESIC_MIN_LENGTH_METERS`? False if the lift itself fails.
 function previewGeodesicIntervalIsDegenerate(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -3570,6 +4449,12 @@ function previewGeodesicIntervalIsDegenerate(input: {
   ) < GEODESIC_MIN_LENGTH_METERS - intersectionTolerance;
 }
 
+// Legacy: computes where the far emitter lies in the source emitter's cell after one of them was carried, for the non-interval model.
+//
+// With T = composition of the portal transforms along the geodesic's portal word (source-cell frame -> incoming-cell frame),
+// the incoming point in the source frame is T^{-1}(incomingPoint). If the carried emitter crossed a portal, its crossing
+// transform is composed into T (carried = incoming) or applied after pulling back (carried = source). Returns undefined if the word
+// cannot be resolved, the carried id is neither emitter, or the resulting chord is too short to draw.
 function resolveCarriedConnectedGeodesicPlan(input: {
   readonly world: CompiledCellComplex;
   readonly registry: RuntimeObjectRegistry;
@@ -3624,6 +4509,7 @@ function resolveCarriedConnectedGeodesicPlan(input: {
     : undefined;
 }
 
+// Legacy helper: the emitter (source or incoming) whose id equals `carriedEmitterId`.
 function getCarriedEmitter(input: {
   readonly source: GeodesicCannonObject;
   readonly incoming: GeodesicCannonObject;
@@ -3632,6 +4518,7 @@ function getCarriedEmitter(input: {
   return input.carriedEmitterId === input.source.id ? input.source : input.incoming;
 }
 
+// Legacy: accepts the mover-reported portal transition only if it starts in the carried emitter's previous cell and ends in its current cell.
 function resolveExplicitCarriedEmitterPortalTransition(input: {
   readonly carriedEmitterBeforeMove?: GeodesicCannonObject;
   readonly carriedEmitterPortalTransition?: GeodesicCarryPortalTransition;
@@ -3656,6 +4543,8 @@ function resolveExplicitCarriedEmitterPortalTransition(input: {
   return transition;
 }
 
+// Legacy: composes the portal transforms of a word, applying the first traversal first (result maps source-cell to last-target-cell
+// coordinates). Traversals naming unknown portals are skipped silently.
 function getExistingGeodesicPortalTransform(
   world: CompiledCellComplex,
   registry: RuntimeObjectRegistry,
@@ -3675,6 +4564,7 @@ function getExistingGeodesicPortalTransform(
   return transform;
 }
 
+// Legacy: true when the (horizontal) chord is long enough to draw a geodesic.
 function isDrawableEndpointPair(sourcePoint: Vec3, incomingPointInSourceCell: Vec3): boolean {
   const centerDistanceMeters = Math.hypot(
     incomingPointInSourceCell.x - sourcePoint.x,
@@ -3683,6 +4573,8 @@ function isDrawableEndpointPair(sourcePoint: Vec3, incomingPointInSourceCell: Ve
   return centerDistanceMeters - geodesicRayBeamStartOffsetMeters >= minGeodesicSegmentLengthMeters - intersectionTolerance;
 }
 
+// Legacy: replaces a connected geodesic's segments by traces whose tail is stretched to the exact chord length and forced to an `emitter-hit`
+// terminal, then marks the connection. Returns undefined if the tail is too short or the traced tail did not end `open`.
 function replaceConnectedGeodesicSegments(input: {
   readonly registry: RuntimeObjectRegistry;
   readonly source: GeodesicCannonObject;
@@ -3734,6 +4626,7 @@ function replaceConnectedGeodesicSegments(input: {
   return getGeodesicSegments(input.registry, input.geodesicId);
 }
 
+// Ids of all geodesics incident on an emitter, from interval attachments, the emitter's own caches, and legacy connection records of any cannon.
 function collectIncidentGeodesicIdsForEmitter(
   registry: RuntimeObjectRegistry,
   emitterId: string,
@@ -3766,6 +4659,7 @@ function collectIncidentGeodesicIdsForEmitter(
   return [...ids];
 }
 
+// Legacy: the emitter at the other end of the given geodesic, relative to the detached emitter, using the connection record.
 function resolveDetachedEndpoint(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -3781,6 +4675,7 @@ function resolveDetachedEndpoint(
   return other?.kind === "geodesic-cannon" ? { emitter: other } : undefined;
 }
 
+// Legacy: builds a straight "straightening"-state segment between two points of one cell; terminal as given. Direction is horizontal-normalized.
 function createStraighteningSegment(options: {
   readonly id: string;
   readonly geodesicId: string;
@@ -3813,6 +4708,7 @@ function createStraighteningSegment(options: {
   };
 }
 
+// Legacy: records a straightening connection on both emitters and re-aims them along the polyline's end tangents.
 function markStraighteningGeodesic(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -4104,6 +5000,17 @@ function getExistingPortalTransformsTowardCell(input: {
   return undefined;
 }
 
+// ---- Placing cannons on geodesics ----
+
+/**
+ * Places a new cannon at a point of a free geodesic and splits the geodesic there into two intervals.
+ *
+ * The point is `distanceAlongSegmentMeters` (clamped to the segment) along the segment; it must be at least `minGeodesicSegmentLengthMeters`
+ * from the segment start. The cannon is first placed on the floor below the point (`placeGeodesicCannonAtFloorPoint`), then
+ * `splitGeodesicIntervalAtSegmentHit` is applied; if the split is refused the cannon is removed again.
+ * Returns the stored cannon on success. Failure reasons are coarse: `"missing-cell"` for an unknown/foreign segment, `"cell-collision"`
+ * for a too-near cut or refused split, or the collision reasons of the floor placement. Mutates the registry; does not throw.
+ */
 export function placeGeodesicCannonOnGeodesic(
   request: PlaceGeodesicCannonOnGeodesicRequest,
 ): PlaceGeodesicCannonResult {
@@ -4151,6 +5058,16 @@ export function placeGeodesicCannonOnGeodesic(
   return placed?.kind === "geodesic-cannon" ? { placed: true, object: placed } : result;
 }
 
+/**
+ * Places a cannon at a vertex where segments pass and cuts every passing geodesic there, connecting the pieces to the new cannon.
+ *
+ * Vertex discovery (`findSegmentsPassingThroughVertex`) accepts segments of the cell that pass within `emitterConnectionToleranceMeters`
+ * of `vertexPoint` at least `minGeodesicSegmentLengthMeters` from their start. For each match the geodesic is retraced to the cut and
+ * connected to the new cannon (`connectGeodesicToEmitter`) and, if enough length remains, a continuation geodesic is shot from the cannon
+ * along the old direction (and re-connected to the old terminal emitter if there was one). Returns the stored cannon on success;
+ * `{ placed: false, reason: "missing-cell" }` when no segment passes through the vertex, or the floor-placement failure reason.
+ * Mutates the registry; does not throw. Geodesics matched at this vertex are processed in geodesic-id order.
+ */
 export function placeGeodesicCannonAtGeodesicVertex(
   request: PlaceGeodesicCannonAtGeodesicVertexRequest,
 ): PlaceGeodesicCannonResult {
@@ -4254,6 +5171,16 @@ export function placeGeodesicCannonAtGeodesicVertex(
   return placed?.kind === "geodesic-cannon" ? { placed: true, object: placed } : result;
 }
 
+// ---- Intersections ----
+
+/**
+ * Recomputes all intersection markers (where segments of two different geodesics cross in a cell) and returns them.
+ *
+ * Existing markers are removed and re-added with ids preserved when a new marker pairs the same two geodesics in the same cell within
+ * `vertexContinuityToleranceMeters` of an earlier one (identity continuity, so UI selections survive a moving crossing). Every call
+ * is a full O(n^2) scan of all segments (TODO(issue 41): use a spatial index or per-cell buckets). Crossings within `emitterConnectionToleranceMeters` of an emitter are suppressed. Previously seen
+ * markers stay in the per-registry memory (see `getRememberedGeodesicIntersectionObject`).
+ */
 export function updateGeodesicIntersectionObjects(registry: RuntimeObjectRegistry): readonly GeodesicIntersectionObject[] {
   const memory = getGeodesicIntersectionMemory(registry);
   const previous = new Map(memory);
@@ -4279,6 +5206,7 @@ export function updateGeodesicIntersectionObjects(registry: RuntimeObjectRegistr
   return intersections;
 }
 
+/** Returns the last known intersection marker with this id even if it has since disappeared from the registry, or `undefined`. */
 export function getRememberedGeodesicIntersectionObject(
   registry: RuntimeObjectRegistry,
   intersectionId: string,
@@ -4286,6 +5214,7 @@ export function getRememberedGeodesicIntersectionObject(
   return getGeodesicIntersectionMemory(registry).get(intersectionId);
 }
 
+/** Forgets remembered intersection markers that are no longer in the registry; returns the forgotten ids. */
 export function pruneMissingGeodesicIntersectionObjects(registry: RuntimeObjectRegistry): readonly string[] {
   const memory = getGeodesicIntersectionMemory(registry);
   const prunedIds: string[] = [];
@@ -4301,6 +5230,8 @@ export function pruneMissingGeodesicIntersectionObjects(registry: RuntimeObjectR
   return prunedIds;
 }
 
+// Builds one segment object from a trace; its `halfRole` is provisionally `"start"` and is overwritten by `splitDerivedSegmentsIntoEndpointHalves`.
+// `connectionState` is `"connected"` only for an `emitter-hit` tail, otherwise `"open"`.
 function createSegmentFromTrace(options: {
   readonly id: string;
   readonly geodesicId: string;
@@ -4349,6 +5280,7 @@ function createGeodesicSegmentTooltip(
   };
 }
 
+// A cut point must leave at least the minimum length on BOTH sides within the segment.
 function canSplitGeodesicSegmentAtDistance(
   segment: GeodesicSegmentObject,
   distanceAlongSegmentMeters: number,
@@ -4357,10 +5289,13 @@ function canSplitGeodesicSegmentAtDistance(
     segment.lengthMeters - distanceAlongSegmentMeters >= minGeodesicSegmentLengthMeters - intersectionTolerance;
 }
 
+// A cut point must be at least the minimum length from the segment's start.
 function canConnectGeodesicSegmentAtDistance(distanceAlongSegmentMeters: number): boolean {
   return distanceAlongSegmentMeters >= minGeodesicSegmentLengthMeters - intersectionTolerance;
 }
 
+// Segments in the cell that pass within the emitter tolerance of the vertex (measured after orthogonal projection onto the segment line)
+// and can be split there. The projection parameter may lie anywhere on the infinite line; `canSplitGeodesicSegmentAtDistance` restricts it to the segment.
 function findSegmentsPassingThroughVertex(
   registry: RuntimeObjectRegistry,
   cellId: string,
@@ -4382,6 +5317,7 @@ function findSegmentsPassingThroughVertex(
     .sort((left, right) => left.segment.geodesicId.localeCompare(right.segment.geodesicId));
 }
 
+// Signed distance of the orthogonal projection of `point` onto the segment's line, measured from the segment start (meters).
 function distanceAlongSegment(segment: GeodesicSegmentObject, point: Vec3): number {
   const dx = point.x - segment.start.x;
   const dy = point.y - segment.start.y;
@@ -4389,6 +5325,7 @@ function distanceAlongSegment(segment: GeodesicSegmentObject, point: Vec3): numb
   return dx * segment.direction.x + dy * segment.direction.y + dz * segment.direction.z;
 }
 
+// Arc length from the start of the geodesic to the point `distanceAlongSegmentMeters` inside `targetSegment`.
 function totalLengthThroughSegment(
   segments: readonly GeodesicSegmentObject[],
   targetSegment: GeodesicSegmentObject,
@@ -4403,6 +5340,7 @@ function totalGeodesicLengthFromSegments(segments: readonly GeodesicSegmentObjec
   return segments.reduce((total, segment) => total + segment.lengthMeters, 0);
 }
 
+// Removes all derived segments of a geodesic and refreshes intersection markers (so it is also a minor O(n^2) cost).
 function removeGeodesicSegments(registry: RuntimeObjectRegistry, geodesicId: string): void {
   for (const segment of getGeodesicSegments(registry, geodesicId)) {
     registry.remove(segment.id);
@@ -4419,6 +5357,7 @@ function removeGeodesicAssociations(registry: RuntimeObjectRegistry, geodesicId:
   }
 }
 
+// Removes the geodesic id from the emitter's caches (id list, active id, yaw and connection records). No-op when it holds nothing.
 function removeGeodesicAssociationFromEmitter(
   registry: RuntimeObjectRegistry,
   emitterId: string,
@@ -4451,6 +5390,8 @@ function removeGeodesicAssociationFromEmitter(
   });
 }
 
+// Legacy: marks a non-interval geodesic as connected between two emitters: aligns each emitter's yaw with the geodesic's end tangents,
+// records `"connected"` connection state on the source (and the shared one if source and incoming coincide), and relabels all segments.
 function markGeodesicConnected(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -4556,6 +5497,8 @@ function markGeodesicConnected(
   }
 }
 
+// Legacy: finds the emitter that owns a non-interval geodesic, preferring the recorded outgoing connection, then yaw record,
+// then active id, then any listing.
 function findSourceEmitterForGeodesic(
   registry: RuntimeObjectRegistry,
   geodesicId: string,
@@ -4581,6 +5524,9 @@ function findSourceEmitterForGeodesic(
   );
 }
 
+// Pairwise crossing search over all segments in the registry (O(n^2)). Only segments of different geodesics in the same cell count;
+// a crossing at an emitter is dropped, and duplicates (same rounded point and geodesic pair) are removed. Segments in different cells
+// never intersect here, even if they are adjacent through a portal.
 function findGeodesicIntersections(registry: RuntimeObjectRegistry): readonly GeodesicIntersectionObject[] {
   const segments = registry.getAll().filter(isGeodesicSegmentObject);
   const intersections: GeodesicIntersectionObject[] = [];
@@ -4668,6 +5614,7 @@ function assignGeodesicIntersectionIdentities(
   });
 }
 
+// Matches a fresh marker to the nearest unused previous marker of the same cell and geodesic pair within `vertexContinuityToleranceMeters`.
 function findContinuityMatchedIntersection(
   intersection: GeodesicIntersectionObject,
   previousById: ReadonlyMap<string, GeodesicIntersectionObject>,
@@ -4751,6 +5698,9 @@ function createGeodesicIntersectionObject(options: {
   };
 }
 
+// Intersection of two finite horizontal segments P = L + s r, Q = R + u q (s, u in [0, 1]): with w = R - L,
+// s = (w x q) / (r x q) and u = (w x r) / (r x q). Parallel (including collinear) segments are reported as non-intersecting.
+// z of the result is the left segment's start height.
 function intersectHorizontalSegments(
   left: GeodesicSegmentObject,
   right: GeodesicSegmentObject,
@@ -4794,6 +5744,8 @@ function sanitizeIdPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9._:-]+/g, "_");
 }
 
+// Assigns display numbers: already numbered segments keep theirs; the remaining ids (cannon lists, segments, intervals, then the requested id)
+// get the smallest unused positive integers in encounter order. Pure function of the registry, recomputed on every call.
 function getGlobalGeodesicNumbers(
   registry: RuntimeObjectRegistry,
   requestedGeodesicId: string,
@@ -4865,6 +5817,11 @@ function normalizeHorizontalDirection(direction: Vec3): Vec3 {
   return { x: normalized.x, y: normalized.y, z: 0 };
 }
 
+// Ray vs. vertical cylinder (center, radius, height): returns the ray parameter t > 0 of the first crossing of the cylinder wall, or undefined.
+// A start height outside the cylinder's slab (|z - center.z| > height/2; infinite height means no slab) misses. In the plane,
+// with o = start - center and unit d, |o + t d|^2 = r^2 becomes t^2 + b t + c = 0 (b = 2 o.d, c = |o|^2 - r^2);
+// c <= 0 means the start is already inside or on the zone, which is a hit at t = 0 (a ray that begins inside is stopped immediately).
+// Otherwise the first positive root is returned.
 function intersectRayWithForbiddenZone(
   start: Vec3,
   direction: Vec3,
@@ -4881,7 +5838,7 @@ function intersectRayWithForbiddenZone(
   const c = offsetX * offsetX + offsetY * offsetY - zone.radius * zone.radius;
 
   if (c <= 0) {
-    return undefined;
+    return 0;
   }
 
   const discriminant = b * b - 4 * c;
@@ -4896,10 +5853,12 @@ function intersectRayWithForbiddenZone(
   return t;
 }
 
+// Extracts the yaw (rotation about +z, radians) from a pose's rotation matrix as atan2(m10, m00).
 function yawFromPose(pose: RigidTransform3): number {
   return Math.atan2(pose.rotation.m10, pose.rotation.m00);
 }
 
+// Wraps an angle to (-pi, pi] via atan2(sin, cos); non-finite input becomes 0.
 function sanitizeYaw(yawRadians: number): number {
   if (!Number.isFinite(yawRadians)) {
     return 0;

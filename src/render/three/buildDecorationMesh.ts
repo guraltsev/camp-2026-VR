@@ -1,11 +1,26 @@
+/**
+ * Builds the Three.js node for a static decoration (asset object) declared in a cell spec.
+ *
+ * The returned group is positioned in the cell-local frame converted to Three.js (spec position plus optional model offset,
+ * meters; world z up becomes Three.js y up), tilted, yawed and scaled per the spec, and holds either the cloned preloaded
+ * glTF scene or, for the legacy marmot asset, a procedural box-built proxy. The group is named `decoration:<id>` and
+ * is meant to be added to the owning cell's root node. Throws if the asset was not preloaded.
+ */
 import * as THREE from "three";
 import type { AssetObjectSpec, CellObjectSpec } from "../../cell-complex/specs";
 import { runtimeDiagnostics } from "./runtimeDiagnostics";
 import type { PreparedGltfAsset, PreparedWorldAssets } from "./preloadWorldAssets";
 import { worldPointToThree, worldYawRadiansToThree } from "./worldAxes";
 
+/** Legacy asset path that is replaced by the procedural marmot proxy instead of loading a glTF. */
 export const staticMarmotAssetPath = "_legacy/racoon-animation/scene.gltf";
 
+/**
+ * Builds the render node for the static asset object `objectSpec` of cell `cellId`.
+ *
+ * Throws for non-asset object kinds, and for assets missing from `assets` (they must be preloaded by
+ * `preloadWorldAssets`). Records instance-load diagnostics around the glTF instantiation. The caller owns the result.
+ */
 export function buildDecorationMesh(
   cellId: string,
   objectSpec: CellObjectSpec,
@@ -29,6 +44,8 @@ function buildStaticAssetMesh(
   if (objectSpec.modelOffset) {
     group.position.add(worldPointToThree(objectSpec.modelOffset));
   }
+  // Orientation is composed intrinsically as Rx(forward tilt) * Rz(side tilt) * Ry(yaw) in the Three.js frame:
+  // yaw about Three.js y (world up) is applied first to the model, tilts afterwards.
   group.rotation.set(0, 0, 0);
   group.rotateX(objectSpec.forwardTiltRadians ?? 0);
   group.rotateZ(objectSpec.sideTiltRadians ?? 0);
@@ -42,6 +59,7 @@ function buildStaticAssetMesh(
     group.scale.setScalar(scale);
   }
 
+  // A white cube stands in until the real model is attached (and is removed again immediately in both paths).
   const placeholder = new THREE.Mesh(
     new THREE.BoxGeometry(0.6, 0.6, 0.6),
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 }),
@@ -68,6 +86,12 @@ function buildStaticAssetMesh(
   return group;
 }
 
+/**
+ * Builds a small procedural marmot (boxes for body, head, muzzle, tail, ears, eyes and legs) used in place of the legacy marmot glTF.
+ *
+ * Dimensions are in meters in the model's local Three.js frame, with the animal roughly 1 m long, facing +z, feet on y = 0.
+ * Named `asset:<objectId>`; the caller owns the geometries and materials.
+ */
 export function buildStaticMarmotProxy(objectId: string): THREE.Object3D {
   const root = new THREE.Group();
   root.name = `asset:${objectId}`;

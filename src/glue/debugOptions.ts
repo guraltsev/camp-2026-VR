@@ -1,3 +1,8 @@
+/**
+ * Defines the individual debug options (diagnostics logging, portal path/cull inspection, overlays, wireframes, hitbox displays) as a constant table that is the source of truth for the DebugOptionId type.
+ * Parsing and serialization of the comma-separated URL form is canonical: unknown ids are dropped, duplicates removed and the result ordered by table position. Options only take effect when the debug level is not "off" (see hasActiveDebugOption).
+ */
+/** Ordered table of debug options with id, label and description. */
 export const debugOptionDefinitions = [
   {
     id: "runtime-diagnostics",
@@ -51,10 +56,14 @@ export const debugOptionDefinitions = [
   },
 ] as const;
 
+/** Id of a debug option, derived from debugOptionDefinitions. */
 export type DebugOptionId = (typeof debugOptionDefinitions)[number]["id"];
 
 const debugOptionIds = new Set<DebugOptionId>(debugOptionDefinitions.map((option) => option.id));
 
+/**
+ * Parses a comma-separated list of option ids (whitespace tolerated), dropping unknown entries and returning the rest deduplicated in table order; null or empty gives [].
+ */
 export function parseDebugOptions(rawValue: string | null): readonly DebugOptionId[] {
   if (!rawValue) {
     return [];
@@ -70,6 +79,7 @@ export function parseDebugOptions(rawValue: string | null): readonly DebugOption
   return debugOptionDefinitions.map((option) => option.id).filter((optionId) => requestedIds.has(optionId));
 }
 
+/** Serializes options to a comma-separated string in table order, omitting duplicates. */
 export function serializeDebugOptions(debugOptions: readonly DebugOptionId[]): string {
   return debugOptionDefinitions
     .map((option) => option.id)
@@ -77,10 +87,12 @@ export function serializeDebugOptions(debugOptions: readonly DebugOptionId[]): s
     .join(",");
 }
 
+/** Returns whether the option is in the list, regardless of debug level. */
 export function hasDebugOption(debugOptions: readonly DebugOptionId[], optionId: DebugOptionId): boolean {
   return debugOptions.includes(optionId);
 }
 
+/** Returns whether the option is in the list and the debug level is not "off". */
 export function hasActiveDebugOption(
   debugLevel: "off" | "basic" | "verbose",
   debugOptions: readonly DebugOptionId[],

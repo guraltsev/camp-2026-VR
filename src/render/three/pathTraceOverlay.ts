@@ -1,4 +1,11 @@
-/** Debug overlay that draws a traced portal path through the cells it crosses. */
+/**
+ * Debug overlay that draws a traced portal path through the cells it crosses.
+ *
+ * The polyline connects cell centroids (cell-local x right, y forward, z up, meters) expressed in the
+ * root cell's frame by chaining portal transforms along the path, then converts them to the Three.js
+ * frame via `worldPointToThree`. Overlays are plain scene objects owned by the caller, who must remove
+ * and dispose them (see `hideCellPathOverlays`).
+ */
 import * as THREE from "three";
 import { type AppState } from "../../appState";
 import { type PortalRenderPath } from "../../cell-complex/portalPaths";
@@ -12,6 +19,14 @@ import {
 import { disposeObject3D } from "./runtimeSceneUtils";
 import { worldPointToThree } from "./worldAxes";
 
+/**
+ * Builds a group holding a three-layer glowing red line through the cell centroids of a portal path, in root-cell coordinates.
+ *
+ * Returns an empty group (no lines) when the path yields fewer than two points, e.g. an unknown root cell.
+ * The lines ignore depth testing and frustum culling and render late. The caller adds the group to the
+ * scene and disposes it; the source geometry created here is only cloned (each line owns its clone) and is
+ * disposed before returning.
+ */
 export function createPathTraceOverlay(
   world: AppState["world"],
   path: PortalRenderPath,
@@ -26,6 +41,7 @@ export function createPathTraceOverlay(
   }
 
   const geometry = new THREE.BufferGeometry().setFromPoints(points.map((point) => worldPointToThree(point)));
+  // Three stacked lines of increasing opacity fake a glow around the trace.
   const materials = [
     new THREE.LineBasicMaterial({
       color: 0xff2b2b,
@@ -59,10 +75,20 @@ export function createPathTraceOverlay(
     line.renderOrder = 1000;
     group.add(line);
   }
+  // Each line owns a clone; the source geometry was never attached, so release it now.
+  geometry.dispose();
 
   return group;
 }
 
+/**
+ * Computes the polyline vertices of a portal path, as cell-local points in the root cell's frame.
+ *
+ * Starts at the root cell's trace point and appends one point per path step: the destination cell's trace
+ * point mapped back into the root frame by the inverse of the accumulated portal transforms. Steps that
+ * reference missing cells or portals are skipped (their transform is not accumulated). Returns an empty
+ * array if the root cell is unknown.
+ */
 export function buildPathTracePoints(
   world: AppState["world"],
   path: PortalRenderPath,
@@ -85,6 +111,8 @@ export function buildPathTracePoints(
       continue;
     }
 
+    // Portal transforms map source-cell coordinates to target-cell coordinates, so the inverse of the
+    // running composition maps a target-cell point back into the root frame.
     accumulatedTransform = composeRigidTransform3(portal.transformToTarget, accumulatedTransform);
     points.push(transformPoint3(invertRigidTransform3(accumulatedTransform), getCellTracePoint(destinationCell)));
   }
@@ -92,6 +120,11 @@ export function buildPathTracePoints(
   return points;
 }
 
+/**
+ * Returns the cell's base-polygon vertex average at height z = 0.03 m (just above the floor), in cell-local meters.
+ *
+ * An empty vertex list yields (0, 0, 0.03).
+ */
 export function getCellTracePoint(cell: CompiledPrismCell): { readonly x: number; readonly y: number; readonly z: number } {
   let x = 0;
   let y = 0;
@@ -110,6 +143,11 @@ export function getCellTracePoint(cell: CompiledPrismCell): { readonly x: number
   };
 }
 
+/**
+ * Removes every overlay in the array from the scene and disposes it, emptying the array in place.
+ *
+ * Safe to call with an empty array.
+ */
 export function hideCellPathOverlays(overlays: THREE.Object3D[], scene: THREE.Scene): void {
   while (overlays.length > 0) {
     const overlay = overlays.pop()!;
@@ -118,6 +156,11 @@ export function hideCellPathOverlays(overlays: THREE.Object3D[], scene: THREE.Sc
   }
 }
 
+/**
+ * Returns triangle indices (as flat triples) that fan a convex polygon of `vertexCount` vertices around vertex 0.
+ *
+ * Yields an empty array for fewer than three vertices; the polygon must be convex and consistently wound for correct faces.
+ */
 export function triangleFanIndices(vertexCount: number): number[] {
   const indices: number[] = [];
 

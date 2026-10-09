@@ -1,5 +1,12 @@
+/**
+ * Rigid (orientation-preserving, distance-preserving) transforms of 3D space and 3x3 rotation matrices.
+ * A transform g = (R, t) acts on points as x -> R x + t and on directions as d -> R d (translation ignored); R is stored row-major in a {@link Mat3} and is assumed to be a proper rotation (R^T R = I, det R = +1), which is what makes the inverse (R^T, -R^T t) valid. These transforms are the gluing maps that carry one cell's local frame to a neighboring cell's frame across a portal, and compositions of them express whole portal words. Composition follows function-composition order: composeRigidTransform3(a, b) = a after b. Lengths are in meters, angles in radians; yaw is rotation about +z.
+ */
 import { addVec3, dotVec3, vec3, type Vec3 } from "./vec3";
 
+/**
+ * Row-major 3x3 matrix; mRC is the entry in row R, column C. Used here as a rotation matrix (orthonormal, determinant +1).
+ */
 export interface Mat3 {
   readonly m00: number;
   readonly m01: number;
@@ -12,11 +19,18 @@ export interface Mat3 {
   readonly m22: number;
 }
 
+/**
+ * Rigid transform g = (rotation R, translation t), acting on points as x -> R x + t.
+ * The rotation is assumed to be a proper rotation; no check is performed.
+ */
 export interface RigidTransform3 {
   readonly rotation: Mat3;
   readonly translation: Vec3;
 }
 
+/**
+ * The 3x3 identity matrix.
+ */
 export const identityMat3: Mat3 = {
   m00: 1,
   m01: 0,
@@ -29,29 +43,45 @@ export const identityMat3: Mat3 = {
   m22: 1,
 };
 
+/**
+ * The identity transform (R = I, t = 0).
+ */
 export const identityRigidTransform3: RigidTransform3 = {
   rotation: identityMat3,
   translation: { x: 0, y: 0, z: 0 },
 };
 
+/**
+ * Packs a rotation and a translation into a {@link RigidTransform3} without validating the rotation.
+ */
 export function rigidTransform3(rotation: Mat3, translation: Vec3): RigidTransform3 {
   return { rotation, translation };
 }
 
+/**
+ * Applies the transform to a point: returns R point + t.
+ */
 export function transformPoint3(transform: RigidTransform3, point: Vec3): Vec3 {
   return addVec3(transformDirection3(transform, point), transform.translation);
 }
 
+/**
+ * Applies only the rotation to a direction or free vector: returns R direction (translation is ignored).
+ */
 export function transformDirection3(transform: RigidTransform3, direction: Vec3): Vec3 {
   return multiplyMat3Vec3(transform.rotation, direction);
 }
 
+/**
+ * Alias of {@link transformPoint3}: returns R point + t.
+ */
 export function applyRigidTransform3(transform: RigidTransform3, point: Vec3): Vec3 {
   return transformPoint3(transform, point);
 }
 
 /**
- * composeRigidTransform3(a, b) means apply b first, then a.
+ * Returns the composite transform "a after b", i.e. (a o b)(x) = a(b(x)).
+ * Rotation is R_a R_b and translation is R_a t_b + t_a. Order matters: compose(a, b) applies b first, so extending a chain of transforms by one more step on the "outer" side is compose(step, chain).
  */
 export function composeRigidTransform3(a: RigidTransform3, b: RigidTransform3): RigidTransform3 {
   return {
@@ -60,6 +90,10 @@ export function composeRigidTransform3(a: RigidTransform3, b: RigidTransform3): 
   };
 }
 
+/**
+ * Returns the inverse transform (R^T, -R^T t), so that compose(inverse, g) is the identity up to round-off.
+ * Relies on R being orthonormal; it is a transpose, not a general matrix inverse.
+ */
 export function invertRigidTransform3(transform: RigidTransform3): RigidTransform3 {
   const rotation = transposeMat3(transform.rotation);
 
@@ -72,6 +106,10 @@ export function invertRigidTransform3(transform: RigidTransform3): RigidTransfor
   };
 }
 
+/**
+ * Builds the transform that rotates counterclockwise by `radians` about the +z axis (viewed from above) and then translates by `translation`.
+ * Its rotation block is [[cos, -sin, 0], [sin, cos, 0], [0, 0, 1]].
+ */
 export function yawRigidTransform3(radians: number, translation: Vec3 = vec3(0, 0, 0)): RigidTransform3 {
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);

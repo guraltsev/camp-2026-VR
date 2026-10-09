@@ -123,6 +123,47 @@ describe("staticallyCullPortalPathTables", () => {
     });
   });
 
+  it("drops descendants of rejected paths so no kept path has a rejected parent", () => {
+    const world = compileCellComplex(cube);
+    const candidates = buildPortalPathTables(world, { maxDepth: 2 });
+    const options = { toleranceMeters: 1e-6, keepRejectedPathDetails: true };
+    const baseline = staticallyCullPortalPathTables(world, candidates, options);
+    const baselineTable = baseline.tables.tablesByRootCellId.get("front")!;
+    const child = baselineTable.paths.find((path) => path.depth === 2)!;
+    const parent = baselineTable.pathsById.get(child.parentPathId!)!;
+
+    // Move the parent far outside the first portal aperture so that it is rejected; the child's own geometry is unchanged.
+    const movedRootFromDestination = translatedTransform(-100, 0, 0);
+    const brokenParent = {
+      ...parent,
+      rootFromDestination: movedRootFromDestination,
+      destinationFromRoot: invertRigidTransform3(movedRootFromDestination),
+    };
+    const original = candidates.tablesByRootCellId.get("front")!;
+    const brokenTable = createPortalPathTable(
+      "front",
+      original.maxDepth,
+      original.paths.map((path) => (path.id === parent.id ? brokenParent : path)),
+    );
+    const result = staticallyCullPortalPathTables(
+      world,
+      { maxDepth: candidates.maxDepth, tablesByRootCellId: new Map([["front", brokenTable]]) },
+      options,
+    );
+    const keptTable = result.tables.tablesByRootCellId.get("front")!;
+    const summary = result.summariesByRootCellId.get("front")!;
+
+    expect(keptTable.pathsById.has(parent.id)).toBe(false);
+    expect(keptTable.pathsById.has(child.id)).toBe(false);
+    expect(summary.rejectedPaths.find((path) => path.pathId === child.id)?.details).toContain("parent path");
+
+    for (const path of keptTable.paths) {
+      if (path.parentPathId !== undefined) {
+        expect(keptTable.pathsById.has(path.parentPathId)).toBe(true);
+      }
+    }
+  });
+
   it("returns well-formed summaries and tables when no paths are rejected", () => {
     const world = compileCellComplex(twoPrismLoop);
     const candidates = buildPortalPathTables(world, { maxDepth: 0 });

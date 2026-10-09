@@ -21,6 +21,27 @@ import {
 } from "../../src/runtime/runtimeMenuState";
 import { createPaletteDefinition, questionHelpHubBody } from "../../src/ui/paletteDefinition";
 
+describe("paged help fallback titles", () => {
+  it("uses the right title for an empty goal or tutorial page list", () => {
+    const base = createRuntimeMenuState({ selectedWorldId: "cube" });
+    const goal = createPaletteDefinition({
+      ...base,
+      isOpen: true,
+      page: "goal",
+      goalOptions: { objectId: "g", pages: [], pageIndex: 0 },
+    });
+    const tutorial = createPaletteDefinition({
+      ...base,
+      isOpen: true,
+      page: "tutorial",
+      tutorialOptions: { objectId: "t", pages: [], pageIndex: 0 },
+    });
+
+    expect(goal.content).toMatchObject({ kind: "goal", title: "Goal", pageLabel: "0 / 0" });
+    expect(tutorial.content).toMatchObject({ kind: "tutorial", title: "Tutorial", pageLabel: "0 / 0" });
+  });
+});
+
 describe("runtimeMenuState", () => {
   it("starts with no tool selected by default", () => {
     const state = createRuntimeMenuState({

@@ -1,3 +1,10 @@
+/**
+ * Cosmetic low-poly hand models that follow XR controllers (or tracked hands), plus a small icon sprite near the right wrist showing the selected tool.
+ * Poses come from the WebXR frame in the reference space and are placed with `referenceSpaceToWorldMatrix` (the XR player rig's `root.matrixWorld`),
+ * so everything lives in the Three.js frame (meters, y up, -z forward), not in cell-local game axes.
+ * The hand mesh is loaded asynchronously from a GLB; if loading fails the app continues without hands. All models are added to the scene given at creation
+ * and must be released with `dispose()`.
+ */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
@@ -6,28 +13,45 @@ import type { RuntimeToolId } from "../../runtime/runtimeMenuState";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
 import { xrRigidTransformLocalMatrix } from "./xrPlayerRig";
 
+/**
+ * Per-frame inputs for `XrControllerHandModels.update` (createThreeApp#shell fills these during the XR frame).
+ */
 export interface XrControllerHandModelsUpdate {
+  /** Current session input sources; only those with handedness "left" or "right" are shown. */
   readonly inputSources: readonly XRInputSource[];
+  /** The XR frame used to query poses. */
   readonly xrFrame: XRFrame;
+  /** Reference space in which poses are requested (the shell's current XR reference space). */
   readonly referenceSpace: XRReferenceSpace;
+  /** Transform from reference-space coordinates to Three.js world (the shell passes `xrRig.root.matrixWorld`; read each call, not copied). */
   readonly referenceSpaceToWorldMatrix: THREE.Matrix4;
+  /** Tool shown by the right wrist indicator; defaults to "none" (indicator hidden). */
   readonly selectedTool?: RuntimeToolId;
+  /** Sign variant shown when the tool is "place-flag"; defaults to "WoodenSign1". */
   readonly placeFlagType?: PlacedFlagType;
 }
 
+/**
+ * Controller hand model manager returned by `createXrControllerHandModels`.
+ */
 export interface XrControllerHandModels {
+  /** Poses and shows a hand for each visible left/right source, hiding the others; call every XR frame. */
   update(frame: XrControllerHandModelsUpdate): void;
+  /** Hides all hands and the wrist indicator without freeing anything; call when an XR session ends. */
   reset(): void;
+  /** Removes hands and indicator from the scene and frees their geometry, materials, textures; any in-flight model load is discarded. The owner must call it. */
   dispose(): void;
 }
 
 const lowPolyHandsAssetPath = "lowpolyhands/Lowpolyhands.glb";
+// Uniform template scale and fixed rotation constants that map the GLB hand axes onto the grip/wrist frame.
 const handScale = 0.42;
 const baseHandMeshRotation = new THREE.Euler(THREE.MathUtils.degToRad(110), 0, Math.PI);
 const handLocalLengthAxis = new THREE.Vector3(0, 1, 0);
 const handLocalForwardBendAxis = new THREE.Vector3(1, 0, 0);
 const handMeshQuaternion = createHandMeshQuaternion();
 const handSideSplitEpsilon = 1e-5;
+// Indicator placement relative to the right hand (meters, in the hand's local axes) and sprite size in meters.
 const wristToolIndicatorLocalOffset = new THREE.Vector3(0, 0.18, -0.06);
 const wristToolIndicatorScaleMeters = 0.082;
 const wristToolIndicatorRenderOrder = 1004;
@@ -41,6 +65,10 @@ type XrHandLike = {
   get?(jointName: string): XRSpace | undefined;
 };
 
+/**
+ * Creates hidden left/right hand anchors and the wrist indicator sprite in `scene` and starts loading the hand GLB.
+ * Hand models appear once loading completes; a load failure is silently ignored. Lifecycle: the caller must call `dispose()`.
+ */
 export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHandModels {
   const loader = new GLTFLoader();
   const instances = new Map<"left" | "right", THREE.Object3D>();
@@ -85,6 +113,7 @@ export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHa
           continue;
         }
 
+        // Pose priority: tracked-hand wrist joint, then controller grip, then target ray. Scale is 1 because templates carry the scale.
         const pose = getInputSourcePose(source, frame.xrFrame, frame.referenceSpace);
         const model = instances.get(handedness);
         if (!pose || !model) {
@@ -129,10 +158,17 @@ export function createXrControllerHandModels(scene: THREE.Scene): XrControllerHa
   };
 }
 
+/**
+ * Icon description for the wrist tool indicator.
+ */
 export interface WristToolIndicatorVisual {
+  /** Drawing style; every current tool uses "image". */
   readonly icon: "aim" | "image";
+  /** Public asset URL of the icon when `icon` is "image". */
   readonly imageSource?: string;
+  /** CSS color for the indicator's accent. */
   readonly color: string;
+  /** Human-readable tool name. */
   readonly label: string;
 }
 
@@ -146,6 +182,9 @@ const wristToolIndicatorRayIconSource = publicAssetUrl("flashlight/Lightsaber.pn
 const wristToolIndicatorProtractorIconSource = publicAssetUrl("icons/protractor.png");
 const wristToolIndicatorMeasureLengthIconSource = publicAssetUrl("icons/ruler.svg");
 
+/**
+ * Maps a tool id (and sign variant for "place-flag") to the icon, color, and label shown on the wrist, or `undefined` for "aim" and "none" (no indicator).
+ */
 export function resolveWristToolIndicatorVisual(
   toolId: RuntimeToolId,
   flagType: PlacedFlagType,
@@ -214,11 +253,21 @@ export function resolveWristToolIndicatorVisual(
   }
 }
 
+/**
+ * Per-hand template objects (already scaled, rotated, and centered) that are cloned for each hand instance.
+ */
 export interface HandModelTemplates {
+  /** Template for the left hand. */
   readonly left: THREE.Object3D;
+  /** Template for the right hand. */
   readonly right: THREE.Object3D;
 }
 
+/**
+ * Builds left and right templates from a loaded GLB scene that contains both hands: each template keeps only the meshes on its side of the midpoint of the mesh centers
+ * (left keeps those with larger x), then scales by 0.42, orients, and centers the model on its bounding box.
+ * A source with a single mesh is not split, and an empty template is returned if the bounding box is not finite. Lifecycle: the caller owns the result and disposes it.
+ */
 export function createHandModelTemplates(sourceScene: THREE.Object3D): HandModelTemplates {
   const left = createCenteredTemplate(sourceScene, "left");
   const right = createCenteredTemplate(sourceScene, "right");
@@ -263,6 +312,7 @@ function createCenteredTemplate(source: THREE.Object3D, handedness: "left" | "ri
   return template;
 }
 
+// Composes the fixed rotation from the GLB's axes to the controller frame: base Euler, then a quarter-turn bend, then a quarter-turn roll about the bent length axis.
 function createHandMeshQuaternion(): THREE.Quaternion {
   const base = new THREE.Quaternion().setFromEuler(baseHandMeshRotation);
   const bend = new THREE.Quaternion().setFromAxisAngle(handLocalForwardBendAxis, Math.PI / 2);
@@ -283,6 +333,7 @@ function boxCenterX(object: THREE.Object3D): number {
   return new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3()).x;
 }
 
+// Removes the meshes on the opposite side of the split so each template contains one hand.
 function keepModelSide(model: THREE.Object3D, handedness: "left" | "right"): void {
   const entries = collectMeshEntries(model);
   if (entries.length <= 1) {
@@ -334,6 +385,7 @@ function getHandJointPose(
   return getJointPose.call(frame, wrist, referenceSpace);
 }
 
+// Writes referenceSpaceToWorld * pose into the object's position/quaternion/scale, then multiplies the scale.
 function applyXrPoseToObject(
   object: THREE.Object3D,
   transform: Pick<XRRigidTransform, "position" | "orientation">,
@@ -375,6 +427,7 @@ function createWristToolIndicator(): WristToolIndicator {
   };
 }
 
+// Positions the sprite at an offset in the right hand's frame and rebuilds its texture only when the visual changes.
 function updateWristToolIndicator(
   indicator: WristToolIndicator,
   wrist: THREE.Object3D,
@@ -398,6 +451,7 @@ function updateWristToolIndicator(
   indicator.root.visible = wrist.visible;
 }
 
+// Textures are cached by visual key; icon images load asynchronously and the cached texture is redrawn on load.
 function getWristToolIndicatorTexture(
   indicator: WristToolIndicator,
   visualKey: string,

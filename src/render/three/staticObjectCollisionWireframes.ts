@@ -1,3 +1,10 @@
+/**
+ * Debug overlay builder for the collision shapes of static asset objects in one cell.
+ *
+ * Each collidable asset object is converted to its dynamic-object state and drawn as a wireframe
+ * positioned in the cell's axes (cell-local frame, meters, mapped into the Three.js frame by the
+ * shared wireframe helpers). Used only by collision-debug visualisation.
+ */
 import * as THREE from "three";
 import {
   runtimeObjectToDynamicObjectState,
@@ -5,6 +12,13 @@ import {
 } from "../../world-objects/runtimeObjectRegistry";
 import { buildObjectCollisionWireframeInCellAxes } from "./debugCollisionWireframes";
 
+/**
+ * Builds a group of collision wireframes for the collidable asset objects of cell `cellId`.
+ *
+ * Objects that are not of kind `"asset"` or have no `collision` are skipped. Returns `undefined`
+ * (rather than an empty group) when nothing qualifies. The group is named
+ * `static-object-collision-wireframes:<cellId>`; the caller owns its geometry/material disposal.
+ */
 export function buildStaticObjectCollisionWireframeGroup(
   cellId: string,
   objects: readonly RuntimeWorldObject[],

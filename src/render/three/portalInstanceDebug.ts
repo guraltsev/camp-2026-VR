@@ -1,12 +1,26 @@
+/**
+ * Debug renderer that draws a single instance of a cell's archetypes at a chosen `rootFromDestination` matrix.
+ *
+ * Used to inspect what one portal path would show without the clipping pipeline: it clones each archetype's
+ * geometry and material into a one-instance `InstancedMesh` placed by the supplied Three.js-frame matrix
+ * (destination cell frame -> root frame). The clones are unclipped and are rebuilt on every call.
+ */
+
 import * as THREE from "three";
 import type { CellRenderArchetype } from "./cellRenderArchetypes";
+import { disposeMaterial } from "./runtimeSceneUtils";
 
+/** Controller for the debug instance group in the scene. */
 export interface PortalInstanceDebugRenderer {
+  /** Replaces the debug group's content with one unclipped instance of every archetype of `cellId` placed by the matrix; returns how many archetypes were drawn. */
   renderCellInstances(cellId: string, rootFromDestinationMatrix: THREE.Matrix4): { readonly objectCount: number };
+  /** Removes and disposes all debug meshes. */
   clear(): void;
+  /** Clears the debug meshes and removes the group from the scene. */
   dispose(): void;
 }
 
+/** Creates the debug renderer, adding an empty `portal-instance-debug` group to `scene`. */
 export function createPortalInstanceDebugRenderer(
   scene: THREE.Scene,
   archetypes: readonly CellRenderArchetype[],
@@ -69,15 +83,4 @@ function cloneMaterial(material: THREE.Material | THREE.Material[]): THREE.Mater
   }
 
   return material.clone();
-}
-
-function disposeMaterial(material: THREE.Material | THREE.Material[]): void {
-  if (Array.isArray(material)) {
-    for (const entry of material) {
-      entry.dispose();
-    }
-    return;
-  }
-
-  material.dispose();
 }

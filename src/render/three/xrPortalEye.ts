@@ -1,17 +1,37 @@
+/**
+ * Decides which cell an XR eye camera should render from when the eye has physically crossed a portal plane within the player's cell.
+ * In VR the head can move through a portal opening while the logical player pose is still in the source cell;
+ * this module re-roots rendering in the target cell and supplies the matching camera and matrix.
+ * Positions are in cell-local world coordinates (meters; x right, y forward, z up); cameras are in the Three.js frame (via worldAxes).
+ */
 import * as THREE from "three";
 import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex";
 import type { CompiledPortal } from "../../cell-complex/specs";
 import { projectPointAlongSide, signedDistanceToSide } from "../../movement/collision";
-import { rigidTransformToThreeMatrix } from "./worldAxes";
+import { rigidTransformToThreeMatrix, threePointToWorld } from "./worldAxes";
 
+/**
+ * Result of eye-root resolution: where to start rendering from and how to place content relative to it.
+ */
 export interface XrPortalEyeRenderRoot {
+  /** Cell id to use as the render root (the source cell, or the portal's target cell). */
   readonly rootCellId: string;
+  /** Camera to render with: the input camera itself when no crossing, otherwise a clone moved into the target cell's frame. */
   readonly camera: THREE.Camera;
+  /** Three.js matrix mapping root-cell-frame content into the render frame; identity when no crossing, otherwise the inverse portal transform. */
   readonly renderFromRootMatrix: THREE.Matrix4;
 }
 
+// Slack in meters for plane/extent tests so a point exactly on the portal counts as inside.
 const portalPlaneToleranceMeters = 1e-5;
 
+/**
+ * Returns the render root for an eye: if the eye is behind a portal side of `sourceCellId` (signed distance < 0) and within that side's length and the cell height,
+ * the result is re-rooted in the portal's target cell with the camera carried through `transformToTarget`.
+ * Falls back to the unchanged source cell and input camera (identity matrix) if the source cell id is unknown or no portal is crossed.
+ * `camera` must have a valid world matrix (it is updated here); the returned camera is a clone when re-rooted, so the input is never mutated.
+ * Only the first crossed portal is used; chained crossings are not resolved in one call.
+ */
 export function resolveXrPortalEyeRenderRoot(input: {
   readonly world: CompiledCellComplex;
   readonly sourceCellId: string;
@@ -59,6 +79,7 @@ export function resolveXrPortalEyeRenderRoot(input: {
   };
 }
 
+// Clones the camera with a frozen world matrix premultiplied by the portal transform; projection is copied unchanged.
 function transformCameraThroughPortal(camera: THREE.Camera, portal: CompiledPortal): THREE.Camera {
   const transformedCamera = camera.clone();
   const portalMatrix = rigidTransformToThreeMatrix(portal.transformToTarget);
@@ -74,12 +95,4 @@ function transformCameraThroughPortal(camera: THREE.Camera, portal: CompiledPort
   transformedCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
 
   return transformedCamera;
-}
-
-function threePointToWorld(point: THREE.Vector3): { readonly x: number; readonly y: number; readonly z: number } {
-  return {
-    x: point.x,
-    y: -point.z,
-    z: point.y,
-  };
 }

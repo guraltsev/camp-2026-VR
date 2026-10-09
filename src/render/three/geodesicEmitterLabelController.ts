@@ -1,4 +1,11 @@
-/** Keeps the floating geodesic-name labels next to nearby emitters in sync with the registry. */
+/**
+ * Keeps the floating geodesic-name labels next to nearby emitters in sync with the registry.
+ *
+ * Each frame, one billboard label ("G<number>") exists per (cannon, geodesic) pair in the runtime registry;
+ * labels are shown only for cannons in the player's current cell within the label range (meters, measured
+ * in the cell-local xy plane). Labels are created lazily, recreated when their text changes, and
+ * removed and disposed when their cannon or geodesic disappears. The label map is owned by the caller.
+ */
 import * as THREE from "three";
 import { type PlayerPose } from "../../movement/playerPose";
 import { resolveGeodesicNumber } from "../../world-objects/geodesicCannon";
@@ -11,19 +18,35 @@ import {
 } from "./geodesicEmitterLabels";
 import { disposeObject3D } from "./runtimeSceneUtils";
 
+/** One live label: the text it was drawn with and its scene object. */
 export interface GeodesicEmitterLabel {
+  /** Text baked into the label texture; a differing text triggers re-creation. */
   readonly text: string;
+  /** Label mesh, a child of the scene while the entry exists. */
   readonly root: THREE.Object3D;
 }
 
+/** Dependencies of the label controller, supplied by createThreeApp's shell. */
 export interface GeodesicEmitterLabelControllerDeps {
+  /** Scene that label objects are added to. */
   readonly scene: THREE.Scene;
+  /** Camera whose world orientation labels copy each frame so they face the viewer. */
   readonly camera: THREE.Camera;
+  /** Registry scanned for geodesic cannons and used to number geodesics. */
   readonly runtimeObjectRegistry: RuntimeObjectRegistry;
+  /** Mutable label store keyed by `getGeodesicEmitterLabelKey`; shared with the shell, mutated in place by the controller. */
   readonly geodesicEmitterLabelsByKey: Map<string, GeodesicEmitterLabel>;
+  /** Getter (not a value) because the shell reassigns the player pose each frame. */
   getPlayerPose(): PlayerPose;
 }
 
+/**
+ * Creates the emitter-label controller and returns its update and naming functions.
+ *
+ * `updateGeodesicEmitterLabels` is called once per frame; `getGeodesicDisplayName` returns "G<n>" for a geodesic id and
+ * `getGeodesicLabelsById` maps many ids to such names. There is no dispose function: remaining labels live in
+ * the caller-owned map and scene.
+ */
 export function createGeodesicEmitterLabelController(deps: GeodesicEmitterLabelControllerDeps) {
   const { scene, camera, runtimeObjectRegistry, geodesicEmitterLabelsByKey } = deps;
 
@@ -42,6 +65,7 @@ export function createGeodesicEmitterLabelController(deps: GeodesicEmitterLabelC
         deps.getPlayerPose().position.x - object.localPose.translation.x,
         deps.getPlayerPose().position.y - object.localPose.translation.y,
       );
+      // Labels exist for every geodesic regardless of range; only visibility and placement are gated.
       const visible = inCurrentCell && distanceMeters <= geodesicEmitterLabelRangeMeters;
       object.geodesicIds.forEach((geodesicId) => {
         const key = getGeodesicEmitterLabelKey(object.id, geodesicId);
@@ -59,6 +83,7 @@ export function createGeodesicEmitterLabelController(deps: GeodesicEmitterLabelC
       });
     }
 
+    // Sweep labels whose cannon or geodesic no longer exists (iterate a copy since we delete).
     for (const [key, label] of [...geodesicEmitterLabelsByKey]) {
       if (activeLabelKeys.has(key)) {
         continue;

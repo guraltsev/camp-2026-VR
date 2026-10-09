@@ -1,3 +1,8 @@
+/**
+ * Simple geodesic creatures: the mouse and the butterfly, autonomous walkers that follow straight lines (geodesics) through the cell complex.
+ * Contains the authoring helper that builds a SimpleGeoCreatureObjectSpec with library defaults (speeds, visual scale, collision cylinder derived from the measured model bounds), the per-creature runtime that owns the glTF instance and advances state each frame with moveDynamicObject, and the registry record.
+ * Units are meters, seconds and radians; positions and displacements are in the current cell's local frame (x right, y forward, z up). Each frame the creature moves forward along its body +y axis at constant speed, plus an optional sinusoidal sideways wobble (faded out near forbidden zones around portal junction vertices) and, for butterflies, a bounded vertical bob; it ignores forbidden zones for movement and stands still for a frame if the move would overlap an obstacle.
+ */
 import * as THREE from "three";
 import type { CompiledCellComplex } from "../cell-complex/compileCellComplex";
 import type { CompiledPrismCell } from "../cell-complex/prismCells";
@@ -22,12 +27,18 @@ import { degreesToRadians } from "./staticAssets";
 import type { RuntimeObjectRegistry } from "./runtimeObjectRegistry";
 import { runtimeObjectToDynamicObjectState, type RuntimeCreatureObject } from "./runtimeObjectRegistry";
 
+/**
+ * Author-facing parameters for the mouse and butterfly library entries.
+ * Position is [x, height, y] in meters; angles are degrees; unspecified values take per-kind defaults (speed 1.2 m/s mouse, 0.7 m/s butterfly; no oscillation; class "creature").
+ */
 export interface SimpleGeoCreatureAuthoringParams {
   /** Position in authored [x, z, y] axes. The middle coordinate is height above the floor. */
   readonly position: readonly [x: number, y: number, z: number];
   /** Multiplies the library creature's base visual size, collision area, and lift. */
   readonly scale?: number;
+  /** Tilt of the model about its lateral axis, in degrees. */
   readonly forwardTilt?: number;
+  /** Tilt of the model about its forward axis, in degrees. */
   readonly sideTilt?: number;
   /** Yaw in degrees. */
   readonly turn?: number;
@@ -45,17 +56,27 @@ export interface SimpleGeoCreatureAuthoringParams {
   readonly do_not_collide_with?: readonly string[];
   /** Camel-case alias accepted for TypeScript callers. Serialized specs use do_not_collide_with. */
   readonly doNotCollideWith?: readonly string[];
+  /** Help text for the help lens; a generic creature message is used when absent. */
   readonly displayHelpMessage?: string;
 }
 
+/**
+ * Per-creature runtime handle owned by the renderer.
+ * `root` is the three.js group (reparented into the current cell's root by `syncParent`); `cellId` reports the creature's current cell.
+ */
 export interface SimpleGeoCreatureRuntime {
   readonly root: THREE.Object3D;
   readonly objectId: string;
   readonly cellId: string;
+  /** Advances the creature by `deltaSeconds`; `obstacles` are collision states (same-cell ones are tested) that the creature will not move into. No-op for non-positive `deltaSeconds`. */
   update(world: CompiledCellComplex, deltaSeconds: number, obstacles?: readonly DynamicObjectState[]): void;
+  /** Attaches `root` to the scene node of the creature's current cell if it is not already there. */
   syncParent(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
+  /** Shows or hides the debug collision cylinder. */
   setCollisionWireframeVisible(visible: boolean): void;
+  /** Remaps the current and initial poses through per-cell deformation maps after a live geometry change; leaves state untouched if either pose cannot be mapped. */
   transformGeometry(mapByCellId: ReadonlyMap<string, CellDeformationMap>): void;
+  /** Restores the initial (possibly deformation-remapped) pose and oscillation phases and reattaches to that cell's root. */
   reset(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
 }
 
@@ -87,6 +108,10 @@ const butterflyAssetBounds = {
   centerYMetersAtAuthorScale: 0.045488983392715454 * 0.8,
 } as const;
 
+/**
+ * Creates the authored spec for a mouse or butterfly.
+ * Reorders `params.position` from [x, height, y] to cell-local (x, y, z); converts degrees to radians; multiplies the author scale by the kind's base visual scale (1/30 mouse, 0.8 butterfly); and, unless overridden, derives a collision cylinder from the measured model bounds scaled by the author scale, kept at least 1 cm above the floor.
+ */
 export function createSimpleGeoCreature(
   kind: SimpleGeoCreatureObjectSpec["kind"],
   id: string,
@@ -124,10 +149,17 @@ export function createSimpleGeoCreature(
   };
 }
 
+/**
+ * Type guard: true for geo-mouse and geo-butterfly specs.
+ */
 export function isSimpleGeoCreatureObjectSpec(objectSpec: CellObjectSpec): objectSpec is SimpleGeoCreatureObjectSpec {
   return objectSpec.kind === "geo-mouse" || objectSpec.kind === "geo-butterfly";
 }
 
+/**
+ * Creates the runtime (three.js model instance, state, registry entry) for a creature starting in `startCellId`.
+ * Throws if the model was not preloaded in `assets`. Registers the object in `registry` when given (throwing if the id already exists). Each update advances forward at the spec speed along the body +y axis; the lateral wobble and butterfly bob are added as per-frame displacement increments (differences of the oscillation offsets) so that the net path is the unperturbed geodesic plus a bounded oscillation.
+ */
 export function createSimpleGeoCreatureRuntime(
   objectSpec: SimpleGeoCreatureObjectSpec,
   startCellId: string,
@@ -183,6 +215,7 @@ export function createSimpleGeoCreatureRuntime(
       const forward = objectSpec.speedMetersPerSecond * deltaSeconds;
       const cell = world.cellsById.get(state.cellId);
       const nextLateralOscillationOffsetMeters = lateralOscillationOffset(objectSpec, elapsedSeconds);
+      // Displacement is the increment of the oscillation offset, so oscillation never accumulates drift; scaled down near forbidden zones so the wobble cannot push the body into them.
       const lateralOffsetDeltaMeters = (nextLateralOscillationOffsetMeters - lateralOscillationOffsetMeters) *
         (cell ? forbiddenZoneLateralOscillationScale(cell, state) : 1);
       lateralOscillationOffsetMeters = nextLateralOscillationOffsetMeters;
@@ -201,6 +234,7 @@ export function createSimpleGeoCreatureRuntime(
         portalCrossingMode: AUTONOMOUS_DYNAMIC_OBJECT_PORTAL_CROSSING_MODE,
         ignoreForbiddenZones: true,
       });
+      // Blocked moves are discarded whole; time and oscillation phase still advance.
       state = creatureIntersectsObstacle(result.object, obstacles) ? state : result.object;
       syncRegistryObject(registry, objectSpec.id, state);
       applyObjectPose(root, state.localPose);
@@ -258,6 +292,9 @@ export function createSimpleGeoCreatureRuntime(
   };
 }
 
+/**
+ * Builds the registry record for a creature spec in the given cell without creating any three.js objects.
+ */
 export function createSimpleGeoCreatureRuntimeObject(
   objectSpec: SimpleGeoCreatureObjectSpec,
   cellId: string,
@@ -335,6 +372,10 @@ function lateralOscillationOffset(objectSpec: SimpleGeoCreatureObjectSpec, elaps
   return Math.sin(elapsedSeconds * objectSpec.oscillationRateHz * tau) * objectSpec.oscillationMagnitudeMeters;
 }
 
+/**
+ * Returns a factor in [0, 1] that fades the sideways wobble out near forbidden zones.
+ * The nearest horizontal clearance between the creature's collision cylinder and the cell's singularity columns (cylinders around portal junction vertices) is mapped by smoothstep: 0 at or below 0.5 m, 1 at or above 1.0 m. Returns 1 when the cell has no columns or the state has no collision shape.
+ */
 export function forbiddenZoneLateralOscillationScale(
   cell: CompiledPrismCell,
   state: DynamicObjectState,
@@ -361,6 +402,10 @@ export function forbiddenZoneLateralOscillationScale(
   return t * t * (3 - 2 * t);
 }
 
+/**
+ * Returns the butterfly's instantaneous vertical bob rate in Hz at `elapsedSeconds`, or 0 for non-butterflies.
+ * The rate is drawn deterministically (a hash of the object id and the 0.1 s time bucket) between 1.31x and 1.73x the lateral rate (1 Hz if there is no lateral oscillation), clamped to [0.85, 2] Hz, so bobbing looks irregular but is reproducible.
+ */
 export function butterflyVerticalOscillationRateHz(
   objectSpec: SimpleGeoCreatureObjectSpec,
   elapsedSeconds: number,
@@ -369,6 +414,7 @@ export function butterflyVerticalOscillationRateHz(
     return 0;
   }
 
+  // Vertical rate is tied to the lateral rate (or 1 Hz) with incommensurate multipliers so the two motions do not lock in phase.
   const lateralRateHz = objectSpec.oscillationRateHz > 0 ? objectSpec.oscillationRateHz : 1;
   const minRateHz = clamp(
     lateralRateHz * butterflyVerticalRateMinMultiplier,
@@ -386,6 +432,9 @@ export function butterflyVerticalOscillationRateHz(
   return minRateHz + (maxRateHz - minRateHz) * random;
 }
 
+/**
+ * Returns the butterfly's vertical bob amplitude in meters (10% of its collision height, capped at 0.08 m), or 0 for non-butterflies.
+ */
 export function butterflyVerticalOscillationHeightMagnitudeMeters(objectSpec: SimpleGeoCreatureObjectSpec): number {
   if (objectSpec.kind !== "geo-butterfly") {
     return 0;
@@ -413,6 +462,7 @@ function butterflyVerticalOscillationHeightOffset(
 }
 
 function seededUnitInterval(seed: string): number {
+  // FNV-1a hash of the seed string, mapped to [0, 1): deterministic pseudo-randomness per object id.
   let hash = 2166136261;
 
   for (let index = 0; index < seed.length; index += 1) {

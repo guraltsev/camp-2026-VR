@@ -4,6 +4,22 @@ This folder holds the living project context. Closed handoff issues remain in
 `docs/issues/_closed`, but future work should consult these active documents
 first.
 
+## Start here
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) explains how the program is organised:
+  the pipeline from world script to rendered frame, the layers, state
+  ownership, the frame loop and live geometry deformation.
+- [MATHEMATICAL_MODEL.md](MATHEMATICAL_MODEL.md) states the mathematics
+  precisely (cells, gluing maps, developing maps, motion, geodesics, curve
+  shortening, visibility) and where the code realises each statement.
+- [generated/ARCHITECTURE_REFERENCE.md](generated/ARCHITECTURE_REFERENCE.md)
+  and [generated/API_REFERENCE.md](generated/API_REFERENCE.md) are produced from
+  the source (`npm run docs:generate`): module index, dependency graph,
+  layering debt, and every exported symbol.
+
+Both hand-written documents contain machine-checked references to the code
+(`npm run docs:check`), so a rename or removal cannot silently leave them wrong.
+
 ## Living Guides
 
 - [DEVELOPMENT.md](DEVELOPMENT.md) gives a new contributor the install, run,

@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import { yawRigidTransform3 } from "../../src/math/rigidTransform3";
 import { getDynamicObjectCollisionBounds } from "../../src/movement/collision";
 import { simpleCollisionCylinder, type DynamicObjectState } from "../../src/movement/dynamicObject";
-import { buildObjectCollisionWireframe } from "../../src/render/three/debugCollisionWireframes";
+import {
+  buildObjectCollisionWireframe,
+  updateObjectCollisionWireframe,
+  updateObjectCollisionWireframeInCellAxes,
+} from "../../src/render/three/debugCollisionWireframes";
 import { buildStaticObjectCollisionWireframeGroup } from "../../src/render/three/staticObjectCollisionWireframes";
 import { applyWorldRigidTransform, worldPointToThree } from "../../src/render/three/worldAxes";
 import { createRuntimeStaticAssetObject, runtimeObjectToDynamicObjectState } from "../../src/world-objects/runtimeObjectRegistry";
@@ -64,5 +68,22 @@ describe("debug collision wireframes", () => {
     expect(wireframe?.scale.x).toBeCloseTo(expectedBounds!.radius * 2);
     expect(wireframe?.scale.y).toBeCloseTo(expectedBounds!.halfHeight * 2);
     expect(wireframe?.scale.z).toBeCloseTo(expectedBounds!.radius * 2);
+  });
+
+  it("hides wireframes for objects without bounds and shows them again when bounds return", () => {
+    const withBounds: DynamicObjectState = {
+      cellId: "room",
+      localPose: yawRigidTransform3(0, { x: 0, y: 0, z: 0 }),
+      collision: simpleCollisionCylinder(0.25, 1),
+    };
+    const withoutBounds: DynamicObjectState = { ...withBounds, collision: undefined };
+
+    for (const update of [updateObjectCollisionWireframe, updateObjectCollisionWireframeInCellAxes]) {
+      const mesh = new THREE.Group();
+      update(mesh, withoutBounds);
+      expect(mesh.visible).toBe(false);
+      update(mesh, withBounds);
+      expect(mesh.visible).toBe(true);
+    }
   });
 });

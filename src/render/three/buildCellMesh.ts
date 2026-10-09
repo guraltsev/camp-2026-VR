@@ -1,3 +1,16 @@
+/**
+ * Builds the Three.js geometry of one prism cell in the cell's own local frame (which the portal pipeline later places).
+ *
+ * A cell is a convex polygon base (`baseVertices`, meters, counter-clockwise in the world xy plane) extruded to
+ * `heightMeters`. The returned group is authored directly in Three.js axes (world (x, y, z) becomes (x, z, -y), see
+ * `worldAxes`): a textured floor at y = 0, a ceiling at y = height, one wall per side (a solid wall, or a portal
+ * wall via `buildPortalMesh` for sides with a portal), optional portal debug panels, optional forbidden-zone
+ * wireframes and one decoration per static object spec. Meshes carry names (`floor:`, `ceiling:`, `wall:`) and
+ * `userData.kind` tags that `cellRenderArchetypes` uses to classify them for instancing. Walls are nudged 1 cm
+ * toward the cell interior along the inward normal to avoid z-fighting with coplanar surfaces. Creature object specs are skipped here
+ * because they are runtime objects. Called once per cell at load time; not a per-frame path.
+ */
+
 import * as THREE from "three";
 import type { CompiledPrismCell } from "../../cell-complex/prismCells";
 import type { DebugLevelId } from "../../glue/debugLevels";
@@ -15,14 +28,21 @@ import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
 import { buildForbiddenZoneWireframe } from "./debugCollisionWireframes";
 
+/** Options controlling which debug and decoration content a cell mesh includes. */
 export interface BuildCellMeshOptions {
+  /** Debug level; "off" suppresses portal debug panels, portal walls and wireframes. */
   readonly debugLevel: DebugLevelId;
+  /** Which portal wall / placard / text elements to show. */
   readonly portalPanelMode: PortalPanelModeId;
+  /** Height in meters at which portal debug panels are placed. */
   readonly eyeHeightMeters: number;
+  /** Preloaded textures and models; a missing required asset throws. */
   readonly assets: PreparedWorldAssets;
+  /** Whether to add wireframes of the cell's forbidden (non-walkable) zones when debugging. */
   readonly showForbiddenZoneWireframes?: boolean;
 }
 
+/** Builds the full Three.js group for a cell, named `cell:<id>` and tagged with its portal sides in `userData`. */
 export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOptions): THREE.Object3D {
   const group = new THREE.Group();
   group.name = `cell:${cell.id}`;
@@ -71,6 +91,7 @@ function buildForbiddenZoneWireframes(cell: CompiledPrismCell): THREE.Object3D {
   return group;
 }
 
+// ShapeGeometry lives in the xy plane; rotateX(-pi/2) sends (x, y, 0) to (x, 0, -y), i.e. world y becomes Three -z.
 function buildFloorMesh(cell: CompiledPrismCell, assets: PreparedWorldAssets): THREE.Object3D {
   const shape = new THREE.Shape();
   const first = cell.baseVertices[0];
@@ -126,6 +147,7 @@ function buildFloorMesh(cell: CompiledPrismCell, assets: PreparedWorldAssets): T
   return floor;
 }
 
+// Number of texture tiles across the larger bounding-box extent; floored at 0.01 and 1 for non-positive tile sizes.
 function floorTextureRepeat(
   vertices: readonly { readonly x: number; readonly y: number }[],
   tileSizeMeters: number,
@@ -205,6 +227,7 @@ function buildSideWalls(
   return group;
 }
 
+// Inward normal in Three axes for side start->end of a CCW polygon: world (-dy, dx) maps to Three (-dy, 0, -dx).
 function buildPortalDebugPanels(cell: CompiledPrismCell, options: BuildCellMeshOptions): THREE.Object3D {
   const group = new THREE.Group();
   group.name = `portal-debug:${cell.id}`;
@@ -295,6 +318,7 @@ function buildTextPlane(text: string, widthMeters: number, heightMeters: number)
   return mesh;
 }
 
+// A PlaneGeometry faces +z; the quaternion rotates +z onto the inward normal, so the wall's front side faces into the cell.
 function buildSolidWallMesh(
   cellId: string,
   sideIndex: number,

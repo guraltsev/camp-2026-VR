@@ -1,25 +1,40 @@
+/**
+ * Renderer-neutral definition of the contextual "help lens" panel shown on desktop and in VR: a title, a body sentence and rows pairing an input glyph with an action label.
+ * When the player is focusing a world object the lens describes that object and its available actions; otherwise it describes the currently selected tool (or the generic Explore text).
+ * Input glyphs come from inputIntents.ts so the same definition renders correctly for keyboard/mouse and for VR controllers. The module is pure and builds fresh immutable records on each call.
+ */
 import type { RuntimeToolId } from "../runtime/runtimeMenuState";
 import type { InputMode } from "./inputIntents";
+import { formatBodyForInputMode } from "./inputModeText";
 import { getInputHintGlyph, type InputHintGlyph } from "./inputIntents";
 import type { WorldFocusMessageDefinition } from "./worldInteractionDefinition";
 
+/** One help line: an input hint glyph and what that input does. */
 export interface HelpLensRow {
   readonly hint: InputHintGlyph;
   readonly label: string;
 }
 
+/** Content of the help lens: title, explanatory body and action rows. */
 export interface HelpLensDefinition {
   readonly title: string;
   readonly body: string;
   readonly rows: readonly HelpLensRow[];
 }
 
+/** Inputs that decide what the help lens describes. */
 export interface CreateHelpLensDefinitionOptions {
+  /** Definition of the object currently focused, if any; takes precedence over the tool. */
   readonly focus?: WorldFocusMessageDefinition;
+  /** Active tool, described when nothing is focused. */
   readonly selectedTool: RuntimeToolId;
+  /** Whether to word text and choose glyphs for desktop or XR. */
   readonly inputMode: InputMode;
 }
 
+/**
+ * Builds the help lens for the focused object when there is one, else for the selected tool; rows list only available actions (object case) with glyphs for the given input mode.
+ */
 export function createHelpLensDefinition(options: CreateHelpLensDefinitionOptions): HelpLensDefinition {
   if (options.focus) {
     return createFocusedHelpLens(options.focus, options.inputMode);
@@ -28,10 +43,13 @@ export function createHelpLensDefinition(options: CreateHelpLensDefinitionOption
   return createToolHelpLens(options.selectedTool, options.inputMode);
 }
 
+/**
+ * Builds the lens for a focused object: body is the object's displayHelpMessage (rewritten for the input mode), else the topic text, else a generic sentence.
+ */
 function createFocusedHelpLens(focus: WorldFocusMessageDefinition, inputMode: InputMode): HelpLensDefinition {
   const topic = focus.helpTopicId ?? "default";
   const body = focus.displayHelpMessage
-    ? formatExplicitHelpBodyForInputMode(focus.displayHelpMessage, inputMode)
+    ? formatBodyForInputMode(focus.displayHelpMessage, inputMode)
     : helpBodyByTopic[topic]?.[inputMode] ?? "A world object you can inspect from here.";
   const actionRows = focus.actions
     .filter((action) => action.available)
@@ -114,24 +132,6 @@ function createToolHelpLens(selectedTool: RuntimeToolId, inputMode: InputMode): 
 
 function row(hint: InputHintGlyph, label: string): HelpLensRow {
   return { hint, label };
-}
-
-function formatExplicitHelpBodyForInputMode(body: string, inputMode: InputMode): string {
-  if (inputMode === "desktop") {
-    return body
-      .replace("Move with Arrow keys or the left stick.", "Move with Arrow keys.")
-      .replace("Use primary action or trigger for the selected action.", "Left click uses the selected/default action.")
-      .replace("Use primary action or trigger for the selected/default action.", "Left click uses the selected/default action.")
-      .replace("Use context action or side trigger for tools and object menus.", "Right click opens tools and object menus.")
-      .replace("Press H or B while aiming at an object for its help.", "Press H while aiming at an object for its help.");
-  }
-
-  return body
-    .replace("Move with Arrow keys or the left stick.", "Move with the left stick.")
-    .replace("Use primary action or trigger for the selected action.", "Trigger uses the selected/default action.")
-    .replace("Use primary action or trigger for the selected/default action.", "Trigger uses the selected/default action.")
-    .replace("Use context action or side trigger for tools and object menus.", "Side trigger opens tools and object menus.")
-    .replace("Press H or B while aiming at an object for its help.", "Press B while aiming at an object for its help.");
 }
 
 const helpBodyByTopic: Readonly<Record<string, Readonly<Record<InputMode, string>>>> = {

@@ -1,3 +1,9 @@
+/**
+ * Browser entry point: reads launch options from the URL (then strips them from the visible address), loads the app config, and runs the load pipeline world spec -> compileCellComplex -> asset preload -> createThreeApp.
+ * It owns the single active ThreeApp and a monotonically increasing run id so that overlapping restarts (world change, config change, reload) dispose superseded apps and ignore stale async results.
+ * It also stores runtime launch-option patches reported by the renderer (so a reload keeps them) and implements "copy URL with options" via the clipboard.
+ * It exports nothing; it executes on import.
+ */
 import { compileCellComplex } from "./cell-complex/compileCellComplex";
 import { describeGeometrySpec } from "./cell-complex/describeGeometry";
 import { createInitialAppState } from "./appState";
@@ -31,6 +37,9 @@ let activeRunId = 0;
 
 void startApp(appElement, initialLaunchLocation);
 
+/**
+ * Loads the app config named in the URL, then starts the first run with launch options resolved against it; shows an error in the loading status on failure.
+ */
 async function startApp(container: HTMLDivElement, initialLocation: Location): Promise<void> {
   const loadingStatus = createLoadingStatus(container);
   try {
@@ -44,6 +53,9 @@ async function startApp(container: HTMLDivElement, initialLocation: Location): P
   }
 }
 
+/**
+ * Disposes the active app and builds a new one for the given launch options, discarding the result if a newer restart began meanwhile (runId check).
+ */
 async function restartApp(container: HTMLDivElement, nextLaunchOptions: LaunchOptions): Promise<void> {
   launchOptions = nextLaunchOptions;
   activeRunId += 1;
@@ -125,6 +137,9 @@ async function restartApp(container: HTMLDivElement, nextLaunchOptions: LaunchOp
   }
 }
 
+/**
+ * Loads a different app config and restarts with launch options re-read from a synthetic URL containing only config (and world, when the config's menu allows world selection).
+ */
 async function restartAppWithConfig(container: HTMLDivElement, configName: string): Promise<void> {
   const appConfig = await loadAppConfig(configName);
   const configLocation = new URL(window.location.href) as unknown as Location;
@@ -137,6 +152,9 @@ async function restartAppWithConfig(container: HTMLDivElement, configName: strin
   void restartApp(container, readLaunchOptions(configLocation, appConfig, configName));
 }
 
+/**
+ * Installs per-frame runtime diagnostics on the compiled world, enabled only if the "runtime-diagnostics" debug option is active.
+ */
 function applyRuntimeDiagnostics(world: Parameters<typeof installRuntimeDiagnostics>[0], settings: DebugSettings): void {
   installRuntimeDiagnostics(
     world,
@@ -145,6 +163,9 @@ function applyRuntimeDiagnostics(world: Parameters<typeof installRuntimeDiagnost
   );
 }
 
+/**
+ * Copies the current URL with launch options serialized into it to the clipboard; logs a warning instead of throwing if the clipboard is unavailable.
+ */
 async function copyUrlWithOptions(options: LaunchOptions): Promise<void> {
   const url = buildUrlWithLaunchOptions(window.location.href, options);
 

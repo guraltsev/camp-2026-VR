@@ -57,6 +57,7 @@ reusing or redistributing any asset.
 
 Development, testing, authoring, and deployment instructions are provided:
 
+- [Architecture](docs/ARCHITECTURE.md) and [mathematical model](docs/MATHEMATICAL_MODEL.md)
 - [Documentation home](docs/Readme.md)
 - [Development guide](docs/DEVELOPMENT.md)
 - [Deployment guide](docs/DEPLOYMENT.md)

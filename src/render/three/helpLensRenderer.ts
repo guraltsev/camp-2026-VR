@@ -1,17 +1,30 @@
+/**
+ * Help panel ("help lens") renderer: shows the current contextual help definition either as a DOM panel (desktop) or as a floating textured plane in front of the camera (XR).
+ * Exactly one presentation is active at a time; the other is hidden. The XR panel is rasterized into a 768x384 canvas texture, sized 0.96 x 0.48 m and placed relative to the camera in the Three.js frame (1.2 m ahead, 0.32 m right, 0.08 m down), and is rebuilt only when the definition changes.
+ * Lifecycle: the renderer owns a DOM element and, when XR help has been shown, a scene object; dispose() must be called to release both.
+ */
 import * as THREE from "three";
 import { publicAssetUrl } from "../../glue/assetUrls";
 import type { HelpLensDefinition, HelpLensRow } from "../../ui/helpLensDefinition";
+import { roundRect } from "./canvasDrawing";
 
+/** Handle to the help panel created by {@link createHelpLensRenderer}; the creator must call dispose(). */
 export interface HelpLensRenderer {
+  /**
+   * Shows or hides the help panel for this frame.
+   * It is shown only when visible is true and a definition is given. With xrActive it uses the XR panel, positioned from camera's local position and quaternion each call (so camera should be a root-level camera, not one parented under a moved rig); otherwise the DOM panel is used. The DOM content is rebuilt on every call while visible.
+   */
   update(options: {
     readonly visible: boolean;
     readonly xrActive: boolean;
     readonly definition?: HelpLensDefinition;
     readonly camera: THREE.Camera;
   }): void;
+  /** Removes the DOM panel and removes and disposes any XR panel, including its texture. */
   dispose(): void;
 }
 
+/** Creates a hidden help panel: a DOM element with class help-lens appended to container, plus a lazily created XR panel added to scene. */
 export function createHelpLensRenderer(container: HTMLElement, scene: THREE.Scene): HelpLensRenderer {
   const domRoot = document.createElement("div");
   domRoot.className = "help-lens";
@@ -55,6 +68,7 @@ export function createHelpLensRenderer(container: HTMLElement, scene: THREE.Scen
   };
 }
 
+// Rebuilds the DOM panel contents (title, body with inline key icons, hint rows) and shows it.
 function syncDomPanel(root: HTMLDivElement, definition: HelpLensDefinition): void {
   root.hidden = false;
   root.replaceChildren();
@@ -75,6 +89,7 @@ function syncDomPanel(root: HTMLDivElement, definition: HelpLensDefinition): voi
   root.append(title, body, rows);
 }
 
+// Input hint chip: icon when available (dark icons are inverted for desktop move/primary/context-menu hints), else text.
 function createHintNode(row: HelpLensRow): HTMLElement {
   const hint = document.createElement("span");
   hint.className = "input-hint";
@@ -99,6 +114,7 @@ function createHintNode(row: HelpLensRow): HTMLElement {
   return hint;
 }
 
+// Replaces the tokens 'Arrow keys', 'Left click', 'Right click' and standalone F, B, H or Y with inline icons.
 function appendTextWithMouseIcons(parent: HTMLElement, text: string): void {
   const pattern = /(Arrow keys|Left click|Right click|\b[FBHY]\b)/g;
   let index = 0;
@@ -146,6 +162,7 @@ function inlineIconSrcByLabel(label: string): string {
   return "";
 }
 
+// Reuses the current panel when the definition is unchanged (compared by JSON signature); otherwise replaces and disposes it.
 function syncXrPanel(
   scene: THREE.Scene,
   current: { readonly signature: string; readonly root: THREE.Object3D } | undefined,
@@ -166,6 +183,7 @@ function syncXrPanel(
   return { signature, root };
 }
 
+// Rasterizes title, body (up to 2 wrapped lines) and at most the first 3 hint rows into a textured plane; returns an empty object when no 2D context is available.
 function createXrHelpPanel(definition: HelpLensDefinition): THREE.Object3D {
   const canvas = document.createElement("canvas");
   canvas.width = 768;
@@ -176,7 +194,7 @@ function createXrHelpPanel(definition: HelpLensDefinition): THREE.Object3D {
   }
 
   context.clearRect(0, 0, canvas.width, canvas.height);
-  drawRoundedRect(context, 28, 28, 712, 320, 28);
+  roundRect(context, 28, 28, 712, 320, 28);
   context.fillStyle = "rgba(15, 23, 42, 0.94)";
   context.fill();
   context.lineWidth = 5;
@@ -213,6 +231,7 @@ function createXrHelpPanel(definition: HelpLensDefinition): THREE.Object3D {
   return mesh;
 }
 
+// Places the panel in front of the camera using the camera's local axes and copies its orientation.
 function positionXrPanel(root: THREE.Object3D, camera: THREE.Camera): void {
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -225,6 +244,7 @@ function positionXrPanel(root: THREE.Object3D, camera: THREE.Camera): void {
   root.updateMatrixWorld(true);
 }
 
+// Greedy word wrap that stops after maxLines lines (further words are dropped).
 function wrapText(
   context: CanvasRenderingContext2D,
   text: string,
@@ -255,27 +275,8 @@ function wrapText(
   }
 }
 
-function drawRoundedRect(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-): void {
-  context.beginPath();
-  context.moveTo(x + radius, y);
-  context.lineTo(x + width - radius, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + radius);
-  context.lineTo(x + width, y + height - radius);
-  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  context.lineTo(x + radius, y + height);
-  context.quadraticCurveTo(x, y + height, x, y + height - radius);
-  context.lineTo(x, y + radius);
-  context.quadraticCurveTo(x, y, x + radius, y);
-  context.closePath();
-}
 
+// Local variant that also disposes texture maps (runtimeSceneUtils#disposeObject3D does not).
 function disposeObject3D(object: THREE.Object3D): void {
   object.traverse((child) => {
     if (child instanceof THREE.Mesh) {

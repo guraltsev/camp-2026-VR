@@ -1,3 +1,9 @@
+/**
+ * Deformation family for the one-cell torus world: the cell "torus-room" is a prism whose footprint is a parallelogram with edge vectors u = (w, 0) and v = (a, b), and opposite sides glued by translation (side-0 with side-2, side-1 with side-3).
+ * The state is width w (kept fixed), skew a = skewXMeters in [0, 2w] and depth b = depthMeters in [w/2, 2w]; changing (a, b) changes the flat torus R^2/(Zu + Zv) while keeping the same combinatorics.
+ * The per-cell map sends a point p = o_old + alpha u_old + beta v_old to o_new + alpha u_new + beta v_new, where o = -(u+v)/2 is the footprint's first vertex, and keeps the height z; directions map by the same linear part. So lattice coordinates (alpha, beta) are invariant, which is what carries players and objects across a commit.
+ * Stepping moves (a, b) along a straight segment in the (a, b) plane by at most maxStepMeters per rebuild; w is taken from the target at once. Snapshot validation requires unchanged topology and equal lengths of opposite sides.
+ */
 import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex";
 import type { CellComplexSpec, PrismCellSpec } from "../../cell-complex/specs";
 import { vec3, type Vec3 } from "../../math/vec3";
@@ -11,11 +17,16 @@ import {
   type WorldDeformationFamily,
 } from "../worldGeometryDeformations";
 
+/** Parameters (meters) of the torus-room parallelogram: horizontal edge w, skew a and depth b. */
 export interface TorusSkewDeformationState {
   readonly kind: "torus-skew";
+  /** Always "torus-room"; the family only deforms that single cell. */
   readonly cellId: "torus-room";
+  /** Length w of the horizontal lattice vector u = (w, 0); positive and finite. */
   readonly widthMeters: number;
+  /** Height b of the second lattice vector v = (a, b); must lie in [w/2, 2w]. */
   readonly depthMeters: number;
+  /** Horizontal component a of v (the shear); must lie in [0, 2w]. */
   readonly skewXMeters: number;
 }
 
@@ -34,6 +45,7 @@ const expectedPortalPairs = [
 ] as const;
 const dimensionToleranceMeters = 1e-6;
 
+/** Default torus parameters: w = 15 m, b = 15 m, a = 0 (a square). */
 export const defaultTorusSkewDeformationState: TorusSkewDeformationState = {
   kind: "torus-skew",
   cellId: torusCellId,
@@ -42,6 +54,9 @@ export const defaultTorusSkewDeformationState: TorusSkewDeformationState = {
   skewXMeters: 0,
 };
 
+/**
+ * Creates the "torus-skew" WorldDeformationFamily; applyToSpec rebuilds the parallelogram footprint and carries startingPosition and cell objects from the inferred base state to the requested one.
+ */
 export function createTorusSkewDeformationFamily(): WorldDeformationFamily<TorusSkewDeformationState> {
   return {
     kind: "torus-skew",
@@ -49,12 +64,17 @@ export function createTorusSkewDeformationFamily(): WorldDeformationFamily<Torus
       return validateTorusSkewBaseSpec(baseSpec).length === 0;
     },
     normalizeState(baseSpec, state) {
-      const inferred = inferTorusSkewState(baseSpec);
+      // Inference is only needed (and only attempted) for a missing width or depth, so an explicit
+      // state still normalizes for a base footprint that is itself outside the family's range.
+      const needsInference = isMissingNumber(state.widthMeters) || isMissingNumber(state.depthMeters);
+      const inferred = needsInference ? inferTorusSkewState(baseSpec) : state;
       return normalizeTorusSkewState({
         ...state,
         cellId: torusCellId,
-        widthMeters: state.widthMeters || inferred.widthMeters,
-        depthMeters: state.depthMeters || inferred.depthMeters,
+        // Only a missing (undefined/NaN) value falls back to the inferred one; 0 and other
+        // explicit values are kept so range validation can reject them.
+        widthMeters: isMissingNumber(state.widthMeters) ? inferred.widthMeters : state.widthMeters,
+        depthMeters: isMissingNumber(state.depthMeters) ? inferred.depthMeters : state.depthMeters,
       });
     },
     applyToSpec(baseSpec, state) {
@@ -94,6 +114,9 @@ export function createTorusSkewDeformationFamily(): WorldDeformationFamily<Torus
   };
 }
 
+/**
+ * Returns the four footprint vertices (counter-clockwise, centered at the origin) of the parallelogram spanned by u = (w, 0) and v = (a, b).
+ */
 export function buildTorusParallelogramVertices(
   state: Pick<TorusSkewDeformationState, "widthMeters" | "depthMeters" | "skewXMeters">,
 ): readonly { readonly x: number; readonly y: number }[] {
@@ -108,6 +131,9 @@ export function buildTorusParallelogramVertices(
   ];
 }
 
+/**
+ * Builds the single-entry map {torus-room} that preserves lattice coordinates between the previous and next parallelogram frames and leaves z unchanged.
+ */
 export function createTorusSkewCellDeformationMaps(
   previous: TorusSkewDeformationState,
   next: TorusSkewDeformationState,
@@ -141,6 +167,9 @@ export function createTorusSkewCellDeformationMaps(
   ]);
 }
 
+/**
+ * Moves (skewXMeters, depthMeters) from current toward target by at most maxStepMeters in the Euclidean metric, snapping to the target when the remaining distance is within max(maxStepMeters, snapTolerance); the result is normalized (range-checked).
+ */
 export function nextTorusSkewStep(
   current: TorusSkewDeformationState,
   target: TorusSkewDeformationState,
@@ -165,6 +194,9 @@ export function nextTorusSkewStep(
   });
 }
 
+/**
+ * Returns errors unless the spec has exactly one cell, "torus-room", with 4 base vertices, positive finite height and portals side-0..side-3 on sides 0..3 paired 0<->2 and 1<->3 to itself.
+ */
 export function validateTorusSkewBaseSpec(baseSpec: CellComplexSpec): readonly string[] {
   const errors: string[] = [];
   const cell = baseSpec.cells.find((candidate) => candidate.id === torusCellId);
@@ -204,6 +236,9 @@ export function validateTorusSkewBaseSpec(baseSpec: CellComplexSpec): readonly s
   return errors;
 }
 
+/**
+ * Reads (w, a, b) from a base spec's torus-room footprint as w = |v1 - v0| and (a, b) = v3 - v0; throws if the cell is missing or the values are out of range.
+ */
 export function inferTorusSkewState(baseSpec: CellComplexSpec): TorusSkewDeformationState {
   const cell = requireTorusCell(baseSpec);
   const vertices = cell.baseVertices;
@@ -285,6 +320,10 @@ function normalizeTorusSkewState(state: TorusSkewDeformationState): TorusSkewDef
     depthMeters: state.depthMeters,
     skewXMeters: state.skewXMeters,
   };
+}
+
+function isMissingNumber(value: number | undefined): boolean {
+  return value === undefined || Number.isNaN(value);
 }
 
 function requireTorusCell(baseSpec: CellComplexSpec): PrismCellSpec {

@@ -1,3 +1,12 @@
+/**
+ * Builds the in-scene tool palette panel as a @pmndrs/uikit component tree from a renderer-neutral PaletteDefinition (src/ui/paletteDefinition.ts).
+ * The adapter is purely a view: it lays out a header (left action, utility and contextual buttons, right action) and a page body chosen by definition.content.kind,
+ * and turns every clickable element into a Container whose userData carries the action callback and an item id. scenePaletteController.ts ray-casts the panel and reads those userData keys;
+ * it activates the first ancestor with scenePaletteAction (legacy alias xrPaletteAction) and looks up the tooltip from scenePaletteItemId (legacy alias xrPaletteItemId).
+ * Layout units are uikit pixels on a 980x760 panel (scenePaletteLayout.ts); scenePalettePanelPixelSize converts them to meters, so the root Container is a flat panel in its own local frame with +Z as the front.
+ * The module name says VR for historical reasons: the same adapter serves the desktop palette, re-exported as createScenePaletteLibraryAdapter and by scenePaletteLibraryAdapter.ts.
+ * Content is rebuilt wholesale on each setDefinition (no diffing); disposal of the previous uikit tree is handled by this module.
+ */
 import { Component, Container, Image, Text } from "@pmndrs/uikit";
 import { ArrowLeft, ChevronLeft, ChevronRight, House, RotateCw, Settings, Trash2, X } from "@pmndrs/uikit-lucide";
 import { publicAssetUrl } from "../../glue/assetUrls";
@@ -16,8 +25,15 @@ import {
   scenePalettePanelWidthPixels,
 } from "./scenePaletteLayout";
 
+/**
+ * Callbacks the palette panel invokes when the user activates a control; supplied by scenePaletteController.ts, which forwards them from createThreeApp#shell.
+ * Only the header, world, config, reload, home, debug, comfort and related toggle callbacks are required; every optional callback is invoked with optional chaining, so a missing one makes that control a silent no-op.
+ * Callbacks fire synchronously from the controller's select-pressed edge handling, never from uikit pointer events.
+ */
 export interface VrPaletteLibraryAdapterOptions {
+  /** Header left button; only the "settings" action id is routed here. */
   readonly onLeftAction: (actionId: PaletteDefinition["leftAction"]["id"]) => void;
+  /** Header right button (and left slot "back" promoted from the right action); receives "close" or "back". */
   readonly onRightAction: (actionId: PaletteDefinition["rightAction"]["id"]) => void;
   readonly onWorldSelected: (worldId: string) => void;
   readonly onConfigSelected: (configName: string) => void;
@@ -33,41 +49,64 @@ export interface VrPaletteLibraryAdapterOptions {
   readonly onPortalInspectionToggled: (enabled: boolean) => void;
   readonly onCollisionGeometryWireframesToggled: (enabled: boolean) => void;
   readonly onAimCollisionOutlinesToggled: (enabled: boolean) => void;
+  /** When absent, the "Copy URL with options" button on the debug settings page is not rendered. */
   readonly onCopyUrlWithOptionsRequested?: () => void;
+  /** Main page: a tool tile was activated. */
   readonly onToolSelected?: (toolId: RuntimeToolId) => void;
+  /** Place-sign tile's "..." options button. */
   readonly onPlaceFlagOptionsRequested?: () => void;
   readonly onPlaceFlagTypeSelected?: (flagType: PlacedFlagType) => void;
+  /** Geodesic cannon page callbacks; the cannon id comes from the palette content. Aim and rotate receive the geodesic id; delete requires one. */
   readonly onGeodesicCannonAddRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonCarryRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonTieAndDetachRequested?: (cannonId: string) => void;
   readonly onGeodesicCannonRotateRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonAimRequested?: (cannonId: string, geodesicId?: string) => void;
   readonly onGeodesicCannonDeleteRequested?: (cannonId: string, geodesicId: string) => void;
+  /** Geometry computer page callbacks (the set-target callback is part of the contract but not invoked by this adapter). Deltas and targets are in meters. */
   readonly onGeometryComputerSetTargetRequested?: (computerId: string, target: { readonly aMeters: number; readonly bMeters: number }) => void;
   readonly onGeometryComputerStepTargetRequested?: (computerId: string, axis: "a" | "b", deltaMeters: number) => void;
   readonly onGeometryComputerGoRequested?: (computerId: string) => void;
+  /** Help hub and paged tutorial/goal navigation. */
   readonly onQuestionHelpTutorialRequested?: () => void;
   readonly onQuestionHelpGoalRequested?: () => void;
   readonly onTutorialPreviousRequested?: () => void;
   readonly onTutorialNextRequested?: () => void;
   readonly onGoalPreviousRequested?: () => void;
   readonly onGoalNextRequested?: () => void;
+  /** Sign editor on-panel keyboard: a character (including " " and "\n"), backspace, and delete-sign. */
   readonly onSignKeyboardCharacter?: (character: string) => void;
   readonly onSignKeyboardBackspace?: () => void;
   readonly onSignDeleteRequested?: () => void;
 }
 
+/**
+ * Handle to a built palette panel: a uikit root plus content, visibility, animation and disposal controls.
+ * The owner must call dispose() exactly once when the panel is discarded.
+ */
 export interface VrPaletteLibraryAdapter {
+  /** Panel root; add it to the scene graph. It starts hidden. Its local +Z is the panel front and its size in meters is given by scenePaletteLayout.ts. */
   readonly root: Container;
+  /** Disposes the previously rendered header and body and builds new ones from definition. Rebuilds everything, so call it only when the definition changed (the controller compares serialized definitions). */
   setDefinition(definition: PaletteDefinition): void;
+  /** Shows or hides the whole panel without disposing it. */
   setVisible(visible: boolean): void;
+  /** Advances uikit internal updates (layout, scrolling, animations) by deltaMs milliseconds; call once per frame. */
   update(deltaMs: number): void;
+  /** Disposes the rendered tree and the root, detaching the panel from its parent. */
   dispose(): void;
 }
 
+/**
+ * Renderer-neutral alias of VrPaletteLibraryAdapterOptions used by the desktop and XR palette controller.
+ */
 export type ScenePaletteLibraryAdapterOptions = VrPaletteLibraryAdapterOptions;
+/**
+ * Renderer-neutral alias of VrPaletteLibraryAdapter used by the desktop and XR palette controller.
+ */
 export type ScenePaletteLibraryAdapter = VrPaletteLibraryAdapter;
 
+// Palette color tokens (CSS hex strings) used throughout the panel.
 const surfaceColor = "#0f172a";
 const sectionColor = "#111827";
 const borderColor = "#475569";
@@ -78,6 +117,7 @@ const textColor = "#f8fafc";
 const mutedTextColor = "#e2e8f0";
 const scrollbarColor = "#38bdf8";
 const scrollbarBorderColor = "#0f172a";
+// Asset URLs for icons, resolved through publicAssetUrl.
 const signIconSources: Record<PlacedFlagType, string> = {
   WoodenSign1: publicAssetUrl("WoodenSign1/WoodenSign1.png"),
   WoodenSign2: publicAssetUrl("WoodenSign2/WoodenSign2.png"),
@@ -93,6 +133,7 @@ const signTypeLabels: Record<PlacedFlagType, string> = {
   WoodenSign1: "Wooden Sign 1",
   WoodenSign2: "Wooden Sign 2",
 };
+// Key layout of the on-panel sign editor keyboard; Enter, Space and Backspace are added separately.
 const signKeyboardRows = [
   ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
   ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
@@ -100,7 +141,13 @@ const signKeyboardRows = [
   ["Z", "X", "C", "V", "B", "N", "M"],
 ] as const;
 
+/**
+ * Creates the in-scene palette panel: an empty, hidden uikit root at the standard palette size, ready for setDefinition.
+ * The root uses depthTest/depthWrite off with a high renderOrder so the panel draws over world geometry, and accepts only "ray" pointer events.
+ * The caller owns the adapter and must call dispose(); until setDefinition is called the panel has no content.
+ */
 export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOptions): VrPaletteLibraryAdapter {
+  // Header and body currently attached to root; tracked so they can be disposed on the next setDefinition.
   let renderedChildren: Container[] = [];
   const root = new Container({
     width: scenePalettePanelWidthPixels,
@@ -152,13 +199,18 @@ export function createVrPaletteLibraryAdapter(options: VrPaletteLibraryAdapterOp
   };
 }
 
+/**
+ * Renderer-neutral name for createVrPaletteLibraryAdapter, used by scenePaletteController.ts.
+ */
 export const createScenePaletteLibraryAdapter = createVrPaletteLibraryAdapter;
 
+// Header row: left (action, plus home/reload on the main page and a confirm tooltip), center contextual actions, right action. The unused title Text is an empty placeholder.
 function buildHeader(
   definition: PaletteDefinition,
   options: VrPaletteLibraryAdapterOptions,
 ): Container {
   const headerActions = resolveVrPaletteHeaderActions(definition);
+  // Home and reload buttons are shown only on the main page.
   const showUtilityActions = definition.pageId === "main";
   const header = new Container({
     width: "100%",
@@ -223,6 +275,7 @@ function buildHeader(
   return header;
 }
 
+// Page-specific header buttons: cannon add/carry/tie-and-detach, or the sign trash button; empty otherwise.
 function createContextualHeaderActions(
   definition: PaletteDefinition,
   options: VrPaletteLibraryAdapterOptions,
@@ -265,6 +318,7 @@ function createContextualHeaderActions(
   return [];
 }
 
+// Home or reload button. The reload button turns red while a reload confirmation is pending.
 function createHeaderUtilityButton(
   actionId: "home" | "reload",
   active: boolean,
@@ -298,6 +352,7 @@ function createHeaderUtilityButton(
   return button;
 }
 
+// Small red "Click again to confirm" label positioned above the header's reload button using absolute offsets.
 function createReloadConfirmTooltip(): Container {
   const tooltip = new Container({
     width: 162,
@@ -326,6 +381,7 @@ function createReloadConfirmTooltip(): Container {
   return tooltip;
 }
 
+// Standard header button. An action with id "none" becomes an invisible, non-interactive spacer of the same width so the layout stays stable.
 function createHeaderButton(
   action: PaletteHeaderAction,
   onClick: () => void,
@@ -359,6 +415,7 @@ function createHeaderButton(
   return button;
 }
 
+// Route "settings" to onLeftAction and every other action (close, back) to onRightAction; "none" is ignored.
 function dispatchHeaderAction(
   actionId: PaletteHeaderAction["id"],
   options: VrPaletteLibraryAdapterOptions,
@@ -375,6 +432,7 @@ function dispatchHeaderAction(
   options.onRightAction(actionId);
 }
 
+// Select the page body by content.kind; the final fallthrough builds the settings page (world, config, debug and comfort sections).
 function buildContent(
   definition: PaletteDefinition,
   options: VrPaletteLibraryAdapterOptions,
@@ -511,6 +569,7 @@ function buildContent(
   return settings;
 }
 
+// Main page: a row of tool tiles, with the place-flag tile showing the currently selected sign type.
 function buildMainContent(
   content: Extract<PaletteDefinition["content"], { readonly kind: "main" }>,
   options: VrPaletteLibraryAdapterOptions,
@@ -547,6 +606,7 @@ function buildMainContent(
   return panel;
 }
 
+// Geodesic cannon page: a scrollable list with one row per geodesic (label, locked-status icon or Aim button, delete button).
 function buildGeodesicCannonActionsContent(
   content: Extract<PaletteDefinition["content"], { readonly kind: "geodesic-cannon-actions" }>,
   options: VrPaletteLibraryAdapterOptions,
@@ -652,6 +712,7 @@ function buildGeodesicCannonActionsContent(
   return panel;
 }
 
+// Geometry computer page: status text, deformation diagram, coordinate readout, a 4-column grid of step buttons and a Go button.
 function buildGeometryComputerActionsContent(
   content: Extract<PaletteDefinition["content"], { readonly kind: "geometry-computer-actions" }>,
   options: VrPaletteLibraryAdapterOptions,
@@ -734,6 +795,7 @@ function buildGeometryComputerActionsContent(
   return panel;
 }
 
+// Draw the current (white) and target (green) deformation parallelograms into a 900x280 pixel box. Lines are made of small dot Containers because uikit has no line primitive. Original meter-space lattice points are stored in userData for inspection.
 function createWorldDeformationDiagram(
   content: Extract<PaletteDefinition["content"], { readonly kind: "geometry-computer-actions" }>,
 ): Container {
@@ -789,6 +851,7 @@ function createWorldDeformationDiagram(
   return diagram;
 }
 
+// Four corners of the parallelogram in world meters: (0,0), (X,0), (X+a,b), (a,b).
 function createDiagramLatticePoints(
   widthMeters: number,
   aMeters: number,
@@ -802,6 +865,7 @@ function createDiagramLatticePoints(
   ];
 }
 
+// Uniformly scale and center all shapes into the diagram box minus padding, flipping y (world up becomes pixel down). Degenerate extents are treated as at least 1 m.
 function fitParallelogramDiagramPoints(
   diagramWidthPixels: number,
   diagramHeightPixels: number,
@@ -833,15 +897,18 @@ function fitParallelogramDiagramPoints(
   })));
 }
 
+// Keep a label's left edge inside the diagram so it does not run off the right side.
 function clampDiagramLabelX(x: number, diagramWidthPixels: number): number {
   return Math.max(12, Math.min(diagramWidthPixels - 260, x));
 }
 
+// 2D point in diagram pixels (or meters before fitting).
 interface DiagramPoint {
   readonly x: number;
   readonly y: number;
 }
 
+// Draw the four edges; the first dot of each edge carries an item id and its segment endpoints in userData.
 function addParallelogramLines(
   parent: Container,
   points: readonly DiagramPoint[],
@@ -868,6 +935,7 @@ function addParallelogramLines(
   }
 }
 
+// Sample the segment with dots spaced at about 0.75 of the line thickness, at least 2 pixels apart.
 function createDiagramSegmentDots(
   start: DiagramPoint,
   end: DiagramPoint,
@@ -903,6 +971,7 @@ function createDiagramSegmentDots(
   return dots;
 }
 
+// Filled 12 pixel marker centered on point.
 function createDiagramPoint(point: DiagramPoint, color: string): Container {
   return new Container({
     width: 12,
@@ -918,6 +987,7 @@ function createDiagramPoint(point: DiagramPoint, color: string): Container {
   });
 }
 
+// Absolutely positioned text label; left/top are in diagram pixels.
 function createDiagramLabel(text: string, x: number, y: number, color: string): Text {
   return new Text({
     text,
@@ -935,6 +1005,7 @@ function createDiagramLabel(text: string, x: number, y: number, color: string): 
   });
 }
 
+// Help hub page: title, body text and one button per option, dispatching to the tutorial or goal callback.
 function buildQuestionHelpContent(
   content: Extract<PaletteDefinition["content"], { readonly kind: "question-help" }>,
   options: VrPaletteLibraryAdapterOptions,
@@ -1000,6 +1071,7 @@ function buildQuestionHelpContent(
   return panel;
 }
 
+// Tutorial or goal page: title, body, and previous / page label / next controls; disabled arrows are inert.
 function buildPagedHelpContent(
   content: Extract<PaletteDefinition["content"], { readonly kind: "tutorial" | "goal" }>,
   options: VrPaletteLibraryAdapterOptions,
@@ -1104,6 +1176,7 @@ function buildPagedHelpContent(
   return panel;
 }
 
+// Sign type chooser: one tile per flag type option.
 function buildPlaceSignOptionsContent(
   content: Extract<PaletteDefinition["content"], { readonly kind: "place-flag-options" }>,
   options: VrPaletteLibraryAdapterOptions,
@@ -1147,6 +1220,7 @@ function buildPlaceSignOptionsContent(
   return panel;
 }
 
+// Sign editor: text preview, four key rows from signKeyboardRows, and an Enter / Space / Backspace row.
 function buildEditSignContent(
   content: Extract<PaletteDefinition["content"], { readonly kind: "edit-sign" }>,
   options: VrPaletteLibraryAdapterOptions,
@@ -1228,6 +1302,7 @@ function buildEditSignContent(
   return panel;
 }
 
+// Show the last three lines of the message with a "|" caret on the final line; the cursor is always at the end of the text.
 function createSignPreviewLines(message: string): Container {
   const allLines = message.split("\n");
   const cursorLineIndex = allLines.length - 1;
@@ -1266,6 +1341,7 @@ function createSignPreviewLines(message: string): Container {
   return block;
 }
 
+// One row of single-character key buttons.
 function createKeyboardRow(
   keys: readonly string[],
   options: VrPaletteLibraryAdapterOptions,
@@ -1295,6 +1371,7 @@ function createKeyboardRow(
   return row;
 }
 
+// Tool tile button with icon and label; the place-flag tile also gets a small options button.
 function createToolTile(
   toolId: RuntimeToolId,
   label: string,
@@ -1322,6 +1399,7 @@ function createToolTile(
   return button;
 }
 
+// Icon for a tool id; unknown ids get an invisible 64x64 placeholder.
 function createToolIcon(
   toolId: RuntimeToolId,
   signType: PlacedFlagType | undefined,
@@ -1345,6 +1423,7 @@ function createToolIcon(
   return new Container({ width: 64, height: 64, opacity: 0 });
 }
 
+// Icon helpers: each wraps an Image and records its source in userData.scenePaletteIconSrc for inspection.
 function createMeasureLengthIcon(): Component<any> {
   const image = new Image({
     src: measureLengthToolIconSource,
@@ -1439,6 +1518,7 @@ function createUnlinkIcon(): Component<any> {
   return image;
 }
 
+// Composite emitter-line-lock-line-emitter glyph shown in place of Aim for locked geodesics.
 function createLockedGeodesicSegmentStatus(): Container {
   const status = new Container({
     flexDirection: "row",
@@ -1504,6 +1584,7 @@ function createSignIcon(signType: PlacedFlagType): Container {
   return icon;
 }
 
+// "..." button pinned to the tile's top right corner (absolute position, above the tile via zIndexOffset).
 function createSignOptionsButton(options: VrPaletteLibraryAdapterOptions): Container {
   const optionsButton = createInteractiveSurface({
     width: 34,
@@ -1537,6 +1618,7 @@ function createSignImage(signType: PlacedFlagType, size: number): Component<any>
   return image;
 }
 
+// Debug settings page: log level, overlay toggles (items only when the overlay is on), portal options, wireframes, aim outlines and an optional copy-URL button.
 function buildDebugSettingsContent(
   content: Extract<PaletteDefinition["content"], { readonly kind: "debug-settings" }>,
   options: VrPaletteLibraryAdapterOptions,
@@ -1612,6 +1694,7 @@ function buildDebugSettingsContent(
   return settings;
 }
 
+// Fixed 400 pixel tall scrolling column with a styled scrollbar.
 function createSettingsScrollContainer(): Container {
   return new Container({
     width: "100%",
@@ -1629,6 +1712,7 @@ function createSettingsScrollContainer(): Container {
   });
 }
 
+// Debug tools row: label, a "..." button to the debug settings page when enabled, and the on/off toggle.
 function createDebugToolsRow(
   debugEnabled: boolean,
   options: VrPaletteLibraryAdapterOptions,
@@ -1672,6 +1756,7 @@ function createSectionLabel(text: string): Text {
   });
 }
 
+// Labelled single-choice option grid.
 function createChoiceSection(
   label: string,
   options: readonly { readonly id: string; readonly label: string }[],
@@ -1689,6 +1774,7 @@ function createChoiceSection(
   return section;
 }
 
+// Two-column grid of option buttons; the selected one is highlighted. Item ids are "<prefix>:<option id>".
 function createOptionGrid(
   options: readonly { readonly id: string; readonly label: string }[],
   selectedId: string,
@@ -1731,6 +1817,7 @@ function createOptionGrid(
   return grid;
 }
 
+// Label plus On/Off toggle.
 function createToggleRow(
   label: string,
   enabled: boolean,
@@ -1749,6 +1836,7 @@ function createToggleRow(
   return row;
 }
 
+// On/Off button; clicking calls onToggled with the inverted value of the state captured at build time (state is not read back).
 function createToggleButton(
   enabled: boolean,
   onToggled: (enabled: boolean) => void,
@@ -1767,6 +1855,7 @@ function createToggleButton(
   return button;
 }
 
+// Generic labelled action button with an optional home/reload icon.
 function createActionButton(
   label: string,
   itemId: string,
@@ -1805,6 +1894,7 @@ function createActionButton(
   return button;
 }
 
+// Square icon button for contextual header actions; disabled ones are dimmed and inert.
 function createHeaderActionButton(
   itemId: string,
   label: string,
@@ -1842,6 +1932,7 @@ function createHeaderActionButton(
   return button;
 }
 
+// Base clickable Container. The click callback is stored in userData.scenePaletteAction / xrPaletteAction, not on uikit events; disabled buttons store no action and set pointerEvents "none" so rays pass through them.
 function createInteractiveSurface(options: {
   readonly width: number | `${number}%` | `${number}px` | "auto";
   readonly height: number;
@@ -1890,6 +1981,7 @@ function createInteractiveSurface(options: {
   return button;
 }
 
+// Bold label text that wraps and may shrink.
 function createButtonText(text: string, fontSize: number): Text {
   return new Text({
     text,
@@ -1902,6 +1994,7 @@ function createButtonText(text: string, fontSize: number): Text {
   });
 }
 
+// Lucide icon for a header action id; "none" has no icon.
 function createHeaderIcon(
   actionId: PaletteDefinition["leftAction"]["id"],
 ): InstanceType<typeof Settings> | InstanceType<typeof X> | InstanceType<typeof ArrowLeft> | undefined {
@@ -1924,12 +2017,14 @@ function createHeaderIcon(
   }
 }
 
+// Dispose each top-level child tree.
 function disposeRenderedChildren(children: readonly Container[]): void {
   for (const child of children) {
     disposeComponentTree(child);
   }
 }
 
+// Dispose children depth-first, then the component itself.
 function disposeComponentTree(component: Component<any>): void {
   for (const child of [...component.children]) {
     if (child instanceof Component) {

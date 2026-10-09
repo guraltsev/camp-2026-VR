@@ -1,24 +1,57 @@
+/**
+ * CPU side of the per-path clip-polygon texture that lets the GPU clip each portal instance to its visible aperture.
+ *
+ * The texture is a float RGBA data texture of width `maxClipVerticesPerPath` and height
+ * `max(1, maxVisiblePaths) * maxClipTextureEyes`. Row `eye * max(1, maxVisiblePaths) + clipIndex` stores one convex
+ * NDC polygon: texel v holds (x, y) = NDC vertex v, z = vertex count, w = path id (padding texels are (0,0)). A
+ * path's `clipIndex` is its rank among the accepted paths of the union over all eyes, so one index addresses the
+ * same path in every eye's row block. Paths exceeding the row budget or the vertex budget get no index and are
+ * rendered fully clipped. Sampling uses NEAREST filtering, no mipmaps. Consumed by `portalClipMaterial` and
+ * `renderPortalInstances`; rewritten every frame by `update` / `updateStereo`.
+ */
+
 import * as THREE from "three";
 import type { Vec2, VisiblePortalPath } from "./visiblePortalPaths";
 
+/** Default width of the clip texture: polygons with more than 8 vertices are not representable and get hidden. */
 export const defaultMaxClipVerticesPerPath = 8;
 
+/** The clip-polygon texture together with its layout parameters and the per-frame path-to-row bookkeeping. */
 export interface PortalClipData {
+  /** Float RGBA texture (see module header for layout); owned by this object and freed by `dispose`. */
   readonly texture: THREE.DataTexture;
+  /** Maximum number of distinct paths per eye that can receive a clip row. */
   readonly maxVisiblePaths: number;
+  /** Texture width: maximum polygon vertices per path. */
   readonly maxClipVerticesPerPath: number;
+  /** Number of eye row blocks allocated in the texture (eyes beyond this are ignored on update). */
   readonly maxClipTextureEyes: number;
+  /** Total texture height in rows. */
   readonly clipTextureRows: number;
+  /** Path id to clip row index (within one eye block) for the latest update; paths without a slot are absent. */
   readonly clipIndexByPathId: ReadonlyMap<number, number>;
+  /** Inverse of `clipIndexByPathId`: path id at each clip index, in ascending path-id order. */
   readonly pathIdByClipIndex: readonly number[];
+  /** Largest polygon vertex count seen per path id across eyes in the latest update (including paths that were rejected). */
   readonly polygonVertexCountsByPathId: ReadonlyMap<number, number>;
+  /** Accepted-by-budget paths whose polygon exceeded `maxClipVerticesPerPath` and were therefore hidden. */
   readonly polygonVertexOverflowPathIds: readonly number[];
+  /** How many union paths exceeded `maxVisiblePaths` and got no slot in the latest update. */
   readonly visiblePathOverflowCount: number;
+  /** Single-eye update; equivalent to `updateStereo([paths])`. */
   update(paths: readonly VisiblePortalPath[]): void;
+  /** Rebuilds the whole texture and index maps from per-eye visible paths (index 0 = eye 0); uploads on next render. */
   updateStereo(pathsByEye: readonly (readonly VisiblePortalPath[])[]): void;
+  /** Releases the GPU texture. */
   dispose(): void;
 }
 
+/**
+ * Allocates the clip texture and returns an updatable `PortalClipData`.
+ *
+ * `maxVisiblePaths` is clamped to >= 0 and `maxClipTextureEyes` to >= 1 (default 2, for stereo). Memory is
+ * `rows * maxClipVerticesPerPath * 16` bytes, allocated once; each update zero-fills it and rewrites only the rows used.
+ */
 export function createPortalClipData(options: {
   readonly maxVisiblePaths: number;
   readonly maxClipVerticesPerPath?: number;
@@ -136,6 +169,8 @@ export function createPortalClipData(options: {
   };
 }
 
+// Writes one polygon into texture row `clipIndex` (already includes the eye's row offset); every texel of the row
+// carries the vertex count and path id, so shaders can read the count from texel 0.
 function writePolygonRow(
   data: Float32Array,
   maxClipVerticesPerPath: number,

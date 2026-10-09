@@ -11,6 +11,45 @@
  *   helpers and types.
  *
  * Factories are created once, before the first `rebuildCellMeshes()` call, in dependency order.
+ *
+ * ## Frame loop (`renderFrame`, driven by `renderer.setAnimationLoop`)
+ * One call per animation frame on the main thread, never re-entered. In order:
+ * 0. Bookkeeping: `clock.getDelta()` gives `deltaSeconds`; a finished background geometry deformation is
+ *    committed first (`commitReadyWorldGeometrySnapshot` -> `commitWorldGeometrySnapshot`), so the rest of the
+ *    frame sees one consistent world.
+ * 1. Input: `getXrInputFrame` or `getDesktopInputFrame` consume one `RuntimeInputFrame`. The XR path is used
+ *    only while `renderer.xr.isPresenting` and `xrSessionState.status === "active"`.
+ * 2. Movement: `movePlayer` against `activeWorld()` (global coordinate frame), then
+ *    `blockPlayerMoveAgainstRuntimeObjects`; in XR a second `movePlayer` applies physical head motion
+ *    (room-scale walking). The result replaces `playerPose` and may change `playerPose.cellId` by crossing a
+ *    portal. The camera/XR rig is then synced to the pose, the aim ray is resolved, and the selected tool
+ *    handles primary/carry/interact actions. Creatures, flags and curve-shortening geodesics then advance.
+ * 3. Portal visibility: `updateVisibleCell` shows only the player's cell mesh, the culling cameras are placed
+ *    (one per eye in stereo XR), and `computeVisiblePortalPaths` (inside `syncPortalInstanceRender` /
+ *    `syncStereoPortalInstanceRender`) selects visible portal paths from the static per-root cull tables.
+ * 4. Instance sync: visible paths become per-cell instanced-mesh transforms and clip data
+ *    (`updateCellRenderArchetypeInstances`, `portalClipData`); runtime objects and their portal ghosts are
+ *    synced the same way by `syncRuntimeObjectPortalInstances`. Overlays, labels, tooltips, the scene palette
+ *    and debug state are refreshed after that, still before drawing.
+ * 5. Render: a single `renderer.render(scene, camera)`; per-phase timings are then recorded.
+ *
+ * ## State ownership
+ * All mutable state lives in the `createThreeApp` closure and is mutated only there (or through the
+ * setter callbacks handed to the factories above). `playerPose`, `menuState`, `activeWorldBundle`,
+ * `latestVisibleResult` and the tool states are replaced with new values, not edited in place. `appState`
+ * supplies the initial pose, world and player body; afterwards the shell's `playerPose` is authoritative and
+ * is not written back to `appState`. `cellMeshes`, the render archetypes and the runtime object registry are
+ * owned here and released by `dispose()`.
+ *
+ * ## XR session lifecycle
+ * `enterVr` (button in `xrEntryUi`) moves `xrSessionState` from available/ended/failed to entering, then
+ * active, or to failed on error. The session's `end` event moves it to `ended` and resets the rig, palette
+ * input and controller models. `requestAppRestart` first ends a presenting session through
+ * `xrSessionRestartCoordinator`, then invokes the host restart callback.
+ *
+ * ## Units and frames
+ * Distances are meters and angles radians. Cell-local coordinates are x right, y forward, z up; the Three.js
+ * scene uses its own axes, converted by the `worldAxes` helpers (for example `rigidTransformToThreeMatrix`).
  */
 import * as THREE from "three";
 import { reversePainterSortStable } from "@pmndrs/uikit";
@@ -280,45 +319,92 @@ import {
   transitionXrSessionState,
 } from "./xrSessionState";
 
+/**
+ * Handle returned by {@link createThreeApp} for the running application shell.
+ *
+ * The animation loop is already running when the handle is returned. The caller must call `dispose()` exactly
+ * once when finished; the handle must not be used afterwards.
+ */
 export interface ThreeApp {
+  /** The Three.js scene owned by the shell (Three.js axes; cell content is parented under per-cell groups). */
   readonly scene: THREE.Scene;
+  /** The WebGL renderer owned by the shell; its canvas is appended to the container passed to `createThreeApp`. */
   readonly renderer: THREE.WebGLRenderer;
+  /**
+   * Applies new debug settings without restarting: rebuilds cell meshes and portal debug state, reinstalls
+   * debug helpers and renders one extra frame immediately.
+   */
   updateDebugSettings(settings: DebugSettings): void;
+  /**
+   * Stops the animation loop, removes window/canvas listeners, cancels pending restart and reload timers,
+   * and disposes scene objects, GPU resources, DOM overlays and the renderer, removing its canvas.
+   * It does not end an active XR session itself (the session `end` listener is not removed either).
+   */
   dispose(): void;
 }
 
+/**
+ * Inputs for {@link createThreeApp}: the selected world, launch/debug settings and host callbacks.
+ *
+ * Fields are read once at construction (debug and comfort values seed mutable shell state); later changes go
+ * through `ThreeApp.updateDebugSettings` or the runtime menu. Callbacks are optional and invoked from input
+ * handlers or the frame loop; the host typically responds by disposing and recreating the app.
+ */
 export interface ThreeAppOptions {
+  /** Id of the world chosen in the menu, used for display and debug dumps. */
   readonly selectedWorldId: string;
+  /** Declarative cell-complex description; the base for geometry deformations. Should match `appState.world`. */
   readonly worldSpec: CellComplexSpec;
   readonly debugLevel: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
   readonly debugOptions: readonly DebugOptionId[];
   readonly debugOverlayEnabled: boolean;
   readonly debugOverlayItems: readonly RuntimeDebugOverlayItemId[];
+  /** When true the renderer uses the quality-limited device pixel ratio and smooths portal clip edges. */
   readonly renderQualityEnabled: boolean;
   readonly vrComfortOptions: VrComfortOptions;
   readonly appConfigName: string;
+  /** Feature toggles for menu sections and tools; defaults to `defaultAppConfig`. */
   readonly appConfig?: AppConfig;
+  /** Preloaded models and textures; must already be loaded (the shell does not fetch). */
   readonly assets: PreparedWorldAssets;
+  /** Called with a world id after any active XR session has ended. */
   readonly onWorldChangeRequested?: (worldId: string) => void;
+  /** Called with a config name after any active XR session has ended. */
   readonly onAppConfigChangeRequested?: (configName: string) => void;
+  /** Called to reload the world after any active XR session has ended. */
   readonly onReloadRequested?: () => void;
+  /** Called with the changed launch options whenever menu debug or comfort settings change. */
   readonly onLaunchOptionsChanged?: (patch: Partial<LaunchOptions>) => void;
   readonly onCopyUrlWithOptionsRequested?: () => void;
 }
 
+// Per-geometry-snapshot data derived once in createActiveWorldBundle and replaced as a whole on each commit.
 interface ActiveWorldBundle {
   readonly snapshot: WorldGeometrySnapshot;
   readonly archetypeCapacitiesByCellId: ReadonlyMap<string, number>;
   readonly warmupViewsByCellId: ReadonlyMap<string, ReturnType<typeof createCellWarmupViews>>;
 }
 
+// Time (milliseconds) within which a second reload request counts as confirmation.
 const reloadConfirmationWindowMs = 2000;
+// Module-level scratch objects for resolveXrHeadWorldPose; the returned pose aliases them, so it is valid
+// only until the next call and must not be stored.
 const xrHeadWorldMatrix = new THREE.Matrix4();
 const xrHeadWorldPosition = new THREE.Vector3();
 const xrHeadWorldQuaternion = new THREE.Quaternion();
 const xrHeadWorldScale = new THREE.Vector3();
 
+/**
+ * Creates the Three.js application shell inside `container` and starts its animation loop.
+ *
+ * Side effects: appends a WebGL canvas and several DOM overlays to `container`/`document.body`, registers
+ * window listeners, installs debug helpers on `window`, warms up cell shaders with a prerender, and calls
+ * `renderer.setAnimationLoop`. Requires a browser with WebGL and a `window`; failures from those APIs
+ * propagate as exceptions and no cleanup is performed in that case. `appState.playerPose` is the initial
+ * pose (cell-local meters, yaw in radians); the shell keeps its own copy afterwards. WebXR is optional and
+ * detected asynchronously. The caller owns the returned handle and must call `dispose()` once.
+ */
 export function createThreeApp(container: HTMLElement, appState: AppState, options: ThreeAppOptions): ThreeApp {
   const appConfig = options.appConfig ?? defaultAppConfig;
   const scene = new THREE.Scene();
@@ -355,11 +441,17 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   scene.add(xrRig.root);
   const vrComfortVignette = createVrComfortVignette(camera, vrComfortOptions);
   const clock = new THREE.Clock();
+  // Authoritative player pose (cell id, cell-local position in meters, yaw in radians). Written only in
+  // renderFrame (movement), transformPlayerForGeometryCommit and the reset/teleport helpers; factories read it
+  // through getPlayerPose getters.
   let playerPose = appState.playerPose;
+  // XR availability/session status. Written by the async detect call, enterVr, the session "end" listener
+  // and requestAppRestart failure handling; read by renderFrame to choose the XR or desktop path.
   let xrSessionState: XrSessionState = createXrSessionState("unknown", {
     secureContext: window.isSecureContext,
   });
   let xrDebugState: XrDebugRenderState = createInitialXrDebugState(xrSessionState, playerPose);
+  // Debug settings mirror: seeded from options, replaced by applyDebugSettings (menu or updateDebugSettings).
   let debugLevel = options.debugLevel;
   let portalPanelMode = options.portalPanelMode;
   let debugOptions = options.debugOptions;
@@ -371,6 +463,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     debugOptions,
     "portal-path-overlay-instances",
   );
+  // Runtime menu state (page, selected tool, debug toggles). Replaced immutably by menu callbacks and
+  // frame-loop code in this closure; shared with factories via getMenuState/setMenuState.
   let menuState = createRuntimeMenuState({
     selectedWorldId: options.selectedWorldId,
     selectedAppConfigName: options.appConfigName,
@@ -385,6 +479,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   });
   let previousDesktopPalettePlacement: ReturnType<typeof resolveDesktopScenePalettePlacement> | undefined;
   let reloadConfirmationTimeout: number | undefined;
+  // Disposal bookkeeping: `disposed` neutralises late XR 'end' events; the session/cleanup pair is set by enterVr.
+  let disposed = false;
+  let activeXrSession: XRSession | undefined;
+  let xrSessionEndHandlerCleanup: (() => void) | undefined;
   const xrSessionRestartCoordinator = createXrSessionRestartCoordinator();
   const debugOverlay = createDebugOverlay(container);
   const commandDispatcher = createAppCommandDispatcher({
@@ -656,7 +754,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
   });
 
+  // One Three.js group per cell id (cell-local frame), rebuilt by rebuildCellMeshes. Only the group of the
+  // player's cell is visible; runtime objects are parented into these groups via syncParent(cellMeshes).
   const cellMeshes = new Map<string, THREE.Object3D>();
+  // Portal path search limits: depth in portal hops, counts of paths, tolerance in meters.
   const rootRenderPathMaxDepth = 10;
   const maxVisiblePaths = 2_000;
   const portalPathOptions = {
@@ -678,7 +779,10 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       worker: false,
     },
   };
+  // Current world snapshot plus derived render data. Replaced only by commitWorldGeometrySnapshot (at the
+  // start of a frame); every other reader goes through activeWorld()/activeStaticCull().
   let activeWorldBundle = createActiveWorldBundle(initialWorldSnapshot);
+  // Owns background geometry deformation; renderFrame polls it for finished snapshots.
   const geometrySession = createWorldGeometrySession({
     baseSpec: options.worldSpec,
     initialSnapshot: initialWorldSnapshot,
@@ -748,9 +852,15 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     getPortalViewportPixels(renderer),
     { smoothClipEdges: options.renderQualityEnabled && portalClipEdgeSmoothingEnabled },
   );
+  // Portal visibility results for the current frame. Written by syncPortalInstanceRender /
+  // syncStereoPortalInstanceRender (and cleared on geometry commit); read by debug and tooltip code.
   let latestVisibleResult: ComputeVisiblePortalPathsResult | undefined;
+  // Per-eye results in stereo XR (empty on desktop); activePortalEyeIndex is set while rendering each eye in
+  // onBeforeRender via activatePortalRenderStateForCamera.
   let portalEyeRenderStates: readonly PortalEyeRenderState[] = [];
   let activePortalEyeIndex = 0;
+  // Most recent portal crossing by the player; the serial increments on each crossing so consumers
+  // (geodesic cannon carry) can detect a new one.
   let latestPlayerPortalTransition: GeodesicCarryPortalTransition | undefined;
   let latestPlayerPortalTransitionSerial = 0;
   let portalInstanceRenderState: PortalInstanceRenderDebugState = {
@@ -771,6 +881,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   };
   let cellRenderArchetypes: readonly CellRenderArchetype[] = [];
   let portalInstanceDebugRenderer: PortalInstanceDebugRenderer | undefined;
+  // Id of the cell whose group in cellMeshes is currently visible; updated by updateVisibleCell.
   let visibleCellId: string | undefined = playerPose.cellId;
 
   const {
@@ -953,9 +1064,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     refreshProtractorAnglesForGeodesics,
   });
 
+  // Initial build: cell groups and archetypes, camera pose, first visibility pass (before any frame runs).
   rebuildCellMeshes();
   applyDesktopCameraPose();
   syncPortalInstanceRender();
+  // Dependencies for the portal debug runtime; `live` reads current shell state on demand. The runtime is
+  // recreated (not mutated) when the world or debug settings change.
   const portalDebugRuntimeDeps: PortalDebugRuntimeDeps = {
     rootRenderPathMaxDepth,
     scene,
@@ -1000,6 +1114,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   installGeometryDebugHelpersIfAvailable();
   syncDesktopPalette();
 
+  // Instantiate the world's authored objects: creatures become per-frame updated runtimes, collidable assets
+  // become static registry objects.
   for (const cell of activeWorld().cells) {
     for (const objectSpec of cell.objects) {
       if (isGeodesicMarmotObjectSpec(objectSpec)) {
@@ -1030,11 +1146,13 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   disableFrustumCulling(scene);
   disableShadows(scene);
 
+  // Places the camera from playerPose (desktop mode) and updates the scene lighting to follow it.
   function applyDesktopCameraPose(): void {
     xrRig.syncDesktopCamera(playerPose);
     updateStylizedSceneLighting(sceneLighting, camera);
   }
 
+  // Asynchronous WebXR capability probe; it may resolve after the first frames, updating the entry button.
   void detectXrSessionState(navigator, window.isSecureContext).then((state) => {
     xrSessionState = state;
     xrEntryUi.update(xrSessionState);
@@ -1042,6 +1160,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   });
   xrEntryUi.update(xrSessionState);
 
+  // Startup shader/cell warmup render so the first visible frames do not stall on compilation.
   const warmupStartMs = performance.now();
   prerenderCells({
     renderer,
@@ -1053,6 +1172,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
   });
   runtimeDiagnostics().recordWarmup("startup", performance.now() - warmupStartMs);
 
+  // Shows only the mesh group of the player's current cell; cheap no-op when the cell did not change.
   function updateVisibleCell(): void {
     if (visibleCellId === playerPose.cellId) {
       return;
@@ -1065,6 +1185,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     visibleCellId = playerPose.cellId;
   }
 
+  // Window resize handler: updates camera aspect, renderer size and the portal clip viewport (pixels).
   function onResize(): void {
     const canvasSize = getWindowCssCanvasSize(window);
     camera.aspect = canvasSize.width / canvasSize.height;
@@ -1077,8 +1198,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     );
   }
 
+  /**
+   * Runs one animation frame (input, movement, portal visibility, instance sync, render; see the module header).
+   *
+   * Called by `renderer.setAnimationLoop`; `xrFrame` is provided only while an XR session is presenting. Reads
+   * and replaces `playerPose`, may swap the world via a geometry commit, and renders exactly once. Must not
+   * be called re-entrantly.
+   */
   function renderFrame(_time?: DOMHighResTimeStamp, xrFrame?: XRFrame): void {
     const frameStartMs = performance.now();
+    // Phase 0: timing. deltaSeconds is the wall-clock time since the previous frame.
     const deltaSeconds = clock.getDelta();
     const frameRateFps = deltaSeconds > 0 ? 1 / deltaSeconds : undefined;
     smoothedFrameRateFps = frameRateFps === undefined
@@ -1086,7 +1215,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       : smoothedFrameRateFps === undefined
         ? frameRateFps
         : THREE.MathUtils.lerp(smoothedFrameRateFps, frameRateFps, 0.15);
+    // Swap in a finished background geometry deformation before anything reads the world this frame.
     commitReadyWorldGeometrySnapshot();
+    // Phase 1: input. Head pose is in the XR local-floor reference space (meters / radians), not cell frame.
     const xrActive = renderer.xr.isPresenting && xrSessionState.status === "active";
     const xrReferenceSpace = xrActive ? renderer.xr.getReferenceSpace() : null;
     const xrViewerPose = xrActive && xrFrame && xrReferenceSpace
@@ -1116,6 +1247,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const previousCellId = playerPose.cellId;
     let moveResult: ReturnType<typeof movePlayer> | undefined;
 
+    // Phase 2: movement. A reset request skips movement entirely (moveResult stays undefined).
     if (frame.resetRequested) {
       teleportPlayerHome();
       resetRuntimeWorld();
@@ -1137,6 +1269,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       playerPose = moveResult.pose;
       recordCellTransition(previousCellId, moveResult);
 
+      // XR only: apply the player's physical (room-scale) head displacement as a second move, so walking in
+      // the room also crosses portals and collides; the rig then accepts or rejects that physical move.
       if (xrActive && !rotatingGeodesicCannon) {
         const beforePhysicalCellId = playerPose.cellId;
         const physicalReferenceSpaceYawRadians = playerPose.yawRadians - (headLocalYawRadians ?? 0);
@@ -1164,6 +1298,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       }
     }
 
+    // Pose the camera/rig from the new playerPose first, so aim rays and carried objects use this frame's view.
     if (xrActive) {
       xrRig.syncXrRig(playerPose, effectiveHeadLocalMeters, headLocalYawRadians);
     } else {
@@ -1176,6 +1311,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       requestHelpLensForFocusedObject(activeAimRay);
     }
     const worldPrimaryActionRequested = frame.primaryActionRequested && !menuState.isOpen && !desktopFlagEditor.isOpen();
+    // Tool dispatch: modal cannon tools consume the primary action themselves; world tools act only when
+    // no menu or flag editor is open. primaryActionConsumed stops the generic focused-object interaction.
     let primaryActionConsumed = false;
     if (frame.carryActionRequested && !menuState.isOpen && !desktopFlagEditor.isOpen()) {
       primaryActionConsumed = menuState.selectedTool === "geodesic-cannon-carry"
@@ -1221,6 +1358,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
     const frameAfterMoveMs = performance.now();
     const frameBeforeObjectsMs = frameAfterMoveMs;
+    // Simulation of non-player objects (timed separately as objectsMs): creatures treat the player as an
+    // obstacle; geodesics under curve shortening advance and dependent measurements are refreshed.
     const playerObstacle = createPlayerCollisionState(playerPose);
 
     for (const runtime of dynamicObjectRuntimes) {
@@ -1256,9 +1395,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameAfterObjectsMs = performance.now();
     const frameBeforeCameraMs = frameAfterObjectsMs;
 
+    // Phase 3: portal visibility. The culling cameras mirror the render cameras (per eye in stereo XR).
     updateVisibleCell();
     let portalCullingCameras: readonly THREE.Camera[] = [camera];
     if (xrActive) {
+      // The rig is synced a second time (also done after movement) so the culling cameras below derive from
+      // the pose as it stands after the tool phase.
       xrRig.syncXrRig(playerPose, effectiveHeadLocalMeters, headLocalYawRadians);
       portalCullingCamera.copy(camera, false);
       xrRig.syncXrCullingCamera(portalCullingCamera, xrViewerPose);
@@ -1273,6 +1415,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     const frameAfterCameraMs = performance.now();
     const frameBeforePortalMs = frameAfterCameraMs;
 
+    // Phase 3/4: compute visible portal paths (stereo: one result per eye, unioned) and write the instance
+    // transforms and clip data consumed by onBeforeRender during renderer.render.
     if (xrActive && portalCullingCameras.length > 1) {
       syncStereoPortalInstanceRender(portalCullingCameras.map(resolvePortalEyeRenderRoot));
     } else {
@@ -1283,10 +1427,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         renderFromRootMatrix: new THREE.Matrix4(),
       });
     }
+    // Phase 4 (objects): runtime-object instances for every visible portal path.
     syncRuntimeObjectPortalInstances();
     const frameAfterPortalMs = performance.now();
     const frameBeforeUiMs = frameAfterPortalMs;
 
+    // UI/debug refresh; none of this changes simulation state.
     updateAimCrossMarker(xrActive, activeAimRay);
     updateProtractorToolFeedback(activeAimRay);
     updateGeodesicEmitterLabels();
@@ -1294,9 +1440,11 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     updateScenePalette(xrActive, xrFrame, xrReferenceSpace, xrHeadWorldPose, deltaSeconds, frame);
     portalDebugRuntime.updateVisiblePortalPaths();
     const frameAfterUiMs = performance.now();
+    // Phase 5: draw. In XR the renderer renders each eye from `camera` as updated by the WebXR manager.
     const frameBeforeRenderMs = performance.now();
     renderer.render(scene, camera);
     const frameAfterRenderMs = performance.now();
+    // Per-phase timings in milliseconds (cameraMs also covers tooltips/help lens; moveMs includes tools).
     const framePerformance: FramePerformanceRenderState = {
       totalMs: frameAfterRenderMs - frameStartMs,
       inputMs: frameAfterInputMs - frameBeforeInputMs,
@@ -1316,6 +1464,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
+  // Polls the geometry session once and, if a deformed world is ready, commits it. Called at frame start.
   function commitReadyWorldGeometrySnapshot(): void {
     const snapshot = geometrySession.pollReadySnapshot();
     if (!snapshot) {
@@ -1325,6 +1474,16 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     commitWorldGeometrySnapshot(snapshot);
   }
 
+  /**
+   * Replaces the active world with a newly deformed snapshot and carries all live state across.
+   *
+   * Computes per-cell deformation maps from the previous to the new snapshot, then moves the player (reset to
+   * home if the pose cannot be mapped), creatures, flags and cannons through them (objects that cannot be
+   * mapped are removed, collidable assets are rebuilt from the new spec), swaps `activeWorldBundle`, drops
+   * visibility caches and tool selections, rebuilds cell meshes and portal instances, and recreates the portal
+   * debug runtime. Positions are cell-local meters and yaw is in radians. Throws if the deformation family is
+   * not registered. Runs on the frame loop only, before input is read.
+   */
   function commitWorldGeometrySnapshot(snapshot: WorldGeometrySnapshot): void {
     const previousSnapshot = activeWorldBundle.snapshot;
     const family = getWorldDeformationFamilyOrThrow(deformationFamilyRegistry, snapshot.deformation.kind);
@@ -1335,9 +1494,12 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       snapshot.world,
     );
 
+    // Order matters: the player and objects are mapped using the previous world's cell ids, then the bundle
+    // is swapped so later helpers (activeWorld()) see the new world.
     transformPlayerForGeometryCommit(mapByCellId);
     transformRuntimeObjectsForGeometryCommit(mapByCellId, snapshot);
     activeWorldBundle = createActiveWorldBundle(snapshot);
+    // Visibility results refer to old path ids; drop them until the next sync.
     latestVisibleResult = undefined;
     portalEyeRenderStates = [];
     activePortalEyeIndex = 0;
@@ -1609,27 +1771,57 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
+  // Listeners are removed symmetrically in dispose(). Everything below `return` is hoisted function
+  // declarations, so they are usable by the code above.
   window.addEventListener("resize", onResize);
   renderer.domElement.addEventListener("contextmenu", onDesktopContextMenu);
   window.addEventListener("mousedown", onDesktopMouseDown);
   window.addEventListener("wheel", onDesktopWheel, { passive: false });
   window.addEventListener("keydown", onDesktopPaletteKeyDown);
   applyDesktopCameraPose();
+  // Start the loop (desktop requestAnimationFrame, or the XR session's frame callback while presenting).
   renderer.setAnimationLoop(renderFrame);
 
+  // Public handle. See the ThreeApp interface for the caller-facing contract.
   return {
     scene,
     renderer,
     updateDebugSettings(settings) {
+      // External update: rebuild from the given settings, then mirror the debug-derived menu fields so the
+      // menu shows the live values. Deliberately does not call syncLaunchOptionsState (that would echo the
+      // change back to the caller) nor applyMenuDebugState (that would rebuild twice).
       applyDebugSettings(settings);
+      const seeded = createRuntimeMenuState({
+        selectedWorldId: menuState.selectedWorldId,
+        debugSettings: settings,
+        debugOverlayEnabled: menuState.debugOverlayEnabled,
+        debugOverlayItems: menuState.debugOverlayItems,
+      });
+      menuState = {
+        ...menuState,
+        debugEnabled: seeded.debugEnabled,
+        consoleLogLevel: seeded.consoleLogLevel,
+        portalPanelMode: seeded.portalPanelMode,
+        portalInspectionEnabled: seeded.portalInspectionEnabled,
+        collisionGeometryWireframesEnabled: seeded.collisionGeometryWireframesEnabled,
+        aimCollisionOutlinesEnabled: seeded.aimCollisionOutlinesEnabled,
+      };
+      syncDesktopPalette();
     },
     dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      // Disposal order: timers and loop first (no more frames), then listeners, UI/controllers, scene content
+      // and GPU resources, debug runtime and helpers, geometry session, and last the renderer and its canvas.
       if (reloadConfirmationTimeout !== undefined) {
         window.clearTimeout(reloadConfirmationTimeout);
         reloadConfirmationTimeout = undefined;
       }
       xrSessionRestartCoordinator.cancel();
       renderer.setAnimationLoop(null);
+      endActiveXrSessionOnDispose();
       window.removeEventListener("resize", onResize);
       renderer.domElement.removeEventListener("contextmenu", onDesktopContextMenu);
       window.removeEventListener("mousedown", onDesktopMouseDown);
@@ -1694,6 +1886,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     },
   };
 
+  // Runs `restart` (reload / world change / config change) after leaving immersive VR. When a session is
+  // presenting, the coordinator ends it first and calls `restart` afterwards; if ending fails, the error is
+  // logged, xrSessionState becomes "failed" and `restart` is not invoked by this path.
   function requestAppRestart(restart: () => void): void {
     const session = renderer.xr.isPresenting ? renderer.xr.getSession() : undefined;
 
@@ -1704,6 +1899,37 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       xrEntryUi.update(xrSessionState);
       syncXrDebugState("desktop");
     });
+  }
+
+  /**
+   * Requests an immersive-vr session and makes it the renderer's XR session.
+   *
+   * Does nothing unless WebXR is available, immersive VR is supported and the state is available, ended or
+   * failed. Optional features: local-floor, bounded-floor, hand-tracking. Never rejects: errors set
+   * `xrSessionState` to "failed" with the message. The session's `end` listener (added once per session)
+   * marks the state ended and resets rig, palette input and controller models so the next entry starts clean.
+   */
+  // Best-effort teardown of an active immersive session: detaches the 'end' listener first (so the handler
+  // cannot touch disposed state), then asks the browser to end the session. Called only from dispose().
+  function endActiveXrSessionOnDispose(): void {
+    xrSessionEndHandlerCleanup?.();
+    xrSessionEndHandlerCleanup = undefined;
+    const session = activeXrSession ?? renderer.xr.getSession?.() ?? undefined;
+    activeXrSession = undefined;
+    if (session) {
+      try {
+        void Promise.resolve(session.end()).catch(() => undefined);
+      } catch {
+        // Session already ended or ending; nothing more to do.
+      }
+    }
+    for (const owned of [xrRig, xrControls] as Array<{ dispose?: () => void }>) {
+      try {
+        owned.dispose?.();
+      } catch {
+        // Optional dispose must not block the rest of teardown.
+      }
+    }
   }
 
   async function enterVr(): Promise<void> {
@@ -1725,7 +1951,14 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
       const session = await xr.requestSession("immersive-vr", {
         optionalFeatures: ["local-floor", "bounded-floor", "hand-tracking"],
       });
-      session.addEventListener("end", () => {
+      activeXrSession = session;
+      session.addEventListener("end", onXrSessionEnd);
+      xrSessionEndHandlerCleanup = () => session.removeEventListener("end", onXrSessionEnd);
+      function onXrSessionEnd(): void {
+        if (disposed) {
+          return;
+        }
+        activeXrSession = undefined;
         xrSessionState = transitionXrSessionState(xrSessionState, "ended");
         xrRig.reset();
         xrScenePaletteInput.reset();
@@ -1733,7 +1966,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
         scenePaletteController.setVisible(false);
         xrEntryUi.update(xrSessionState);
         syncXrDebugState("desktop");
-      });
+      }
       await renderer.xr.setSession(session);
       xrSessionState = transitionXrSessionState(xrSessionState, "active");
       xrEntryUi.update(xrSessionState);
@@ -1746,6 +1979,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }
   }
 
+  // Feeds the scene palette (menu) from XR controllers or desktop pointer input and positions it; in XR also
+  // updates the controller hand models. Called once per frame in the UI phase.
   function updateScenePalette(
     xrActive: boolean,
     xrFrame: XRFrame | undefined,
@@ -1810,6 +2045,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
+  // Head pose in Three.js world space (rig root matrix times the viewer pose). The result aliases the
+  // module-level scratch vectors and is overwritten on the next call.
   function resolveXrHeadWorldPose(xrViewerPose: XRViewerPose | undefined): XrHeadWorldPose | undefined {
     if (!xrViewerPose) {
       return undefined;
@@ -1919,6 +2156,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     syncDesktopPalette();
   }
 
+  // Consumes accumulated keyboard/mouse input; the palette look mode is used while the menu is open.
   function getDesktopInputFrame(deltaSeconds: number): RuntimeInputFrame {
     controls.setLookMode(menuState.isOpen ? "palette" : "camera");
     const frame = controls.consumeFrame(deltaSeconds);
@@ -1929,6 +2167,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     };
   }
 
+  // Consumes controller input from the active session's input sources; an all-zero frame if no session.
   function getXrInputFrame(deltaSeconds: number): RuntimeInputFrame {
     const session = renderer.xr.getSession();
 
@@ -2007,6 +2246,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     }));
   }
 
+  // Tears down and recreates the per-cell groups and instanced render archetypes for the active world,
+  // preserving which cell is visible. Called at startup, on geometry commit and on debug-setting changes.
   function rebuildCellMeshes(): void {
     const currentlyVisibleCellId = visibleCellId ?? playerPose.cellId;
 
@@ -2079,6 +2320,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     });
   }
 
+  // Mono visibility pass: computes visible portal paths from `renderRoot` and writes instance/clip data.
+  // Defaults to the player's cell and the main camera. If the root cell has no static cull table, visibility
+  // is cleared and nothing is instanced.
   function syncPortalInstanceRender(
     renderRoot: XrPortalEyeRenderRoot = {
       rootCellId: playerPose.cellId,
@@ -2147,6 +2391,9 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     );
   }
 
+  // Stereo (per-eye) visibility pass for XR: each eye has its own root and result; the union of paths is
+  // instanced once and per-eye clip data selects the eye in onBeforeRender. latestVisibleResult holds eye 0
+  // only. If any eye's root cell lacks a cull table, visibility is cleared as in the mono pass.
   function syncStereoPortalInstanceRender(renderRoots: readonly XrPortalEyeRenderRoot[]): void {
     portalInstanceDiagnostics.reset();
     updatePortalClipMaterialViewport(

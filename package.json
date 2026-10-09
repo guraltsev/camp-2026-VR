@@ -14,7 +14,11 @@
     "deploy:pages": "bash scripts/deploy-pages.sh",
     "textures:floor:inventory": "node scripts/texture-build/inventory-floor-textures.mjs",
     "textures:floor:build": "node scripts/texture-build/build-floor-runtime-textures.mjs",
-    "textures:ktx2:sync-transcoder": "node scripts/texture-build/sync-three-ktx2-transcoder.mjs"
+    "textures:ktx2:sync-transcoder": "node scripts/texture-build/sync-three-ktx2-transcoder.mjs",
+    "docs:generate": "node scripts/docs/cli.mjs generate",
+    "docs:check": "node scripts/docs/cli.mjs check",
+    "docs:coverage": "node scripts/docs/cli.mjs coverage",
+    "smoke": "node scripts/smoke/browser-smoke.mjs"
   },
   "dependencies": {
     "@pmndrs/pointer-events": "^6.6.30",

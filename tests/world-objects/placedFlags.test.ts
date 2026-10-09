@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import type { CellComplexSpec } from "../../src/cell-complex/specs";
-import { identityRigidTransform3 } from "../../src/math/rigidTransform3";
+import { identityRigidTransform3, transformDirection3 } from "../../src/math/rigidTransform3";
 import {
   createPlacedFlagObject,
   defaultPlacedFlagMessage,
@@ -117,6 +117,20 @@ describe("placedFlags", () => {
     expect(result.object?.localPose.translation).toEqual({ x: 1, y: 0.5, z: 0 });
     expect(registry.getObjectsInCell("room-b").map((object) => object.id)).toEqual(["flag-room-b"]);
     expect(registry.getObjectsInCell("room-a")).toEqual([]);
+  });
+
+  it("turns the flag front (local +y, the renderer's front text plane side) towards the eye", () => {
+    const world = compileCellComplex(twoRoomWorld());
+    const floorPoint = { x: 1, y: 0.5, z: 0 };
+    for (const eye of [{ x: 0, y: -2, z: 1.6 }, { x: 2.5, y: 0.2, z: 1.6 }, { x: 3, y: 2, z: 1.6 }]) {
+      const registry = createRuntimeObjectRegistry();
+      const result = placeFlagAtFloorPoint({ world, registry, cellId: "room-b", eyePosition: eye, floorPoint, flagType: "WoodenSign1", id: "f" });
+      expect(result.placed).toBe(true);
+      const front = transformDirection3(result.object!.localPose, { x: 0, y: 1, z: 0 });
+      const length = Math.hypot(eye.x - floorPoint.x, eye.y - floorPoint.y);
+      expect(front.x).toBeCloseTo((eye.x - floorPoint.x) / length, 9);
+      expect(front.y).toBeCloseTo((eye.y - floorPoint.y) / length, 9);
+    }
   });
 
   it("defaults font color to white", () => {

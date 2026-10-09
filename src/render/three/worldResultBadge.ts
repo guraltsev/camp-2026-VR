@@ -1,17 +1,32 @@
+/**
+ * Floating text badge ("pill" with an optional downward pointer) used as an in-world result label, for example for measured lengths and protractor angles.
+ * The badge is a Three.js plane in its own local frame (width along x, height along y, facing +z) sized in meters; the text is rasterized once into a 512x160 canvas texture. When no DOM or 2D canvas is available it degrades to a flat colored plane without text.
+ * Lifecycle: the returned object owns geometry, materials and textures; callers must dispose them with `disposeObject3DWithTextures` from runtimeSceneUtils (plain `disposeObject3D` would leak the canvas texture maps).
+ */
 import * as THREE from "three";
+import { roundRect } from "./canvasDrawing";
 
+/** Color scheme of a world result badge. */
 export type WorldResultBadgeVariant = "length" | "angle" | "success" | "warning";
 
+/** Options for {@link createWorldResultBadge}. */
 export interface WorldResultBadgeOptions {
+  /** Label text, drawn on a single line and squeezed horizontally to fit. */
   readonly text: string;
   readonly variant: WorldResultBadgeVariant;
+  /** World size of the badge plane along its x axis, meters. */
   readonly widthMeters: number;
+  /** World size of the badge plane along its y axis, meters. */
   readonly heightMeters: number;
+  /** Whether to draw a small pointer under the pill; defaults to "down". */
   readonly pointer?: "down" | "none";
+  /** When true, a mirrored back face with its own cloned texture is added so the badge reads from both sides; defaults to false. */
   readonly doubleFaced?: boolean;
+  /** Three.js render order applied to the group and its faces; defaults to 0. */
   readonly renderOrder?: number;
 }
 
+// Canvas fill/stroke per variant, plus a flat fallback color used when no canvas is available.
 const variantColors: Readonly<Record<WorldResultBadgeVariant, {
   readonly fill: string;
   readonly stroke: string;
@@ -39,6 +54,10 @@ const variantColors: Readonly<Record<WorldResultBadgeVariant, {
   },
 };
 
+/**
+ * Creates a badge group (front face, optionally a back face) for the given text, variant and size.
+ * The faces sit 1 mm in front of and behind the group origin to avoid z-fighting. Materials are transparent and do not write depth. Never throws on missing DOM support; it falls back to an untextured plane.
+ */
 export function createWorldResultBadge(options: WorldResultBadgeOptions): THREE.Object3D {
   const material = createWorldResultBadgeMaterial(options);
   const group = new THREE.Group();
@@ -62,6 +81,7 @@ export function createWorldResultBadge(options: WorldResultBadgeOptions): THREE.
   return group;
 }
 
+// Builds the textured material, or a flat-colored one when there is no document or no 2D context.
 function createWorldResultBadgeMaterial(options: WorldResultBadgeOptions): THREE.MeshBasicMaterial {
   const colors = variantColors[options.variant];
   if (typeof document === "undefined") {
@@ -99,6 +119,7 @@ function createWorldResultBadgeMaterial(options: WorldResultBadgeOptions): THREE
   });
 }
 
+// Draws the pill, the optional pointer and the outlined white text into the 512x160 canvas.
 function drawBadgeCanvas(
   context: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
@@ -106,7 +127,7 @@ function drawBadgeCanvas(
   colors: typeof variantColors[WorldResultBadgeVariant],
 ): void {
   context.clearRect(0, 0, canvas.width, canvas.height);
-  drawRoundedRect(context, 36, 28, 440, 82, 18);
+  roundRect(context, 36, 28, 440, 82, 18);
   context.fillStyle = colors.fill;
   context.fill();
   context.lineWidth = 6;
@@ -135,6 +156,7 @@ function drawBadgeCanvas(
   context.fillText(options.text, canvas.width / 2, 70, 410);
 }
 
+// Clones the material and its texture so the back face can be disposed independently of the front.
 function cloneBadgeMaterial(material: THREE.MeshBasicMaterial): THREE.MeshBasicMaterial {
   const clone = material.clone();
   if (material.map) {
@@ -143,25 +165,3 @@ function cloneBadgeMaterial(material: THREE.MeshBasicMaterial): THREE.MeshBasicM
   }
   return clone;
 }
-
-function drawRoundedRect(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-): void {
-  context.beginPath();
-  context.moveTo(x + radius, y);
-  context.lineTo(x + width - radius, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + radius);
-  context.lineTo(x + width, y + height - radius);
-  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  context.lineTo(x + radius, y + height);
-  context.quadraticCurveTo(x, y + height, x, y + height - radius);
-  context.lineTo(x, y + radius);
-  context.quadraticCurveTo(x, y, x + radius, y);
-  context.closePath();
-}
-

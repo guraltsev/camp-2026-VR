@@ -31,14 +31,31 @@ npm test
 npm run build
 ```
 
-The test suite checks mathematical and renderer contracts. It does not replace
-a short browser check of the interaction you changed.
+The test suite checks mathematical and renderer contracts and the documentation
+rules (`tests/docs`). It does not replace a short browser check of the
+interaction you changed. For a scripted check, build, serve the build, and run
+the headless smoke test (needs a Chromium-based browser; set `BROWSER` if it is
+not in the default location):
+
+```sh
+npm run build
+npx vite preview --port 4173 &
+npm run smoke -- "http://localhost:4173/?config=full&world=cube&debugLevel=verbose" local
+```
+
+It reports console output and uncaught exceptions and exits non-zero if the app
+throws or never creates a canvas.
+
+After changing code, run `npm run docs:generate` and commit the regenerated
+`docs/generated` files. `npm run docs:coverage` lists missing documentation.
 
 ## Where to start reading
 
 - [Documentation home](Readme.md) lists the living guides and design records.
 - [Implementation reading order](implementation-reading-order.md) is the best
   route through the runtime for a new contributor.
+- [Architecture](ARCHITECTURE.md) and [mathematical model](MATHEMATICAL_MODEL.md)
+  explain what the program computes and how it is organised.
 - [Development overview](Development_guide.md) records the project boundaries
   and repository map.
 - [Testing guide](testing.md) explains what each kind of test should prove.

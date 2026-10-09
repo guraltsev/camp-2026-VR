@@ -1,3 +1,20 @@
+/**
+ * Fills the per-frame instance buffers that draw each visible portal path as an instance of its destination cell.
+ *
+ * Each cell (and each runtime-object type) has an instanced-mesh "archetype" with a fixed capacity. For every
+ * `VisiblePortalPath` (see `visiblePortalPaths`) one instance is written whose matrix is the path's
+ * `rootFromDestinationMatrix`, i.e. the rigid transform placing the destination cell in the ROOT cell's Three.js
+ * frame; runtime objects use `rootFromDestination * record.localMatrix` (three.js `multiplyMatrices(a, b)` = a*b,
+ * so the object's cell-local matrix is applied first). Two per-instance attributes accompany the matrix:
+ * `portalPathId` and `portalClipIndex`, the row of the clip-polygon texture (`portalClipData`) that the fragment
+ * shader (`portalClipMaterial`) uses to discard fragments outside the path's NDC polygon.
+ *
+ * Clip-index sentinels: `unclippedPortalClipIndex` (-2) marks the root instance (never clipped); -1 marks a path
+ * that has no clip slot (budget or vertex-count overflow) and is therefore fully discarded. Instances beyond an
+ * archetype's capacity are dropped and recorded in `PortalInstanceDiagnostics`. This module also builds the debug
+ * state shown by the overlay. All work is CPU-side, linear in the number of visible paths per frame.
+ */
+
 import * as THREE from "three";
 import type { PortalRenderPath } from "../../cell-complex/portalPaths";
 import type { CellRenderArchetype } from "./cellRenderArchetypes";
@@ -8,16 +25,23 @@ import type {
 import type { RuntimeObjectRenderRecord } from "./runtimeObjectRenderRecords";
 import type { VisiblePortalPath, VisiblePortalPathDebugSummary } from "./visiblePortalPaths";
 
+/** Snapshot of instanced portal rendering for the debug overlay and console helpers. */
 export interface PortalInstanceRenderDebugState {
+  /** Whether instanced portal rendering is enabled. */
   readonly enabled: boolean;
+  /** Echo of the `showCellPathRendersInstances` option (note the capitalised field name). */
   readonly ShowCellPathRendersInstances: boolean;
+  /** Number of cell archetypes considered. */
   readonly archetypeCount: number;
+  /** Sum of archetype instance capacities. */
   readonly totalCapacity: number;
+  /** Sum of `mesh.count` over the archetypes, i.e. instances actually drawn. */
   readonly renderedInstanceCount: number;
   readonly renderedInstanceCountByCell: readonly {
     readonly cellId: string;
     readonly count: number;
   }[];
+  /** Number of archetypes that overflowed their capacity this frame. */
   readonly capacityOverflowCount: number;
   readonly capacityOverflowArchetypes: readonly string[];
   readonly normalVisiblePathRenderingActive: boolean;
@@ -30,14 +54,21 @@ export interface PortalInstanceRenderDebugState {
     readonly pathId: number;
     readonly vertexCount: number;
   }[];
+  /** Paths hidden because their clip polygon had more vertices than the clip texture holds. */
   readonly clipPolygonOverflowPathIds: readonly number[];
+  /** Visible paths that did not fit in the clip texture's rows. */
   readonly visiblePathOverflowCount: number;
 }
 
+/** Per-frame collector of archetypes whose instance capacity was exceeded. */
 export interface PortalInstanceDiagnostics {
+  /** Clears the recorded overflows; call once at the start of each frame's instance update. */
   reset(): void;
+  /** Records that `archetype` was asked for `requestedCount` instances but holds fewer. */
   recordCapacityOverflow(archetype: CellRenderArchetype, requestedCount: number): void;
+  /** Sorted ids of the archetypes that overflowed since the last `reset`. */
   readonly capacityOverflowArchetypes: readonly string[];
+  /** Number of distinct overflowed archetypes since the last `reset`. */
   readonly capacityOverflowCount: number;
 }
 
@@ -48,8 +79,10 @@ const fullScreenPolygonNdc = [
   { x: -1, y: 1 },
 ] as const;
 
+/** Clip index meaning "do not clip" (the root cell instance); -1 means "no clip slot, discard everything". */
 export const unclippedPortalClipIndex = -2;
 
+/** Creates an empty overflow collector keyed by archetype id. */
 export function createPortalInstanceDiagnostics(): PortalInstanceDiagnostics {
   const capacityOverflowArchetypes = new Set<string>();
 
@@ -69,6 +102,7 @@ export function createPortalInstanceDiagnostics(): PortalInstanceDiagnostics {
   };
 }
 
+/** Builds the synthetic depth-0 path for the root cell: identity placement, full-screen clip, infinite pixel area. */
 export function createRootVisiblePortalPath(cellId: string): VisiblePortalPath {
   return {
     pathId: 0,
@@ -86,6 +120,7 @@ export function createRootVisiblePortalPath(cellId: string): VisiblePortalPath {
   };
 }
 
+/** Groups visible paths by `destinationCellId`, preserving input order within each group. */
 export function groupVisiblePortalPathsByDestinationCell(
   paths: readonly VisiblePortalPath[],
 ): ReadonlyMap<string, readonly VisiblePortalPath[]> {
@@ -105,6 +140,11 @@ export function groupVisiblePortalPathsByDestinationCell(
   return grouped;
 }
 
+/**
+ * Joins the statically kept path lists per destination cell with the currently visible paths.
+ *
+ * Cells with no visible path are omitted from the result; per-cell order follows `staticallyKeptPathsByDestinationCell`.
+ */
 export function buildVisiblePathsByDestinationCell(
   staticallyKeptPathsByDestinationCell: ReadonlyMap<string, readonly PortalRenderPath[]>,
   visiblePathById: ReadonlyMap<number, VisiblePortalPath>,
@@ -130,6 +170,7 @@ export function buildVisiblePathsByDestinationCell(
   return grouped;
 }
 
+/** Merges grouped visible paths back into one list, de-duplicated by `pathId` and sorted ascending by id. */
 export function flattenVisiblePortalPathGroups(
   visiblePathsByDestinationCell: ReadonlyMap<string, readonly VisiblePortalPath[]>,
 ): readonly VisiblePortalPath[] {
@@ -144,6 +185,13 @@ export function flattenVisiblePortalPathGroups(
   return [...visiblePathById.values()].sort((left, right) => left.pathId - right.pathId);
 }
 
+/**
+ * Writes instance matrices and clip attributes for every cell archetype from the visible paths of its cell.
+ *
+ * For archetype instance i: matrix = path.rootFromDestinationMatrix, `portalPathId` = path id, `portalClipIndex` =
+ * -2 for depth 0 else `clipIndexByPathId.get(id) ?? -1`. Sets `mesh.count = min(paths, capacity)`, flags the GPU
+ * buffers for upload, and records overflow in `diagnostics`. Allocation-free apart from the optional default map.
+ */
 export function updateCellRenderArchetypeInstances(
   archetypes: readonly CellRenderArchetype[],
   visiblePathsByDestinationCell: ReadonlyMap<string, readonly VisiblePortalPath[]>,
@@ -175,6 +223,15 @@ export function updateCellRenderArchetypeInstances(
   }
 }
 
+/**
+ * Writes instances for runtime objects (flags, markers, creatures...) once per visible path of the cell containing each record.
+ *
+ * Each instance matrix is `path.rootFromDestinationMatrix * record.localMatrix` (object frame -> cell frame ->
+ * root frame, all in Three axes). Records with `omitRootVisiblePath` skip the depth-0 path, and records with
+ * `suppressWithinCameraDistanceMeters` are skipped when their root-frame position lies closer than that distance
+ * (meters) to any of `options.cameraPositions` (root Three frame), which hides objects around the viewer's own head.
+ * Overflow is counted by requested (not stored) instances.
+ */
 export function updateRuntimeObjectRenderArchetypeInstances(
   archetypes: readonly RuntimeObjectRenderArchetype[],
   recordsByArchetypeKey: ReadonlyMap<string, readonly RuntimeObjectRenderRecord[]>,
@@ -232,6 +289,7 @@ export function updateRuntimeObjectRenderArchetypeInstances(
   }
 }
 
+// Uses the translation column of the composed matrix as the object origin; squared distances avoid sqrt.
 function isRuntimeObjectRecordSuppressedNearCamera(
   record: RuntimeObjectRenderRecord,
   rootMatrix: THREE.Matrix4,
@@ -248,6 +306,7 @@ function isRuntimeObjectRecordSuppressedNearCamera(
   return cameraPositions.some((cameraPosition) => scratchPosition.distanceToSquared(cameraPosition) < distanceSquared);
 }
 
+/** Assembles a `PortalInstanceRenderDebugState` from the archetypes' current counts, overflow diagnostics and optional clip-data statistics. */
 export function createPortalInstanceRenderDebugState(
   archetypes: readonly CellRenderArchetype[],
   visiblePathsByDestinationCell: ReadonlyMap<string, readonly VisiblePortalPath[]>,
@@ -304,6 +363,7 @@ export function createPortalInstanceRenderDebugState(
   };
 }
 
+/** Projects a visibility debug summary onto the counters stored in render state (drops the root cell id). */
 export function visiblePortalSummaryToRenderState(summary: VisiblePortalPathDebugSummary) {
   return {
     candidatePathCount: summary.candidatePathCount,

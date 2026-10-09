@@ -1,3 +1,8 @@
+/**
+ * World object library: the catalogue of named, ready-to-place objects available to world scripts (tree, house, bench, geo_mouse, geodesic_marmot, ...).
+ * Each library entry wraps createStaticAssetObject, createSimpleGeoCreature or createGeodesicMarmot with library-owned defaults (asset path, visual scale, model offset, collision cylinder and collision class) that scale with the author's `scale`, and brands the result so WorldBuilder.OnFace can reject hand-made specs.
+ * Authoring coordinates are [x, height, y] triples (meters); the library swaps them into cell-local (x, y, z) with z up. Turn/tilt angles are in degrees at the authoring layer and converted to radians in the specs.
+ */
 import type { CellObjectSpec, GeodesicMarmotObjectSpec, SimpleCollisionCylinderSpec } from "../cell-complex/specs";
 import { createGeodesicMarmot } from "./geodesicMarmot";
 import { createSimpleGeoCreature, type SimpleGeoCreatureAuthoringParams } from "./simpleGeoCreature";
@@ -6,13 +11,12 @@ import { userObjectClass } from "./objectMetadata";
 
 const libraryObjectBrand = Symbol("world-library-object");
 
+// Re-exported so world scripts and library consumers can reference the player's collision class.
 export { userObjectClass };
 
-export interface LibraryCollisionOptions {
-  readonly class: string;
-  readonly do_not_collide_with?: readonly string[];
-}
-
+/**
+ * Shape of the fixed definition of the player's robot avatar (asset, scale, collision cylinder and class).
+ */
 export interface StandardUserRobotObjectDefinition {
   readonly id: "user-robot";
   readonly class: typeof userObjectClass;
@@ -22,6 +26,9 @@ export interface StandardUserRobotObjectDefinition {
   readonly do_not_collide_with: readonly string[];
 }
 
+/**
+ * The player's rover avatar definition: class "user", 0.32 m radius by 1 m high collision cylinder centred 0.5 m above the floor, ignoring no classes.
+ */
 export const standardUserRobotObject: StandardUserRobotObjectDefinition = {
   id: "user-robot",
   class: userObjectClass,
@@ -48,6 +55,7 @@ interface StaticLibraryDefinition {
 
 const smallHouseAssetScale = 2.5;
 const questionCubeAssetScale = 4;
+// Collision cylinder is centred on the model's measured footprint, not its origin.
 const smallHouseFootprintCenter = {
   // Center of public/assets/small_house/small_house.glb in authoring world axes,
   // measured from the asset bounds after the library's base model scale.
@@ -222,6 +230,10 @@ const staticLibraryDefinitions = {
   },
 } as const satisfies Record<string, StaticLibraryDefinition>;
 
+/**
+ * Authoring parameters for the `geodesic_marmot` library entry.
+ * `position` is [x, height, y] in meters like other library objects, `velocity` is the planar [vx, vy] in m/s in the cell's x/y axes; `doNotCollideWith` is a camel-case alias of `do_not_collide_with`.
+ */
 export interface GeodesicMarmotAuthoringParams {
   readonly position: readonly [x: number, y: number, z: number];
   readonly velocity: readonly [vx: number, vy: number];
@@ -232,10 +244,18 @@ export interface GeodesicMarmotAuthoringParams {
   readonly displayHelpMessage?: string;
 }
 
+/**
+ * A CellObjectSpec carrying a non-enumerable brand proving it was produced by the object library.
+ * The brand is a symbol property that is dropped when the spec is spread (WorldBuilder strips it), so it never reaches serialized specs.
+ */
 export type WorldLibraryObjectSpec = CellObjectSpec & {
   readonly [libraryObjectBrand]: true;
 };
 
+/**
+ * The set of constructors injected as globals into world scripts.
+ * Every entry is `(name, params) => WorldLibraryObjectSpec` where `name` becomes the object id (unique per world, enforced by WorldBuilder).
+ */
 export interface WorldObjectLibrary {
   /**
    * Static authored objects. Each has library-owned base asset scale, collision class, and collision area.
@@ -272,6 +292,10 @@ export interface WorldObjectLibrary {
   readonly geodesic_marmot: (name: string, params: GeodesicMarmotAuthoringParams) => WorldLibraryObjectSpec;
 }
 
+/**
+ * The object library instance; `house` aliases `small_house`.
+ * Static entries merge the per-entry defaults with the author's overrides (author values win); `geodesic_marmot` swaps [x, height, y] into cell-local (x, y, z).
+ */
 export const worldObjectLibrary: WorldObjectLibrary = {
   small_house: (name, params) => createDefinedStaticLibraryObject("small_house", name, params),
   tree: (name, params) => createDefinedStaticLibraryObject("tree", name, params),
@@ -315,6 +339,9 @@ export const worldObjectLibrary: WorldObjectLibrary = {
     ),
 };
 
+/**
+ * Type guard: true when the value carries the object-library brand (and so was built by `worldObjectLibrary`).
+ */
 export function isWorldLibraryObjectSpec(value: unknown): value is WorldLibraryObjectSpec {
   if (!value || typeof value !== "object") {
     return false;
@@ -340,6 +367,7 @@ function createDefinedStaticLibraryObject(
   const authorScale = params.scale ?? 1;
   const resolvedParams: StaticObjectAuthoringParams = {
     ...params,
+    // Uniform visual scale = author scale times the library's base model scale, unless a non-uniform scaleXYZ override is given (then it is used verbatim).
     scale: params.scaleXYZ ? params.scale : authorScale * (definition.visualScale ?? 1),
     scaleXYZ: params.scaleXYZ ?? definition.visualScaleXYZ?.(authorScale),
     modelOffset: params.modelOffset ?? definition.modelOffset?.(authorScale),
@@ -352,6 +380,7 @@ function createDefinedStaticLibraryObject(
   return createStaticLibraryObject(name, definition.assetPath, resolvedParams);
 }
 
+// Non-uniform scale compensating for the tree model's native proportions (0.02 base; narrower horizontally than vertically).
 function treeScaleXYZ(scale = 1): readonly [number, number, number] {
   const assetScale = scale * 0.02;
   return [assetScale / 1.5, (assetScale * 2.5) / 3, assetScale / 1.5];

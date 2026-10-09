@@ -1,3 +1,9 @@
+/**
+ * Pure build step (and Web Worker entry) that turns a base CellComplexSpec plus a deformation state into a fully compiled, topology-validated world with its static portal-path culling tables.
+ * The build is: normalize the state with its deformation family, apply it to the base spec, compile, check the result against the compiled base world with family.validateSnapshot, then run buildStaticallyCulledPortalPathTables.
+ * Failures never throw out of buildWorldGeometrySnapshotForRequest; they return a "failed" response so the session can record lastError.
+ * When loaded in a worker global (self defined, no document) the module answers "message" events with the same function, so the module is also safe to import on the main thread.
+ */
 import { compileCellComplex, type CompiledCellComplex } from "../cell-complex/compileCellComplex";
 import {
   buildStaticallyCulledPortalPathTables,
@@ -10,10 +16,18 @@ import {
 } from "./worldGeometryDeformationFamilies";
 import type { WorldDeformationState } from "./worldGeometryDeformations";
 
+/**
+ * Message sent to the geometry builder: the undeformed base spec, the deformation state to realize, and portal-path culling parameters.
+ */
 export interface BuildWorldGeometrySnapshotRequest {
+  /** Caller-chosen id echoed in the response so stale answers can be discarded. */
   readonly requestId: number;
+  /**
+   * Undeformed world spec; deformations are always applied to this, never to a previously deformed spec.
+   */
   readonly baseSpec: CellComplexSpec;
   readonly deformation: WorldDeformationState;
+  /** Parameters forwarded to buildStaticallyCulledPortalPathTables for the new world. */
   readonly portalPathOptions: {
     readonly maxDepth: number;
     readonly skipImmediateReverse: boolean;
@@ -22,6 +36,9 @@ export interface BuildWorldGeometrySnapshotRequest {
   };
 }
 
+/**
+ * Result of a build: "built" with the deformed spec, compiled world, culling tables and completion time (ms on the performance clock, or Date.now), or "failed" with an error message.
+ */
 export type BuildWorldGeometrySnapshotResponse =
   | {
       readonly kind: "built";
@@ -37,6 +54,9 @@ export type BuildWorldGeometrySnapshotResponse =
       readonly message: string;
     };
 
+/**
+ * Synchronously builds and validates the snapshot for a request, returning a "failed" response instead of throwing on any error (unknown family, inapplicable spec, topology change, compile failure).
+ */
 export function buildWorldGeometrySnapshotForRequest(
   request: BuildWorldGeometrySnapshotRequest,
 ): BuildWorldGeometrySnapshotResponse {

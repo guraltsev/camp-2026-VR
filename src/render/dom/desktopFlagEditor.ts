@@ -1,13 +1,29 @@
+/**
+ * Modal DOM editor for a placed flag (sign): message text, text color, delete, and close.
+ * Role: desktop-only UI overlay appended to a container (document.body in the app). It does not own flag data; every edit is reported to the caller through callbacks, and the caller applies it to the runtime object registry and re-renders the flag.
+ * While open it listens for Escape in the capture phase on document, swallows the event and closes. The root element is styled by the desktop-flag-editor CSS classes.
+ * Lifecycle: the creator must call dispose() to remove the element and any listener left behind.
+ */
 import { placedFlagFontColors, placedFlagMaxMessageLength, type PlacedFlagObject } from "../../world-objects/placedFlags";
 
+/** Handle to the flag editor created by {@link createDesktopFlagEditor}. */
 export interface DesktopFlagEditor {
+  /** Root element of the editor; hidden while closed. */
   readonly root: HTMLDivElement;
+  /** Shows the editor for the flag: fills the message input, builds the color swatches (marking the flag's current color), focuses and selects the input text. Does nothing about any previously open flag; calling open while already open just retargets the editor. */
   open(flag: PlacedFlagObject): void;
+  /** Hides the editor and calls onClosed; a no-op when already closed. */
   close(): void;
+  /** True while the editor is visible. */
   isOpen(): boolean;
+  /** Removes the Escape listener and the root element without calling onClosed. */
   dispose(): void;
 }
 
+/**
+ * Creates the (initially hidden) flag editor, appends it to container and returns its handle.
+ * Callbacks receive the id of the flag being edited. onMessageChanged fires on every keystroke with the full input value (the input is limited to placedFlagMaxMessageLength characters). onFontColorChanged fires when a swatch is clicked, with a CSS color from placedFlagFontColors. onDeleteRequested fires from the delete button, immediately before the editor closes. onClosed fires once each time the editor goes from open to closed, whether by Done, X, Enter, Escape or delete; the shell's implementation re-requests pointer lock there.
+ */
 export function createDesktopFlagEditor(
   container: HTMLElement,
   options: {
@@ -55,6 +71,7 @@ export function createDesktopFlagEditor(
 
   let activeFlagId: string | undefined;
 
+  // Live-edit: every change is pushed to the caller immediately.
   input.addEventListener("input", () => {
     if (activeFlagId) {
       options.onMessageChanged(activeFlagId, input.value);
@@ -75,11 +92,13 @@ export function createDesktopFlagEditor(
     options.onDeleteRequested(flagId);
     editor.close();
   });
+  // Enter in the input submits the form; treat it as Done.
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     editor.close();
   });
 
+  // Capture-phase handler so Escape closes the editor and is stopped before bubble-phase handlers see it.
   const handleDocumentKeyDown = (event: KeyboardEvent) => {
     if (event.code !== "Escape" || root.hidden) {
       return;
@@ -95,11 +114,13 @@ export function createDesktopFlagEditor(
   root.append(form);
   container.append(root);
 
+  // Declared after the listeners above, which reference it lazily at event time.
   const editor: DesktopFlagEditor = {
     root,
     open(flag) {
       activeFlagId = flag.id;
       input.value = flag.message;
+      // Rebuild swatches each time so the selected marker reflects the opened flag.
       colors.replaceChildren(...placedFlagFontColors.map((color) => {
         const button = document.createElement("button");
         button.type = "button";

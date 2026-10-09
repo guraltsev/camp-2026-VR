@@ -1,8 +1,16 @@
+/**
+ * Derives the rigid gluing map of every portal from the geometry of the two sides it joins.
+ * For a portal on side S of cell A glued to side T of cell B, the transform g maps A-local coordinates to B-local coordinates so that (1) the midpoint of S goes to the midpoint of T, (2) the outward horizontal normal of S (leaving A) goes to the inward normal of T (entering B), (3) the direction of S (start to end) goes to the opposite of T's direction, as required when both cells are counterclockwise and the gluing preserves orientation, and (4) +z goes to +z. g = (R, t) is thus a proper rotation about the vertical axis followed by a translation, acting on points as x -> R x + t. Side lengths and cell heights are not compared: only midpoints are matched, so a length mismatch yields a gluing that is correct at the midpoint but not at the endpoints.
+ */
 import { rigidTransform3, type Mat3 } from "../math/rigidTransform3";
 import { crossVec3, normalizeVec3, scaleVec3, subVec3, vec3, type Vec3 } from "../math/vec3";
 import type { CompiledPrismCellGeometry, CompiledPrismSide } from "./prismCells";
 import type { AuthoredPortalSpec, CellComplexSpec, CompiledPortal, PrismCellSpec } from "./specs";
 
+/**
+ * Compiles every portal of every cell, returning for each cell id its CompiledPortal list in authored order.
+ * @throws Error if a portal's target cell, target portal or compiled geometry cannot be found (normally prevented by spec validation).
+ */
 export function compilePortalTransforms(
   spec: CellComplexSpec,
   cellGeometryById: ReadonlyMap<string, CompiledPrismCellGeometry>,
@@ -17,6 +25,9 @@ export function compilePortalTransforms(
   );
 }
 
+/**
+ * Resolves a single authored portal against its target and attaches reciprocalPortalId and transformToTarget.
+ */
 function compilePortal(
   portal: AuthoredPortalSpec,
   sourceCell: PrismCellSpec,
@@ -47,6 +58,10 @@ function compilePortal(
   };
 }
 
+/**
+ * Builds g = (R, t) with R = B_T B_S^T and t = m_T - R m_S.
+ * B_S has columns (tangent_S, up, outward_S) and B_T has columns (-tangent_T, up, inward_T), each a right-handed orthonormal frame. R therefore sends tangent_S to -tangent_T, up to up and outward_S to inward_T, and t is chosen so the side midpoints m_S and m_T coincide. The tangent is negated for the target because the shared boundary is traversed in opposite directions by the two counterclockwise cells; the outward normal of the source becomes the inward normal of the target because stepping out of A is stepping into B.
+ */
 function derivePortalTransform(sourceSide: CompiledPrismSide, targetSide: CompiledPrismSide) {
   const up = vec3(0, 0, 1);
   const sourceTangent = sideTangent(sourceSide);
@@ -63,14 +78,24 @@ function derivePortalTransform(sourceSide: CompiledPrismSide, targetSide: Compil
   return rigidTransform3(rotation, translation);
 }
 
+/**
+ * Unit horizontal direction from the side's start vertex to its end vertex.
+ */
 function sideTangent(side: CompiledPrismSide): Vec3 {
   return normalizeVec3(vec3(side.end.x - side.start.x, side.end.y - side.start.y, 0));
 }
 
+/**
+ * Midpoint of the side's base edge at z = 0.
+ */
 function sideMidpoint(side: CompiledPrismSide): Vec3 {
   return vec3((side.start.x + side.end.x) / 2, (side.start.y + side.end.y) / 2, 0);
 }
 
+/**
+ * Returns the matrix with columns (tangent, up, crossing), replacing `crossing` by tangent x up if the supplied vector disagrees with it.
+ * For counterclockwise cells tangent x up always equals the outward normal (and (-tangent) x up the inward normal), so the supplied vector is used as is; the fallback is a defensive guard that keeps the result right-handed (determinant +1) so R stays a rotation, not a reflection.
+ */
 function orthonormalBasis(tangent: Vec3, up: Vec3, crossing: Vec3): Mat3 {
   const tangentUnit = normalizeVec3(tangent);
   const upUnit = normalizeVec3(up);
@@ -88,6 +113,9 @@ function orthonormalBasis(tangent: Vec3, up: Vec3, crossing: Vec3): Mat3 {
   return mat3FromColumns(tangentUnit, upUnit, crossingUnit);
 }
 
+/**
+ * Assembles a Mat3 whose columns are the three given axes.
+ */
 function mat3FromColumns(xAxis: Vec3, yAxis: Vec3, zAxis: Vec3): Mat3 {
   return {
     m00: xAxis.x,

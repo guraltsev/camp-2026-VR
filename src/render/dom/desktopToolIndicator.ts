@@ -1,7 +1,14 @@
+/**
+ * Small DOM badge showing the currently selected desktop tool (icon, name, and a selection prompt) near the HUD.
+ * Role: purely presentational. The caller passes the selected tool id, the current sign style and optional prompt strings each time the selection or prompt changes; the module toggles CSS classes (desktop-tool-indicator-*) that decide which icon is shown, and sets the label, prompt and aria-label text.
+ * The indicator is hidden for the none and aim tools.
+ * Lifecycle: the creator must call dispose() to remove the element.
+ */
 import { publicAssetUrl } from "../../glue/assetUrls";
-import type { RuntimeDesktopToolId } from "../../runtime/runtimeMenuState";
+import type { RuntimeToolId } from "../../runtime/runtimeMenuState";
 import type { PlacedFlagType } from "../../world-objects/placedFlags";
 
+// Sign icon image per flag type.
 const signIconSources: Record<PlacedFlagType, string> = {
   WoodenSign1: publicAssetUrl("WoodenSign1/WoodenSign1.png"),
   WoodenSign2: publicAssetUrl("WoodenSign2/WoodenSign2.png"),
@@ -11,19 +18,27 @@ const carryToolIconSource = publicAssetUrl("icons/carry.svg");
 const protractorToolIconSource = publicAssetUrl("icons/protractor.png");
 const measureLengthToolIconSource = publicAssetUrl("icons/ruler.svg");
 
+/** Handle to the tool indicator created by {@link createDesktopToolIndicator}. */
 export interface DesktopToolIndicator {
+  /** Root element; hidden when no tool badge should be displayed. */
   readonly root: HTMLDivElement;
+  /**
+   * Updates the indicator for the selected tool.
+   * flagType picks the sign icon and style regardless of the tool. protractorPrompt (default "select: vertex") is shown for the protractor tool and tieAndDetachPrompt (default "select: geodesic 1") for the tie-and-detach tool; the measure-length tool shows a fixed "select: geodesic" prompt.
+   */
   setTool(
-    toolId: RuntimeDesktopToolId,
+    toolId: RuntimeToolId,
     flagType: PlacedFlagType,
     options?: {
       readonly protractorPrompt?: string;
       readonly tieAndDetachPrompt?: string;
     },
   ): void;
+  /** Removes the indicator element from the DOM. */
   dispose(): void;
 }
 
+/** Creates the hidden tool indicator, with all icon images pre-created, and appends it to container. */
 export function createDesktopToolIndicator(container: HTMLElement): DesktopToolIndicator {
   const root = document.createElement("div");
   root.className = "desktop-tool-indicator";
@@ -86,6 +101,7 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   return {
     root,
     setTool(toolId, flagType, indicatorOptions = {}) {
+      // The aim tool uses the crosshair instead of a badge, so it is hidden along with none.
       root.hidden = toolId === "none" || toolId === "aim";
       root.classList.toggle("desktop-tool-indicator-aim", toolId === "aim");
       root.classList.toggle("desktop-tool-indicator-place-flag", toolId === "place-flag");
@@ -102,6 +118,7 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
       root.classList.toggle("desktop-tool-indicator-WoodenSign1", flagType === "WoodenSign1");
       root.classList.toggle("desktop-tool-indicator-WoodenSign2", flagType === "WoodenSign2");
       signIcon.src = signIconSources[flagType];
+      // Short display name per tool; empty for tools without a badge.
       label.textContent = toolId === "geodesic-cannon-rotate"
         ? "Rotate"
         : toolId === "geodesic-cannon-carry"
@@ -126,6 +143,7 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
         : toolId === "measure-length"
           ? "select: geodesic"
           : "";
+      // Prompt text is only shown for tools that ask the player to select something.
       prompt.hidden = toolId !== "protractor" &&
         toolId !== "measure-length" &&
         toolId !== "geodesic-cannon-tie-detach";
@@ -153,6 +171,7 @@ export function createDesktopToolIndicator(container: HTMLElement): DesktopToolI
   };
 }
 
+// Builds an inline stroke-style SVG from [tagName, attributes] pairs.
 function createSvgIcon(
   className: string,
   viewBox: string,

@@ -1,3 +1,6 @@
+> **Note:** this is an early design record; the spec shapes shown here (`start`, `sideFaces`) differ from the current
+> `CellComplexSpec`. The current model is in [../MATHEMATICAL_MODEL.md](../MATHEMATICAL_MODEL.md) and the generated API reference.
+
 # 007 - Authoring Model
 
 ## Current authoring format

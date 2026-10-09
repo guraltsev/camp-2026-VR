@@ -1,23 +1,47 @@
+/**
+ * Instanced-mesh archetypes for runtime objects: one `THREE.InstancedMesh` per source mesh, drawn once per visible portal path.
+ *
+ * Each archetype bakes its source mesh's transform relative to the object root into a cloned geometry (so an
+ * instance matrix only needs the object's pose composed with a path's `rootFromDestination`), clones the
+ * material, optionally patches it with `patchPortalClipMaterial`, and carries the two per-instance attributes
+ * `portalPathId` and `portalClipIndex` used by the clip shader. Capacity is fixed at creation
+ * (`recordCount * maxVisiblePaths`, at least 1); instances beyond it are dropped and reported through
+ * `RuntimeObjectRenderArchetypeDiagnostics`. Frustum culling is off because instance bounds are not tracked.
+ */
+
 import * as THREE from "three";
 import { patchPortalClipMaterial, type PortalClipMaterialState } from "./portalClipMaterial";
 import type { RuntimeObjectRenderRecord, RuntimeObjectRenderSourceMesh } from "./runtimeObjectRenderRecords";
+import { disposeMaterial } from "./runtimeSceneUtils";
 
+/** An instanced mesh plus its per-instance portal attributes for one runtime-object source mesh. */
 export interface RuntimeObjectRenderArchetype {
+  /** Key shared with the `RuntimeObjectRenderRecord`s that use this archetype. */
   readonly archetypeKey: string;
   readonly mesh: THREE.InstancedMesh;
+  /** Per-instance portal path id (float) read by the clip shader. */
   readonly portalPathIdAttribute: THREE.InstancedBufferAttribute;
+  /** Per-instance clip-texture row, -2 for unclipped, -1 for no slot. */
   readonly portalClipIndexAttribute: THREE.InstancedBufferAttribute;
+  /** Maximum instances that can be drawn per frame. */
   readonly capacity: number;
+  /** Id of the runtime object the source mesh came from. */
   readonly sourceObjectId: string;
 }
 
+/** Per-frame collector of runtime-object archetypes whose capacity was exceeded. */
 export interface RuntimeObjectRenderArchetypeDiagnostics {
+  /** Clears recorded overflows; call at the start of each frame. */
   reset(): void;
+  /** Records that `archetype` was asked for `requestedCount` instances. */
   recordCapacityOverflow(archetype: RuntimeObjectRenderArchetype, requestedCount: number): void;
+  /** Sorted keys of overflowed archetypes since the last reset. */
   readonly capacityOverflowArchetypes: readonly string[];
+  /** Number of distinct overflowed archetypes. */
   readonly capacityOverflowCount: number;
 }
 
+/** Creates an empty overflow collector keyed by archetype key. */
 export function createRuntimeObjectRenderArchetypeDiagnostics(): RuntimeObjectRenderArchetypeDiagnostics {
   const capacityOverflowArchetypes = new Set<string>();
 
@@ -37,6 +61,13 @@ export function createRuntimeObjectRenderArchetypeDiagnostics(): RuntimeObjectRe
   };
 }
 
+/**
+ * Builds the instanced mesh for one source mesh with room for `capacity` instances.
+ *
+ * Geometry and material are cloned (the source is untouched). The geometry is transformed by
+ * `inverse(root.matrixWorld) * mesh.matrixWorld`, i.e. into the object root's frame. The mesh starts with
+ * `count = 0` and dynamic-draw buffers. Pass `portalClipMaterialState` to enable portal clipping.
+ */
 export function buildRuntimeObjectRenderArchetype(
   source: RuntimeObjectRenderSourceMesh,
   capacity: number,
@@ -76,6 +107,7 @@ export function buildRuntimeObjectRenderArchetype(
   };
 }
 
+/** Disposes the cloned geometry and materials of the given archetypes (not textures shared with other materials). */
 export function disposeRuntimeObjectRenderArchetypes(
   archetypes: Iterable<RuntimeObjectRenderArchetype>,
 ): void {
@@ -85,6 +117,7 @@ export function disposeRuntimeObjectRenderArchetypes(
   }
 }
 
+/** Groups records by `archetypeKey`, preserving order within each group. */
 export function groupRuntimeObjectRenderRecordsByArchetype(
   records: readonly RuntimeObjectRenderRecord[],
 ): ReadonlyMap<string, readonly RuntimeObjectRenderRecord[]> {
@@ -102,6 +135,7 @@ export function groupRuntimeObjectRenderRecordsByArchetype(
   return grouped;
 }
 
+/** Returns the instance capacity needed if every record is drawn on every visible path: max(1, recordCount x maxVisiblePaths). */
 export function deriveRuntimeObjectRenderArchetypeCapacity(
   recordCount: number,
   maxVisiblePaths: number,
@@ -115,15 +149,4 @@ function cloneMaterial(material: THREE.Material | THREE.Material[]): THREE.Mater
   }
 
   return material.clone();
-}
-
-function disposeMaterial(material: THREE.Material | THREE.Material[]): void {
-  if (Array.isArray(material)) {
-    for (const entry of material) {
-      entry.dispose();
-    }
-    return;
-  }
-
-  material.dispose();
 }

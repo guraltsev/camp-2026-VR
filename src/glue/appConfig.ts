@@ -1,3 +1,8 @@
+/**
+ * Loads and normalizes the app configuration: a per-deployment JavaScript file (<name>.config.js in the public folder, chosen by the ?config= URL parameter) that sets the starting world, which menu sections and tools are enabled, and debug defaults.
+ * loadAppConfig dynamically imports the file (cache-busted), follows "forwardTo" redirects up to a fixed depth with loop detection, and passes the raw object through normalizeAppConfig, which accepts only well-typed fields and falls back to defaultAppConfig field by field. Any load failure degrades to the built-in defaults with a console warning rather than throwing.
+ * AppConfig values are immutable; launch-option parsing (readLaunchOptions.ts) uses them as defaults beneath explicit URL parameters, and the menu/palette uses them to gate sections and tools.
+ */
 import { findWorldCatalogEntry, normalizeWorldId, defaultWorldId } from "../authoring/worldCatalog";
 import { debugOptionDefinitions, type DebugOptionId } from "./debugOptions";
 import { parseDebugLevel, type DebugLevelId } from "./debugLevels";
@@ -5,14 +10,19 @@ import { parsePortalPanelMode, type PortalPanelModeId } from "./portalPanelMode"
 import type { RuntimeDebugOverlayItemId, RuntimeToolId } from "../runtime/runtimeMenuState";
 import { publicUrl } from "./assetUrls";
 
+/** Id of a main-menu tool that an app config can switch on or off. */
 export type ConfigurableToolId = "place-flag" | "geodesic-cannon" | "measure-length" | "protractor";
 
+/** Which optional menu sections the app config enables. */
 export interface AppMenuConfig {
   readonly configSelectionSectionEnabled: boolean;
   readonly worldSelectionSectionEnabled: boolean;
   readonly debugSectionEnabled: boolean;
 }
 
+/**
+ * Which tools the app config enables (placeFlags = signs, geodesicEmitters = rays, distances = length tool, angles = protractor).
+ */
 export interface AppToolConfig {
   readonly placeFlags: boolean;
   readonly geodesicEmitters: boolean;
@@ -20,6 +30,7 @@ export interface AppToolConfig {
   readonly angles: boolean;
 }
 
+/** Default debug settings supplied by the app config; URL parameters can override them. */
 export interface AppDebugConfig {
   readonly level: DebugLevelId;
   readonly portalPanelMode: PortalPanelModeId;
@@ -29,22 +40,30 @@ export interface AppDebugConfig {
   readonly renderQualityEnabled: boolean;
 }
 
+/** Fully normalized app configuration: starting world, menu sections, tools and debug defaults. */
 export interface AppConfig {
+  /** Catalog id of the world to start in when the URL does not name one; always a known catalog entry. */
   readonly startingWorldId: string;
   readonly menu: AppMenuConfig;
   readonly tools: AppToolConfig;
   readonly debug: AppDebugConfig;
 }
 
+/** Untrusted shape of a loaded config module's default export before normalization. */
 export type RawAppConfig = Record<string, unknown>;
 
+/** Name of the built-in config used when none (or an invalid one) is requested. */
 export const defaultAppConfigName = "default";
 
+/** Selectable app config: file-name id and menu label. */
 export interface AppConfigCatalogEntry {
   readonly id: string;
   readonly label: string;
 }
 
+/**
+ * App configs offered in the settings menu; ids correspond to <id>.config.js files in the public folder.
+ */
 export const appConfigCatalog: readonly AppConfigCatalogEntry[] = [
   { id: "default", label: "Default" },
   { id: "full", label: "Full sandbox" },
@@ -57,6 +76,9 @@ const defaultDebugOverlayItems = ["fps", "location", "portal-quantities"] as con
 const debugOptionIds = debugOptionDefinitions.map((option) => option.id);
 const maxAppConfigForwardDepth = 8;
 
+/**
+ * Built-in configuration used when no config file is available or a field is missing: default world, everything enabled, debug off.
+ */
 export const defaultAppConfig: AppConfig = {
   startingWorldId: defaultWorldId,
   menu: {
@@ -80,6 +102,9 @@ export const defaultAppConfig: AppConfig = {
   },
 };
 
+/**
+ * Loads and normalizes the named config (default "default"), following forwardTo redirects; never rejects and returns defaultAppConfig on any failure or forwarding loop.
+ */
 export async function loadAppConfig(configName = defaultAppConfigName): Promise<AppConfig> {
   return loadAppConfigByName(normalizeAppConfigName(configName), new Set(), 0);
 }
@@ -111,11 +136,15 @@ async function loadAppConfigByName(configName: string, visitedConfigNames: Set<s
   }
 }
 
+/** Reads the config name from the ?config= (or ?configName=) URL parameter, normalized. */
 export function readAppConfigName(location: Location): string {
   const params = new URLSearchParams(location.search);
   return normalizeAppConfigName(params.get("config") ?? params.get("configName"));
 }
 
+/**
+ * Strips a ".js"/".config.js" suffix and returns the name only if it is made of letters, digits, "_" or "-"; otherwise returns the default name (guards the dynamic import path).
+ */
 export function normalizeAppConfigName(rawValue: string | null | undefined): string {
   if (!rawValue) {
     return defaultAppConfigName;
@@ -125,10 +154,12 @@ export function normalizeAppConfigName(rawValue: string | null | undefined): str
   return /^[a-zA-Z0-9_-]+$/.test(withoutExtension) ? withoutExtension : defaultAppConfigName;
 }
 
+/** Returns the URL of the config file for a name under the public base path. */
 export function buildAppConfigUrl(configName: string): string {
   return publicUrl(`${normalizeAppConfigName(configName)}.config.js`);
 }
 
+/** Returns the validated name in a raw config's forwardTo field, or undefined if absent or invalid. */
 export function readAppConfigForwardName(rawConfig: unknown): string | undefined {
   const raw = isRecord(rawConfig) ? rawConfig : {};
   const value = raw.forwardTo;
@@ -141,6 +172,9 @@ export function readAppConfigForwardName(rawConfig: unknown): string | undefined
   return /^[a-zA-Z0-9_-]+$/.test(withoutExtension) ? withoutExtension : undefined;
 }
 
+/**
+ * Converts an untrusted raw config object into an AppConfig, taking each recognized field only if it has the right type and valid value and otherwise using the default; accepts optionsMenu or menu for the menu block.
+ */
 export function normalizeAppConfig(rawConfig: unknown): AppConfig {
   const raw = isRecord(rawConfig) ? rawConfig : {};
   const rawMenu = readRecord(raw, "optionsMenu") ?? readRecord(raw, "menu") ?? {};
@@ -176,6 +210,9 @@ export function normalizeAppConfig(rawConfig: unknown): AppConfig {
   };
 }
 
+/**
+ * Returns whether the config permits a tool; cannon sub-modes follow geodesicEmitters, and non-configurable tools (none, aim) are always enabled.
+ */
 export function isRuntimeToolEnabled(config: AppConfig, toolId: RuntimeToolId): boolean {
   switch (toolId) {
     case "place-flag":
@@ -195,6 +232,9 @@ export function isRuntimeToolEnabled(config: AppConfig, toolId: RuntimeToolId): 
   }
 }
 
+/**
+ * Lists the configurable tools enabled by the config, in main-menu order (sign, emitter, length, protractor).
+ */
 export function getEnabledMainTools(config: AppConfig): readonly ConfigurableToolId[] {
   return [
     ...(config.tools.placeFlags ? (["place-flag"] as const) : []),

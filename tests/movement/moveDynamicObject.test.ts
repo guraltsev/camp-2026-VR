@@ -69,13 +69,44 @@ describe("moveDynamicObject", () => {
       world,
       object,
       displacement: { x: 0.2, y: 0, z: 0 },
-      portalCrossingMode: "bounds",
     });
 
     expect(result.blocked).toBe(false);
     expect(result.crossedPortal).toBe(false);
     expect(result.object.cellId).toBe("room-a");
     expect(result.object.localPose.translation.x).toBeCloseTo(0.95);
+  });
+
+  it("throws for the unimplemented bounds crossing mode", () => {
+    const world = compileCellComplex(twoRoomsWithPortal());
+    const object = dynamicObject("room-a", { x: 0, y: 0, z: 0.5 });
+
+    expect(() =>
+      moveDynamicObject({ world, object, displacement: { x: 0.1, y: 0, z: 0 }, portalCrossingMode: "bounds" }),
+    ).toThrow(/bounds/);
+  });
+
+  it("falls back to the original pose when pushing out of one wall leaves the body inside another (convex corner)", () => {
+    const world = compileCellComplex(singleRoom());
+    const object = dynamicObject("room", { x: 0.85, y: 0.85, z: 0.5 });
+
+    const result = moveDynamicObject({ world, object, displacement: { x: 0.1, y: 0.1, z: 0 } });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockingReason).toBe("wall");
+    expect(result.object.localPose.translation.x).toBeCloseTo(0.85);
+    expect(result.object.localPose.translation.y).toBeCloseTo(0.85);
+  });
+
+  it("still slides along a single wall when moving diagonally into it", () => {
+    const world = compileCellComplex(singleRoom());
+    const object = dynamicObject("room", { x: 0.85, y: 0, z: 0.5 });
+
+    const result = moveDynamicObject({ world, object, displacement: { x: 0.1, y: 0.3, z: 0 } });
+
+    expect(result.blocked).toBe(true);
+    expect(result.object.localPose.translation.x).toBeCloseTo(0.9, 5);
+    expect(result.object.localPose.translation.y).toBeCloseTo(0.3);
   });
 
   it("keeps anchor-crossing objects in the source cell until their traversal center crosses the portal plane", () => {
@@ -278,7 +309,6 @@ describe("moveDynamicObject", () => {
       world,
       object,
       displacement: { x: 0.1, y: 0, z: 0 },
-      portalCrossingMode: "bounds",
     });
 
     expect(result.blocked).toBe(false);
@@ -287,7 +317,7 @@ describe("moveDynamicObject", () => {
     expect(result.object.localPose.translation.x).toBeCloseTo(0.55);
   });
 
-  it("crosses portals independently of target-cell collision", () => {
+  it("refuses to cross when the object would violate the target cell ceiling", () => {
     const world = compileCellComplex(twoRoomsWithPortal({ targetHeightMeters: 0.75 }));
     const object = dynamicObject(
       "room-a",
@@ -298,9 +328,10 @@ describe("moveDynamicObject", () => {
 
     const result = moveDynamicObject({ world, object, displacement: { x: 0.1, y: 0, z: 0 } });
 
-    expect(result.blocked).toBe(false);
-    expect(result.crossedPortal).toBe(true);
-    expect(result.object.cellId).toBe("room-b");
+    expect(result.blocked).toBe(true);
+    expect(result.blockingReason).toBe("ceiling");
+    expect(result.crossedPortal).toBe(false);
+    expect(result.object).toBe(object);
   });
 
   it("keeps the autonomous dynamic-object traversal policy explicit and anchor-based", () => {

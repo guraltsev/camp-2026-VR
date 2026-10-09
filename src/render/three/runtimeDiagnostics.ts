@@ -1,8 +1,19 @@
+/**
+ * Optional runtime diagnostics: asset load tracking, portal transition log, slow-frame warnings and a browser long-task watcher.
+ *
+ * A single module-level instance is either a no-op (default and when disabled) or an active recorder installed with
+ * {@link installRuntimeDiagnostics}. When active it publishes an immutable-style snapshot on
+ * `window.__noneuclidDiagnostics` after every event, keeps only the last 80 events and 40 transitions, and logs to the
+ * console (info only at verbose debug levels, warnings always). Times are `performance.now()` milliseconds; recorded
+ * frame timings are in milliseconds. Callers always go through {@link runtimeDiagnostics}, so they need no enabled checks.
+ */
 import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex";
 import { isVerboseDebugLevel, type DebugLevelId } from "../../glue/debugLevels";
 
+// 'preload' = global asset fetch before the world starts; 'instance-load' = per-object clone/placement in a cell.
 type AssetPhase = "preload" | "instance-load";
 
+// One tracked asset load, keyed by phase, cell, object and path.
 interface AssetDebugRecord {
   readonly assetPath: string;
   readonly objectId: string;
@@ -14,6 +25,7 @@ interface AssetDebugRecord {
   status: "pending" | "loaded" | "error";
 }
 
+// Static per-cell asset expectations plus the first time the player entered the cell.
 interface CellDebugSummary {
   readonly cellId: string;
   readonly assetUses: readonly {
@@ -31,6 +43,7 @@ interface PortalTransitionEvent {
   readonly portalId: string;
 }
 
+// Plain-data view of the recorder state, exposed on window.__noneuclidDiagnostics.
 interface RuntimeDiagnosticsSnapshot {
   readonly enabled: boolean;
   readonly startedAtIso: string;
@@ -40,6 +53,7 @@ interface RuntimeDiagnosticsSnapshot {
   readonly recentEvents: readonly string[];
 }
 
+// Recording interface; all methods are safe no-ops when diagnostics are disabled.
 interface RuntimeDiagnosticsApi {
   readonly enabled: boolean;
   recordPreloadStart(assetPath: string, kind: string): void;
@@ -69,6 +83,7 @@ declare global {
   }
 }
 
+// Shared disabled implementation returning an empty snapshot.
 const noopDiagnostics: RuntimeDiagnosticsApi = {
   enabled: false,
   recordPreloadStart() {},
@@ -94,8 +109,16 @@ const noopDiagnostics: RuntimeDiagnosticsApi = {
   dispose() {},
 };
 
+// Current implementation; replaced by installRuntimeDiagnostics.
 let activeDiagnostics: RuntimeDiagnosticsApi = noopDiagnostics;
 
+/**
+ * Installs (or, when disabled, clears) the global diagnostics recorder for `world`.
+ *
+ * Disposes any previous recorder first. Does nothing active when `enabled` is false or `performance` is unavailable
+ * (the no-op recorder is installed and an empty snapshot is published). `debugLevel` controls whether info events are also
+ * written to the console. Call before preloading assets so that those loads are recorded.
+ */
 export function installRuntimeDiagnostics(world: CompiledCellComplex, debugLevel: DebugLevelId, enabled: boolean): void {
   activeDiagnostics.dispose();
 
@@ -144,6 +167,7 @@ export function installRuntimeDiagnostics(world: CompiledCellComplex, debugLevel
     const line = `[noneuclid][${relativeMs()}ms] ${message}`;
     recentEvents.push(line);
 
+    // Ring buffer of the most recent event lines.
     if (recentEvents.length > 80) {
       recentEvents.shift();
     }
@@ -252,6 +276,7 @@ export function installRuntimeDiagnostics(world: CompiledCellComplex, debugLevel
     try {
       longTaskObserver = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
+          // The browser reports long tasks above 50 ms; warn on each.
           if (entry.duration >= 50) {
             recordWarn(`browser long task ${entry.duration.toFixed(1)}ms`);
           }
@@ -275,6 +300,7 @@ export function installRuntimeDiagnostics(world: CompiledCellComplex, debugLevel
   activeDiagnostics = {
     enabled: true,
     recordPreloadStart(assetPath, kind) {
+      // Preloads are not tied to an object or cell: a synthetic object id and the '__preload__' cell are used.
       const record = upsertAssetRecord(assetPath, `preload:${assetPath}`, "__preload__", kind, "preload");
       record.startTimeMs = nowMs();
       record.status = "pending";
@@ -346,6 +372,7 @@ export function installRuntimeDiagnostics(world: CompiledCellComplex, debugLevel
       recordEvent(message, detail);
     },
     recordFrame(cellId, timings) {
+      // Only frames taking at least 120 ms in total or 80 ms in render are reported.
       if (timings.totalMs < 120 && timings.renderMs < 80) {
         return;
       }
@@ -357,6 +384,7 @@ export function installRuntimeDiagnostics(world: CompiledCellComplex, debugLevel
         moveMs: Number(timings.moveMs.toFixed(1)),
         renderMs: Number(timings.renderMs.toFixed(1)),
         recentTransition:
+          // Attribute the slow frame to a portal transition only if it happened in the last 1.5 s.
           transitionAgeMs !== undefined && transitionAgeMs < 1500
             ? {
                 fromCellId: recentTransition.fromCellId,
@@ -386,6 +414,11 @@ export function installRuntimeDiagnostics(world: CompiledCellComplex, debugLevel
   publishSnapshot();
 }
 
+/**
+ * Returns the current diagnostics recorder, which is a no-op object when diagnostics are not enabled.
+ *
+ * Never undefined, so it is safe to call from hot paths and from code that runs before installation.
+ */
 export function runtimeDiagnostics(): RuntimeDiagnosticsApi {
   return activeDiagnostics;
 }

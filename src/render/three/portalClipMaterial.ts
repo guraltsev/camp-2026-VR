@@ -1,20 +1,45 @@
+/**
+ * Patches Three.js materials so instanced portal geometry is clipped, per fragment, to its path's convex NDC polygon.
+ *
+ * `patchPortalClipMaterial` hooks `onBeforeCompile` to add two instanced attributes (`portalPathId`,
+ * `portalClipIndex`) and the uniforms of a shared `PortalClipMaterialState`. In the fragment shader the pixel's
+ * window position (`gl_FragCoord`, physical pixels) is converted to NDC using the current viewport origin and size
+ * ((p - origin) / size * 2 - 1, y up), then tested against the polygon fetched from the clip texture
+ * (`portalClipData`): a point is inside if all edge cross products agree in sign with the polygon's winding.
+ * With `smoothClipEdges` the signed distance to the nearest edge (in pixels) gives a coverage in [0,1]
+ * (smoothstep over +-0.5 px) that is dithered with interleaved gradient noise via `discard`, which anti-aliases
+ * aperture edges without blending. In the vertex shader, clipped instances get a small clip-space depth push
+ * (`z += min(8e-5 * w, 8e-4)`) so they do not z-fight with the portal wall they are seen through.
+ * Clip index semantics: -2 = unclipped, -1 or out of range = discard, otherwise a texture row (see `renderPortalInstances`).
+ * For stereo/XR the row block is selected per eye with `portalClipTextureRowOffset` and the viewport uniforms are
+ * updated to the eye's sub-viewport before each eye draws.
+ */
+
 import * as THREE from "three";
 import type { PortalClipData } from "./portalClipData";
 
+/** Shared uniform bundle and settings referenced by every patched material, so one update reaches all of them. */
 export interface PortalClipMaterialState {
+  /** Clip texture and layout this state samples. */
   readonly clipData: PortalClipData;
+  /** Anti-alias clip edges with dithered coverage (true) or use a hard per-fragment inside test (false). */
   readonly smoothClipEdges: boolean;
+  /** Uniforms injected into each patched shader; mutate `.value` in place, never replace the objects. */
   readonly uniforms: {
     readonly portalClipTexture: { value: THREE.DataTexture };
+    /** Lower-left corner of the current viewport in physical pixels (nonzero for XR eye sub-viewports). */
     readonly portalViewportOriginPixels: { value: THREE.Vector2 };
+    /** Size of the current viewport in physical pixels. */
     readonly portalViewportPixels: { value: THREE.Vector2 };
     readonly portalMaxVisiblePaths: { value: number };
     readonly portalMaxClipVerticesPerPath: { value: number };
     readonly portalClipTextureRows: { value: number };
+    /** Row offset of the current eye's block in the clip texture (eyeIndex * max(1, maxVisiblePaths)). */
     readonly portalClipTextureRowOffset: { value: number };
   };
 }
 
+/** Creates the shared uniform state for `clipData`, initially with a zero viewport origin and eye 0. */
 export function createPortalClipMaterialState(
   clipData: PortalClipData,
   viewportPixels: { readonly width: number; readonly height: number },
@@ -35,6 +60,7 @@ export function createPortalClipMaterialState(
   };
 }
 
+/** Sets the viewport size and lower-left origin (physical pixels) used to map fragment coordinates to NDC. */
 export function updatePortalClipMaterialViewport(
   state: PortalClipMaterialState,
   viewportPixels: { readonly width: number; readonly height: number },
@@ -44,6 +70,7 @@ export function updatePortalClipMaterialViewport(
   state.uniforms.portalViewportPixels.value.set(viewportPixels.width, viewportPixels.height);
 }
 
+/** Selects which eye's polygon rows the shader reads; the index is floored and clamped to [0, maxClipTextureEyes - 1]. */
 export function updatePortalClipMaterialTextureEye(
   state: PortalClipMaterialState,
   eyeIndex: number,
@@ -56,6 +83,7 @@ export function updatePortalClipMaterialTextureEye(
   state.uniforms.portalClipTextureRowOffset.value = clampedEyeIndex * Math.max(1, state.clipData.maxVisiblePaths);
 }
 
+/** Reads the renderer's current viewport (already scaled by pixel ratio, as WebGL sees it) and applies it via `updatePortalClipMaterialViewport`. */
 export function updatePortalClipMaterialViewportFromRenderer(
   state: PortalClipMaterialState,
   renderer: THREE.WebGLRenderer,
@@ -69,6 +97,14 @@ export function updatePortalClipMaterialViewportFromRenderer(
   );
 }
 
+/**
+ * Installs portal clipping into a material (or each material of an array) and returns it.
+ *
+ * Mutates the material in place: wraps any existing `onBeforeCompile`, sets a program cache key derived from the
+ * texture dimensions and smoothing mode, and forces recompilation. Relies on the stock shader chunks containing
+ * `#include <common>`, `#include <begin_vertex>`, `#include <project_vertex>` and `void main() {`; a shader lacking
+ * them is left silently unpatched. The material must be drawn by an instanced mesh carrying the two attributes.
+ */
 export function patchPortalClipMaterial(
   material: THREE.Material | THREE.Material[],
   state: PortalClipMaterialState,
@@ -80,6 +116,7 @@ export function patchPortalClipMaterial(
   return patchSinglePortalClipMaterial(material, state);
 }
 
+/** Maps a pixel position relative to the viewport origin (y up) to NDC in [-1,1]; a zero-sized axis maps to 0. */
 export function viewportPixelsToNdc(
   pointPixels: { readonly x: number; readonly y: number },
   viewportPixels: { readonly width: number; readonly height: number },
@@ -118,6 +155,8 @@ function patchSinglePortalClipMaterial(
   return material;
 }
 
+// Adds the instanced attributes/varyings and the depth bias. The bias is only applied when the clip index is >= -0.5
+// (i.e. not the unclipped root), pushing portal-seen geometry slightly farther than the portal opening.
 function patchVertexShader(shader: string): string {
   return shader
     .replace(
@@ -149,6 +188,8 @@ function patchVertexShader(shader: string): string {
     );
 }
 
+// Prepends clip code to `main`: smooth mode discards on zero coverage and stochastically for partial coverage;
+// hard mode discards when the fragment is outside any edge.
 function patchFragmentShader(
   shader: string,
   maxVisiblePaths: number,
@@ -194,6 +235,9 @@ function patchFragmentShader(
     );
 }
 
+// GLSL helpers; loop bounds and limits are baked in as constants because GLSL ES requires constant loop bounds.
+// Layout matches portalClipData: texel x = vertex index, row = eye offset + clip index, .z = vertex count.
+// Inside test: sum shoelace terms to get the winding sign, then require every edge cross product (scaled by that sign) >= -1e-5.
 function portalClipShaderFunctions(maxVisiblePaths: number, maxClipVerticesPerPath: number): string {
   return `
 vec2 portalClipVertex(float clipIndex, int vertexIndex) {

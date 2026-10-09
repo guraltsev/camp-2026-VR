@@ -1,4 +1,14 @@
-/** Geodesic emitter (cannon) tools: place, rotate, aim, carry, tie-and-detach, and delete geodesics. */
+/**
+ * Geodesic emitter (cannon) tools: place, rotate, aim, carry, tie-and-detach, and delete geodesics.
+ *
+ * This module is the interaction layer between the aim/menu systems and the geodesic world-object logic in
+ * `world-objects/geodesicCannon`. It mutates the runtime object registry (cannons, geodesic segments/intervals) and
+ * the shell-owned cannon tool state and menu state through getter/setter dependencies, then triggers the
+ * follow-up syncs (palette, portal instances, hitbox debug, dependent measurements and protractor angles).
+ * Poses and distances are cell-local (meters; x right, y forward, z up) with yaws in radians
+ * counter-clockwise from +x; Three.js-space values only appear for the carried-emitter glow and aim rays.
+ * Ids of new cannons and geodesics embed `Date.now()` plus a per-factory counter.
+ */
 import type { FocusedRuntimeObject } from "./aimInteraction";
 import * as THREE from "three";
 import { type CompiledCellComplex } from "../../cell-complex/compileCellComplex";
@@ -70,47 +80,106 @@ import { worldPointToThree } from "./worldAxes";
 
 /** Editing state of the geodesic emitter (cannon) tools. */
 export interface GeodesicCannonToolState {
+  /** Cannon currently being edited, carried, or tie-detached. */
   readonly selectedCannonId?: string;
+  /** Geodesic of the selected cannon that rotate/aim/carry operate on. */
   readonly activeGeodesicId?: string;
+  /** Portal traversals recorded while carrying, for the active geodesic; used to rebuild its path through portals. */
   readonly carryPortalWord?: readonly GeodesicPortalTraversal[];
+  /** Per-geodesic carry portal words for every locked geodesic incident to the carried emitter. */
   readonly carryPortalWordsByGeodesicId?: Readonly<Record<string, readonly GeodesicPortalTraversal[]>>;
+  /** Serial of the last player portal transition already folded into `carryPortalWord`. */
   readonly carryPortalTransitionSerial?: number;
+  /** Per-geodesic last-applied portal transition serial; prevents applying one crossing twice. */
   readonly carryPortalTransitionSerialByGeodesicId?: Readonly<Record<string, number>>;
+  /** Endpoints picked so far in the tie-and-detach tool (at most two). */
   readonly tieAndDetachEndpointSelections?: readonly GeodesicEndpointSelection[];
 }
 
+/**
+ * Dependencies of the geodesic cannon tools, supplied by createThreeApp's shell.
+ *
+ * Plain-value fields are long-lived objects; `get*` members are getters because the shell reassigns the
+ * underlying `let` variables (menu state, cannon tool state, world, player pose); the shell's `set*` members write
+ * those variables back.
+ */
 export interface GeodesicCannonToolsDeps {
+  /** Scene that receives the carried-emitter glow mesh. */
   readonly scene: THREE.Scene;
+  /** Renderer; only `xr.isPresenting` is read, to skip pointer lock in XR. */
   readonly renderer: THREE.WebGLRenderer;
+  /** Desktop controls, used to request pointer lock while rotating, aiming, or carrying. */
   readonly controls: ReturnType<typeof createDesktopControls>;
+  /** Registry holding cannons, geodesic segments/intervals, and related objects; mutated directly. */
   readonly runtimeObjectRegistry: RuntimeObjectRegistry;
+  /** Getter for the active compiled world. */
   getWorld(): CompiledCellComplex;
+  /** Getter for the runtime menu state (selected tool, open menu). */
   getMenuState(): RuntimeMenuState;
+  /** Replaces the shell's menu state. */
   setMenuState(next: RuntimeMenuState): void;
+  /** Getter for the cannon tool state. */
   getCannonToolState(): GeodesicCannonToolState;
+  /** Replaces the shell's cannon tool state (not merged; pass `{}` to clear). */
   setCannonToolState(next: GeodesicCannonToolState): void;
+  /** Getter for the player's pose (cell id and cell-local position). */
   getPlayerPose(): PlayerPose;
+  /** Getter for the debug level; "verbose" enables portal-word logging. */
   getDebugLevel(): DebugLevelId;
+  /** Getter for the latest portal crossing by the player, used as the carried emitter's crossing. */
   getLatestPlayerPortalTransition(): GeodesicCarryPortalTransition | undefined;
+  /** Getter for the monotonically increasing serial of that latest crossing. */
   getLatestPlayerPortalTransitionSerial(): number;
+  /** Stores a crossing (and bumps the serial) when a released emitter is normalized across a portal. */
   recordPlayerPortalTransition(transition: GeodesicCarryPortalTransition): void;
+  /** Resolves the single best aim target for a ray. */
   resolveCurrentAimTarget(ray: RootAimRay): AimTarget | undefined;
+  /** Resolves all aim targets along a ray, in the order the aim system returns them. */
   resolveCurrentAimTargets(ray: RootAimRay): readonly AimTarget[];
+  /** True when the target is close enough to interact with. */
   targetIsWithinInteractionRange(target: AimTarget | undefined): boolean;
+  /** Logs the clicked target when verbose debugging is on. */
   logVerboseAimClick(target: AimTarget | undefined): void;
+  /** Finds the interactable runtime object under the (optional) ray, with its distance. */
   findFocusedRuntimeObject(ray?: RootAimRay): FocusedRuntimeObject | undefined;
+  /** Maps geodesic ids to their display names ("G1", ...) for menus. */
   getGeodesicLabelsById(geodesicIds: readonly string[]): Readonly<Record<string, string>>;
+  /** Re-syncs the desktop tool palette after tool or menu changes. */
   syncDesktopPalette(): void;
+  /** Rebuilds instanced copies of runtime objects seen through portals after registry changes. */
   syncRuntimeObjectPortalInstances(): void;
+  /** Refreshes selectable-hitbox debug wireframes after registry changes. */
   syncSelectableHitboxDebug(): void;
+  /** Recomputes measured lengths attached to a geodesic. */
   refreshMeasuredGeodesicLengthsForGeodesic(geodesicId: string): void;
+  /** Deletes measured lengths attached to a geodesic. */
   removeMeasuredGeodesicLengthsForGeodesic(geodesicId: string): void;
+  /** Deletes protractor angles that use a geodesic as a leg. */
   removeProtractorAnglesForGeodesic(geodesicId: string): void;
+  /** Deletes protractor angles centered on intersection vertices that no longer exist. */
   removeProtractorAnglesForMissingVertices(vertexIds: readonly string[]): void;
+  /** Recomputes protractor angles that use a geodesic. */
   refreshProtractorAnglesForGeodesic(geodesicId: string): void;
+  /** Recomputes protractor angles that use any of the geodesics. */
   refreshProtractorAnglesForGeodesics(geodesicIds: readonly string[]): void;
 }
 
+/**
+ * Creates the geodesic cannon tool controller and returns its operations.
+ *
+ * Entry points: `tryUseGeodesicCannonToolFromAim` (place a cannon, or add a geodesic to one, from an aim ray),
+ * `tryExtendFocusedGeodesicFromAim`, `addGeodesicToCannon`, `deleteGeodesicFromCannon`, the mode starters
+ * `startGeodesicCannonRotation`/`Aim`/`Carry`/`TieAndDetach`, the per-frame updaters
+ * `updateActiveGeodesicCannonRotation`, `updateActiveGeodesicCannonAim`, and `updateCarriedGeodesicCannonPose`, and
+ * `finishGeodesicCannonCarry`. Locked geodesics cannot be rotated or aimed, and cannons with a straightening incident
+ * geodesic cannot be carried. Operations with missing or wrong-kind cannons close the menu and return
+ * without throwing. Placement helpers that need a horizontal facing silently do nothing when the aim ray is vertical.
+ *
+ * Lifecycle: the only owned GPU resource is the lazily created carried-emitter glow mesh, which is added to the
+ * scene on first use and only hidden (never removed or disposed) by `clearCarriedGeodesicCannonGlow`; the shell
+ * must dispose it with the scene. Closure state (id counters, frozen XR head height, target geodesic length) lives for
+ * the factory's lifetime.
+ */
 export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
   const {
     scene,
@@ -160,6 +229,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
       return;
     }
 
+    // Aiming at a geodesic crossing places a cannon at that vertex; the yaw below is the horizontal aim direction.
     if (target?.object?.kind === "geodesic-intersection") {
       const forward = getAimForwardVector(ray);
       if (!forward) {
@@ -196,6 +266,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
       return;
     }
 
+    // Aiming at an existing geodesic segment places a cannon on it at the hit distance along the segment.
     if (target?.object?.kind === "geodesic-segment") {
       const forward = getAimForwardVector(ray);
       if (!forward) {
@@ -203,6 +274,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
       }
       let horizontalForward: { readonly x: number; readonly y: number; readonly z: number };
       try {
+        // normalizeVec3 throws for a (near-)vertical ray whose horizontal part is zero; ignore the click then.
         horizontalForward = normalizeVec3({ x: forward.x, y: forward.y, z: 0 });
       } catch {
         return;
@@ -234,6 +306,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
       return;
     }
 
+    // Otherwise only a floor hit places a new cannon, which immediately fires its first geodesic.
     if (target?.kind !== "floor") {
       return;
     }
@@ -328,6 +401,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
     }
 
     const geodesicId = `geodesic:${Date.now()}:${geodesicIdCounter++}`;
+    // The new geodesic leaves in a random direction in [-pi, pi); the registry cannon is not rotated, only this copy.
     const aimYawRadians = Math.random() * Math.PI * 2 - Math.PI;
     const cannonForNewGeodesic = {
       ...cannon,
@@ -523,6 +597,8 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
     readonly cannon: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>;
     readonly previousCannon?: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>;
   } {
+    // A zero-displacement move re-resolves which cell/portal side the released cannon is on; if it ended up
+    // across a portal, re-home it to the target cell and record the crossing for portal-word bookkeeping.
     const moveResult = moveDynamicObject({
       world: deps.getWorld(),
       object: runtimeObjectToDynamicObjectState(cannon),
@@ -757,6 +833,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
       cellId: deps.getPlayerPose().cellId,
       localPose: yawRigidTransform3(cannon.aimYawRadians, anchor),
     };
+    // Dragging the emitter into a forbidden zone destroys it (and its geodesics) rather than leaving it there.
     if (carriedGeodesicCannonTouchesForbiddenZone(nextCannon)) {
       deleteCarriedGeodesicCannon(cannon.id);
       return;
@@ -783,6 +860,8 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
     previousCannon?: Extract<RuntimeWorldObject, { readonly kind: "geodesic-cannon" }>,
     options: { readonly preserveGeodesicOnRebuildFailure?: boolean } = {},
   ): void {
+    // Three cases: locked geodesics incident to this emitter (rebuilt as connected geodesics between emitters),
+    // else a single locked active geodesic, else a plain unlocked active geodesic regrown from the cannon.
     const geodesicId = cannon.activeGeodesicId ?? deps.getCannonToolState().activeGeodesicId;
     const lockedIncidentGeodesicIds = collectLockedIncidentGeodesicIdsForEmitter(runtimeObjectRegistry, cannon.id);
     if (lockedIncidentGeodesicIds.length === 0 && !geodesicId) {
@@ -976,6 +1055,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
     }
 
     glow.visible = deps.getMenuState().selectedTool === "geodesic-cannon-carry";
+    // Glow cylinder is 1.72 m tall, so center it 0.86 m above the cannon base.
     glow.position.copy(worldPointToThree({
       x: cannon.localPose.translation.x,
       y: cannon.localPose.translation.y,
@@ -1027,6 +1107,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
     }
 
     if (yawDeltaRadians !== 0 && Number.isFinite(yawDeltaRadians)) {
+      // Wrap to (-pi, pi]; the yaw is also stored per active geodesic so each emitter keeps its own direction.
       const nextYaw = Math.atan2(
         Math.sin(cannon.aimYawRadians + yawDeltaRadians),
         Math.cos(cannon.aimYawRadians + yawDeltaRadians),
@@ -1076,6 +1157,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
       return;
     }
 
+    // Aim at the hit point if any, otherwise at the ray's intersection with the floor; yaw is derived from absolute (root-frame) points.
     const aimTarget = activeAimRay ? resolveCurrentAimTarget(activeAimRay) : undefined;
     const targetAbsolutePoint = aimTarget?.rootPoint
       ?? (activeAimRay ? intersectRootRayWithFloor(activeAimRay.origin, activeAimRay.direction) : undefined);
@@ -1191,6 +1273,7 @@ export function createGeodesicCannonTools(deps: GeodesicCannonToolsDeps) {
       return headLocalMeters;
     }
 
+    // Latch the head height on first call and keep returning it until resetGeodesicCannonRotationTracking clears it.
     geodesicCannonRotationHeadHeightMeters ??= headLocalMeters.z;
     return {
       ...headLocalMeters,

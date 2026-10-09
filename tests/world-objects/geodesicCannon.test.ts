@@ -10,6 +10,7 @@ import {
   advanceCurveShorteningPairs,
   advanceStraighteningGeodesics,
   createCurveShorteningPairObject,
+  curveShorteningLengthIncreaseToleranceMeters,
   createFreeGeodesicEndObject,
   createGeodesicCannonObject,
   createGeodesicIntervalObject,
@@ -29,6 +30,7 @@ import {
   minGeodesicSegmentLengthMeters,
   placeGeodesicCannonAtGeodesicVertex,
   placeGeodesicCannonOnGeodesic,
+  previewRebuildGeodesicInterval,
   pruneMissingGeodesicIntersectionObjects,
   rebuildConnectedGeodesicBetweenEmitters,
   rebuildGeodesicToLength,
@@ -42,6 +44,7 @@ import {
   shootGeodesic,
   tieAndDetachIncidentGeodesics,
   tieAndDetachGeodesicEndpoints,
+  traceGeodesicFromLiftedChord,
   traceGeodesicSegment,
   updateGeodesicIntersectionObjects,
   updateLockedGeodesicPortalWordForCarriedAnchorTraversal,
@@ -227,6 +230,20 @@ describe("geodesic cannon world objects", () => {
 
     expect(result.lengthMeters).toBeCloseTo(0.5);
     expect(result.terminal).toEqual({ kind: "wall-hit", sideIndex: 1 });
+  });
+
+  it("stops immediately when a segment starts inside a forbidden zone", () => {
+    const world = compileWorld(true);
+    const result = traceGeodesicSegment({
+      world,
+      cellId: "a",
+      start: { x: 1.95, y: 0.05, z: geodesicRayBeamHeightMeters },
+      direction: { x: -1, y: 0, z: 0 },
+      maxLengthMeters: 1,
+    });
+
+    expect(result.terminal).toEqual({ kind: "forbidden-zone-hit", junctionId: "a:vertex-1" });
+    expect(result.lengthMeters).toBeCloseTo(0);
   });
 
   it("shortens a segment at a forbidden zone hit and refuses to extend it", () => {
@@ -1894,6 +1911,177 @@ describe("geodesic cannon world objects", () => {
     expect(debugEvents.map((event) => event.message)).not.toContain("curve-shortening pair rolled back by monotonicity rejection without fusing");
   });
 
+  it("rolls back a shortening step whose total length would increase beyond the tolerance", () => {
+    // previousTotalLengthMeters is deliberately far below the real total, so any previewed step looks like a length increase.
+    const { world, registry } = createKinkPairScenario({ previousTotalLengthMeters: 0.01 });
+    const segmentsBefore = getGeodesicSegments(registry, "g-left");
+    const pairBefore = registry.get("pair-kink");
+
+    const changed = advanceCurveShorteningPairs({ world, registry, deltaSeconds: 1 });
+
+    expect(curveShorteningLengthIncreaseToleranceMeters).toBe(1e-4);
+    expect(changed).toEqual([]);
+    expect(registry.get("free-shared")).toMatchObject({ cellId: "a", localPose: { translation: { x: 0, y: 0 } } });
+    expect(getGeodesicSegments(registry, "g-left")).toEqual(segmentsBefore);
+    expect(registry.get("pair-kink")).toEqual(pairBefore);
+  });
+
+  it("records the new total length after a monotone shortening step", () => {
+    const { world, registry } = createKinkPairScenario({ previousTotalLengthMeters: 100 });
+
+    const changed = advanceCurveShorteningPairs({ world, registry, deltaSeconds: 1 });
+
+    expect([...changed].sort()).toEqual(["g-left", "g-top"]);
+    const pair = registry.get("pair-kink");
+    const total = totalGeodesicLength(registry, "g-left") + totalGeodesicLength(registry, "g-top");
+    expect(pair).toMatchObject({ state: "moving" });
+    expect((pair as { previousTotalLengthMeters?: number }).previousTotalLengthMeters).toBeCloseTo(total, 9);
+    expect(total).toBeLessThan(4);
+  });
+
+  it("does not report a pair as changed when a non-forbidden preview failure commits nothing", () => {
+    const { world, registry } = createKinkPairScenario({});
+    const top = registry.get("cannon-top");
+    if (top?.kind !== "geodesic-cannon") {
+      throw new Error("cannon-top missing");
+    }
+    // Move the far emitter outside the cell: the previewed arc hits a wall (not a forbidden zone).
+    registry.update({ ...top, localPose: yawRigidTransform3(-Math.PI / 2, { x: 0, y: 10, z: 0 }) });
+    const segmentsBefore = getGeodesicSegments(registry, "g-top");
+
+    const changed = advanceCurveShorteningPairs({ world, registry, deltaSeconds: 1 });
+
+    expect(changed).toEqual([]);
+    expect(registry.get("pair-kink")).toMatchObject({ state: "moving" });
+    expect(registry.get("free-shared")).toMatchObject({ localPose: { translation: { x: 0, y: 0 } } });
+    expect(getGeodesicSegments(registry, "g-top")).toEqual(segmentsBefore);
+  });
+
+  it("deletes a degenerate free loop together with its derived objects", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    registry.add(createFreeGeodesicEndObject({
+      id: "free-loop",
+      cellId: "a",
+      point: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    }));
+    registry.add(createGeodesicIntervalObject({
+      id: "g-loop",
+      startAnchorObjectId: "free-loop",
+      endAnchorObjectId: "free-loop",
+      startCellId: "a",
+      motionState: "moving",
+    }));
+    registry.add(createSegment({
+      id: "g-loop:segment:0",
+      geodesicId: "g-loop",
+      segmentIndex: 0,
+      direction: { x: 1, y: 0, z: 0 },
+      lengthMeters: 0.03,
+      connectionState: "straightening",
+    }));
+    registry.add(createSegment({
+      id: "g-loop:segment:1",
+      geodesicId: "g-loop",
+      segmentIndex: 1,
+      start: { x: 0.03, y: 0, z: geodesicRayBeamHeightMeters },
+      direction: { x: 0, y: -1, z: 0 },
+      lengthMeters: 0.03,
+      connectionState: "straightening",
+    }));
+    registry.add(createCurveShorteningPairObject({
+      id: "pair-loop",
+      first: { geodesicId: "g-loop", role: "start", anchorObjectId: "free-loop" },
+      second: { geodesicId: "g-loop", role: "end", anchorObjectId: "free-loop" },
+      freeEndAnchorId: "free-loop",
+      lastGoodFreeEndCellId: "a",
+      lastGoodFreeEndPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+    }));
+
+    const changed = advanceCurveShorteningPairs({ world, registry, deltaSeconds: 1 });
+
+    expect(changed).toContain("pair-loop");
+    expect(registry.get("g-loop")).toBeUndefined();
+    expect(registry.get("free-loop")).toBeUndefined();
+    expect(registry.get("pair-loop")).toBeUndefined();
+    expect(getGeodesicSegments(registry, "g-loop")).toEqual([]);
+  });
+
+  it("reverts a ready-to-fuse pair to moving when its fusion preview fails without a forbidden zone", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    registry.add(createGeodesicCannonObject({ id: "cannon-left", cellId: "a", localPose: yawRigidTransform3(0, { x: -2, y: 0, z: 0 }) }));
+    registry.add(createGeodesicCannonObject({ id: "cannon-right", cellId: "a", localPose: yawRigidTransform3(Math.PI, { x: 2, y: 0, z: 0 }) }));
+    registry.add(createFreeGeodesicEndObject({ id: "free-shared", cellId: "a", point: { x: 0, y: 0, z: geodesicRayBeamHeightMeters } }));
+    registry.add(createGeodesicIntervalObject({ id: "g-b", startAnchorObjectId: "cannon-left", endAnchorObjectId: "free-shared", startCellId: "a", motionState: "moving" }));
+    registry.add(createGeodesicIntervalObject({ id: "g-a", startAnchorObjectId: "free-shared", endAnchorObjectId: "cannon-right", startCellId: "a", motionState: "moving" }));
+    rebuildDerivedGeodesicSegments({ world, registry, geodesicId: "g-b" });
+    rebuildDerivedGeodesicSegments({ world, registry, geodesicId: "g-a" });
+    registry.add(createCurveShorteningPairObject({
+      id: "pair-a",
+      first: { geodesicId: "g-b", role: "end", anchorObjectId: "free-shared" },
+      second: { geodesicId: "g-a", role: "start", anchorObjectId: "free-shared" },
+      freeEndAnchorId: "free-shared",
+      lastGoodFreeEndCellId: "a",
+      lastGoodFreeEndPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+      state: "ready-to-fuse",
+    }));
+    const right = registry.get("cannon-right");
+    if (right?.kind !== "geodesic-cannon") {
+      throw new Error("cannon-right missing");
+    }
+    // The fused chord would leave the cell through a wall.
+    registry.update({ ...right, localPose: yawRigidTransform3(Math.PI, { x: 10, y: 0, z: 0 }) });
+
+    const changed = advanceCurveShorteningPairs({ world, registry, deltaSeconds: 1 });
+
+    expect(changed).toEqual(["pair-a"]);
+    expect(registry.get("pair-a")).toMatchObject({ kind: "curve-shortening-pair", state: "moving" });
+    expect(registry.get("g-b")).toMatchObject({ motionState: "moving" });
+    expect(registry.get("free-shared")).toBeDefined();
+  });
+
+  it("names a free end by its object kind rather than by an id substring in a preview", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    registry.add(createGeodesicCannonObject({ id: "cannon-a", cellId: "a", localPose: yawRigidTransform3(0, { x: -2, y: 0, z: 0 }) }));
+    registry.add(createFreeGeodesicEndObject({ id: "tip-7", cellId: "a", point: { x: 1, y: 0, z: geodesicRayBeamHeightMeters } }));
+    const interval = createGeodesicIntervalObject({
+      id: "g-tip",
+      startAnchorObjectId: "cannon-a",
+      endAnchorObjectId: "tip-7",
+      startCellId: "a",
+    });
+    registry.add(interval);
+
+    const preview = previewRebuildGeodesicInterval({ world, registry, interval });
+
+    expect(preview?.terminal).toEqual({ kind: "free-end", freeEndObjectId: "tip-7" });
+  });
+
+  it("refuses to realize a lifted chord that hits a wall and leaves the segments untouched", () => {
+    const world = compileLargeWorld();
+    const registry = createRuntimeObjectRegistry();
+    registry.add(createGeodesicCannonObject({ id: "cannon-a", cellId: "a", localPose: yawRigidTransform3(0, { x: -2, y: 0, z: 0 }) }));
+    registry.add(createFreeGeodesicEndObject({ id: "tip-7", cellId: "a", point: { x: 1, y: 0, z: geodesicRayBeamHeightMeters } }));
+    registry.add(createGeodesicIntervalObject({ id: "g-tip", startAnchorObjectId: "cannon-a", endAnchorObjectId: "tip-7", startCellId: "a" }));
+    rebuildDerivedGeodesicSegments({ world, registry, geodesicId: "g-tip" });
+    const segmentsBefore = getGeodesicSegments(registry, "g-tip");
+
+    const result = traceGeodesicFromLiftedChord({
+      world,
+      registry,
+      geodesicId: "g-tip",
+      sourceCellId: "a",
+      sourcePoint: { x: -2, y: 0, z: geodesicRayBeamHeightMeters },
+      yawRadians: 0,
+      lengthMeters: 10,
+    });
+
+    expect(result).toBeUndefined();
+    expect(getGeodesicSegments(registry, "g-tip")).toEqual(segmentsBefore);
+  });
+
   it("moves a shortening free end through a portal and recomputes moved-start portal words", () => {
     const world = compileLargePortalWorld();
     const registry = createRuntimeObjectRegistry();
@@ -2591,6 +2779,30 @@ describe("geodesic cannon world objects", () => {
     ).toThrow(/near-zero Vec3/);
   });
 });
+
+// Kink scenario: free end at the origin joins an arc from a left emitter (-2, 0) and an arc from a top emitter (0, 2), so the corner
+// is a right angle and the pair is `"moving"`. Cell `a` of `compileLargeWorld` is 6 m wide.
+function createKinkPairScenario(options: { readonly previousTotalLengthMeters?: number }) {
+  const world = compileLargeWorld();
+  const registry = createRuntimeObjectRegistry();
+  registry.add(createGeodesicCannonObject({ id: "cannon-left", cellId: "a", localPose: yawRigidTransform3(0, { x: -2, y: 0, z: 0 }) }));
+  registry.add(createGeodesicCannonObject({ id: "cannon-top", cellId: "a", localPose: yawRigidTransform3(-Math.PI / 2, { x: 0, y: 2, z: 0 }) }));
+  registry.add(createFreeGeodesicEndObject({ id: "free-shared", cellId: "a", point: { x: 0, y: 0, z: geodesicRayBeamHeightMeters } }));
+  registry.add(createGeodesicIntervalObject({ id: "g-left", startAnchorObjectId: "cannon-left", endAnchorObjectId: "free-shared", startCellId: "a", motionState: "moving" }));
+  registry.add(createGeodesicIntervalObject({ id: "g-top", startAnchorObjectId: "free-shared", endAnchorObjectId: "cannon-top", startCellId: "a", motionState: "moving" }));
+  rebuildDerivedGeodesicSegments({ world, registry, geodesicId: "g-left" });
+  rebuildDerivedGeodesicSegments({ world, registry, geodesicId: "g-top" });
+  registry.add(createCurveShorteningPairObject({
+    id: "pair-kink",
+    first: { geodesicId: "g-left", role: "end", anchorObjectId: "free-shared" },
+    second: { geodesicId: "g-top", role: "start", anchorObjectId: "free-shared" },
+    freeEndAnchorId: "free-shared",
+    previousTotalLengthMeters: options.previousTotalLengthMeters,
+    lastGoodFreeEndCellId: "a",
+    lastGoodFreeEndPoint: { x: 0, y: 0, z: geodesicRayBeamHeightMeters },
+  }));
+  return { world, registry };
+}
 
 function createSegment(overrides: Partial<GeodesicSegmentObject> = {}): GeodesicSegmentObject {
   return {

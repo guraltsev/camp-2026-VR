@@ -1,4 +1,11 @@
-/** In-scene feedback shown while the protractor tool is half-way through a measurement. */
+/**
+ * In-scene feedback shown while the protractor tool is half-way through a measurement.
+ *
+ * Builds Three.js groups (center ring and dot, one or two direction rays, a translucent angle sector with an
+ * arc outline) from cell-local points (meters; x right, y forward, z up) and yaw angles (radians, counter-clockwise
+ * from +x in the cell xy plane), converting through `worldPointToThree`. Geometry and materials are freshly
+ * allocated per call and not cached, so the owner of the returned root must dispose it (e.g. `disposeObject3D`).
+ */
 import * as THREE from "three";
 import { type Vec3 } from "../../math/vec3";
 import {
@@ -7,10 +14,24 @@ import {
 } from "../../world-objects/protractorTool";
 import { worldPointToThree } from "./worldAxes";
 
+/**
+ * Builds the feedback group for the protractor tool's current selection state.
+ *
+ * `center` is the chosen vertex (its cell-local point and cell id place the group); `centerLocked` selects the
+ * "selected" versus "hover" marker style; `first` is the already-picked direction and `hover` the candidate
+ * direction under the cursor. The angle sector is drawn only when both directions exist, sweeping
+ * counter-clockwise from `first` to `hover`. The returned `signature` string encodes every input that affects the
+ * drawing so callers can skip rebuilding when it is unchanged; `cellId` is the cell the root must be parented to.
+ * The caller owns and must dispose the returned root.
+ */
 export function createProtractorToolFeedback(options: {
+  /** Vertex the angle is measured at; supplies the cell id, object id, and cell-local point. */
   readonly center: ProtractorCenterSelection;
+  /** True once the center is committed (yellow marker) rather than just hovered (cyan marker). */
   readonly centerLocked: boolean;
+  /** Direction already chosen as the first leg of the angle. */
   readonly first?: ProtractorDirectedGeodesic;
+  /** Direction currently hovered as the candidate second leg. */
   readonly hover?: ProtractorDirectedGeodesic;
 }): { readonly signature: string; readonly cellId: string; readonly root: THREE.Group } | undefined {
   const center = options.center;
@@ -45,6 +66,12 @@ export function createProtractorToolFeedback(options: {
   };
 }
 
+/**
+ * Creates a ring-and-dot marker group centered on a cell-local point (meters).
+ *
+ * Locked markers are yellow and more opaque; hover markers are cyan. The ring is rotated to lie flat in the cell's
+ * floor plane. The caller disposes the geometry and materials.
+ */
 export function createFeedbackCenterMarker(point: Vec3, locked: boolean): THREE.Object3D {
   const group = new THREE.Group();
   group.name = locked ? "protractor-feedback-center:selected" : "protractor-feedback-center:hover";
@@ -77,6 +104,11 @@ export function createFeedbackCenterMarker(point: Vec3, locked: boolean): THREE.
   return group;
 }
 
+/**
+ * Creates a thin cylinder from a cell-local point along the direction `yawRadians` (counter-clockwise from +x) for `lengthMeters`.
+ *
+ * The ray stays horizontal at the point's z. `color` is a 0xRRGGBB hex value and `opacity` is in [0, 1]. The caller disposes the mesh.
+ */
 export function createFeedbackRay(point: Vec3, yawRadians: number, color: number, opacity: number, lengthMeters: number): THREE.Mesh {
   return createFeedbackCylinderBetween(
     point,
@@ -92,6 +124,13 @@ export function createFeedbackRay(point: Vec3, yawRadians: number, color: number
   );
 }
 
+/**
+ * Creates a translucent pie-slice fill with a yellow arc outline for the angle swept counter-clockwise from the first yaw to the second.
+ *
+ * Yaws are in radians; the sweep is normalized to [0, 2*pi), so the result is the counter-clockwise angle even when
+ * it exceeds pi. Radius is 0.34 m and the sector is lifted 4 mm above the point's z to avoid z-fighting with the floor.
+ * Arc resolution is about 6 degrees per segment, with at least 8 segments. The caller disposes the group.
+ */
 export function createFeedbackAngleSector(point: Vec3, firstYawRadians: number, secondYawRadians: number): THREE.Object3D {
   const group = new THREE.Group();
   group.name = "protractor-feedback-angle-preview";
@@ -146,6 +185,12 @@ export function createFeedbackAngleSector(point: Vec3, firstYawRadians: number, 
   return group;
 }
 
+/**
+ * Creates a mesh spanning two cell-local points: a cylinder of the given radius (meters), or a sphere at `start` if the points are within 1e-6 m.
+ *
+ * The cylinder's axis is rotated from Three.js +Y onto the start-to-end direction. `color` is a 0xRRGGBB hex value.
+ * The caller disposes the geometry and material.
+ */
 export function createFeedbackCylinderBetween(
   start: Vec3,
   end: Vec3,
@@ -188,11 +233,13 @@ export function createFeedbackCylinderBetween(
   return mesh;
 }
 
+/** Wraps an angle in radians into the half-open range [0, 2*pi). */
 export function normalizePositiveFeedbackRadians(radians: number): number {
   const twoPi = Math.PI * 2;
   return ((radians % twoPi) + twoPi) % twoPi;
 }
 
+/** Formats a number with four decimals for the feedback signature, or an empty string when undefined. */
 export function formatFeedbackNumber(value: number | undefined): string {
   return value === undefined ? "" : value.toFixed(4);
 }

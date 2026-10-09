@@ -1,20 +1,44 @@
+/**
+ * Plain-data snapshots of runtime and render diagnostics, shared between the Three.js app, the debug overlay,
+ * the XR debug panel and the console debug helpers.
+ *
+ * Nothing here holds Three.js objects: every type is a JSON-serializable record (meters, radians, milliseconds,
+ * pixels as noted) produced once per frame from the visibility pass (`visiblePortalPaths`), instanced rendering
+ * (`renderPortalInstances`) and renderer statistics. `RuntimeInputFrame` is the one non-diagnostic type: the
+ * per-frame input sample handed to the simulation by either the desktop or the XR controller (`DesktopInputFrame` in desktopControls derives from it).
+ */
+
 import type { Vec3 } from "../../math/vec3";
 
+/** One frame of normalized player input from desktop or XR, consumed by movement and tool logic. */
 export interface RuntimeInputFrame {
+  /** Requested displacement in meters in the player's yaw-relative frame (x right, y forward, z up). */
   readonly localDisplacement: Vec3;
+  /** Change of heading this frame, in radians. */
   readonly yawDeltaRadians: number;
+  /** Change of look pitch this frame, in radians. */
   readonly pitchDeltaRadians: number;
+  /** Pointer movement in screen pixels for the scene palette, when it is active. */
   readonly palettePointerDeltaPixels?: { readonly x: number; readonly y: number };
+  /** Whether the palette select control is currently held. */
   readonly paletteSelectPressed?: boolean;
+  /** Request to select the highlighted palette entry. */
   readonly paletteSelectRequested?: boolean;
+  /** Request to reset the player/scene. */
   readonly resetRequested: boolean;
+  /** Request for the primary action (e.g. fire or place) of the active tool. */
   readonly primaryActionRequested: boolean;
+  /** Request to interact with the aimed object. */
   readonly interactRequested: boolean;
+  /** Request to pick up or drop the aimed carryable object. */
   readonly carryActionRequested: boolean;
+  /** Request to show the help overlay. */
   readonly helpRequested: boolean;
+  /** Which input device produced the frame. */
   readonly source: "desktop" | "xr";
 }
 
+/** Full per-frame debug readout for the XR/desktop debug overlay (session, player pose, performance, portal statistics). */
 export interface XrDebugRenderState {
   readonly secureContext: boolean;
   readonly sessionStatus: string;
@@ -23,25 +47,32 @@ export interface XrDebugRenderState {
   readonly frameRateFps?: number;
   readonly framePerformance?: FramePerformanceRenderState;
   readonly webGlRenderInfo?: WebGlRenderInfoState;
+  /** Id of the cell the player is currently in (the render root). */
   readonly currentCellId: string;
+  /** Player position in the current cell's local frame, meters. */
   readonly playerPosition: Vec3;
+  /** Player heading in radians. */
   readonly yawRadians: number;
   readonly lastMovementBlocked: boolean;
   readonly lastBlockingReason?: string;
   readonly lastCrossedPortalId?: string;
+  /** Cell whose frame is the shared render frame when the two XR eyes have different root cells. */
   readonly sharedRenderRootCellId?: string;
   readonly visiblePortalPathCount?: number;
   readonly visiblePortalPaths?: VisiblePortalPathRenderState;
   readonly portalInstances?: PortalInstanceRenderState;
+  /** Per-eye visibility results for stereo rendering. */
   readonly portalEyes?: readonly PortalEyeRenderDebugState[];
 }
 
+/** Minimal render-loop state: a frame counter plus the latest portal statistics. */
 export interface RenderState {
   readonly frameCount: number;
   readonly visiblePortalPaths?: VisiblePortalPathRenderState;
   readonly portalInstances?: PortalInstanceRenderState;
 }
 
+/** Per-frame CPU timings in milliseconds, split by pipeline stage. */
 export interface FramePerformanceRenderState {
   readonly totalMs: number;
   readonly inputMs: number;
@@ -53,6 +84,7 @@ export interface FramePerformanceRenderState {
   readonly renderMs: number;
 }
 
+/** Per-frame WebGL counters from `renderer.info` plus the viewport they were taken at. */
 export interface WebGlRenderInfoState {
   readonly drawCalls: number;
   readonly triangles: number;
@@ -65,6 +97,7 @@ export interface WebGlRenderInfoState {
   readonly pixelRatio: number;
 }
 
+/** Visibility statistics for one eye of a stereo frame. */
 export interface PortalEyeRenderDebugState {
   readonly eyeIndex: number;
   readonly rootCellId: string;
@@ -72,6 +105,7 @@ export interface PortalEyeRenderDebugState {
   readonly maxVisibleDepth: number;
 }
 
+/** Serializable copy of `VisiblePortalPathDebugSummary` without the root cell id. */
 export interface VisiblePortalPathRenderState {
   readonly candidatePathCount: number;
   readonly keptPathCount: number;
@@ -84,6 +118,7 @@ export interface VisiblePortalPathRenderState {
   readonly budgetExhausted: boolean;
 }
 
+/** Serializable mirror of `PortalInstanceRenderDebugState`: instanced-portal counts, overflow and clip-polygon statistics. */
 export interface PortalInstanceRenderState {
   readonly enabled: boolean;
   readonly ShowCellPathRendersInstances: boolean;

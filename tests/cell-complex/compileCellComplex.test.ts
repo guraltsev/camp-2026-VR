@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
 import { cube, dodecahedron, genus2Torus, icosahedron, octahedron, tetrahedron, torus } from "../../src/authoring/exampleWorlds";
 import { twoPrismLoop } from "../fixtures/twoPrismLoop";
-import { validateAuthoringSpec } from "../../src/authoring/validateAuthoringSpec";
+import { validateCellComplexSpec as validateAuthoringSpec } from "../../src/cell-complex/validateCellComplexSpec";
 import {
   composeRigidTransform3,
   identityMat3,

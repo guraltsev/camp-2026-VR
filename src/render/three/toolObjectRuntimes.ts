@@ -1,4 +1,14 @@
-/** Scene-graph runtimes for placed flags, measured lengths, and protractor angles: sync, removal, and refresh. */
+/**
+ * Scene-graph runtimes for placed flags, measured lengths, and protractor angles: sync, removal, and refresh.
+ *
+ * Bridges the runtime object registry (the source of truth for tool-created objects) and their Three.js
+ * runtimes: `sync*` creates or updates a runtime from a registry object, `remove*` disposes a runtime and drops
+ * its bookkeeping (and, for measurements and angles, cached instanced-render state), and `refresh*` recomputes
+ * derived measurements after geodesics move, updating the registry and runtime only when something changed and
+ * deleting objects that can no longer be recomputed. All maps are owned by createThreeApp and mutated in place;
+ * poses are cell-local (meters, radians). Removing a registry object does not itself dispose its runtime,
+ * so each removal path here pairs the two.
+ */
 import * as THREE from "three";
 import { type PlayerPose } from "../../movement/playerPose";
 import { refreshMeasuredGeodesicLengthObject } from "../../world-objects/measureLengthTool";
@@ -17,24 +27,47 @@ import {
 } from "./runtimeObjectRenderArchetypes";
 import { RuntimeObjectRenderSourceMesh } from "./runtimeObjectRenderRecords";
 
+/** Dependencies of the tool-object runtimes, supplied by createThreeApp's shell. */
 export interface ToolObjectRuntimesDeps {
+  /** Preloaded models/textures used to build placed-flag runtimes. */
   readonly assets: PreparedWorldAssets;
+  /** Registry of runtime world objects, the source of truth these runtimes mirror. */
   readonly runtimeObjectRegistry: RuntimeObjectRegistry;
+  /** Per-cell root objects (by cell id) that runtimes parent themselves under. */
   readonly cellMeshes: ReadonlyMap<string, THREE.Object3D>;
+  /** Placed-flag runtimes by object id; shared with the shell and mutated here. */
   readonly placedFlagRuntimes: Map<string, PlacedFlagRuntime>;
+  /** Measured-length runtimes by object id; shared with the shell and mutated here. */
   readonly measuredGeodesicLengthRuntimes: Map<string, MeasuredGeodesicLengthRuntime>;
+  /** Protractor-angle runtimes by object id; shared with the shell and mutated here. */
   readonly protractorAngleRuntimes: Map<string, ProtractorAngleRuntime>;
+  /** Scene root of every runtime object by object id, used for aiming and rendering lookups. */
   readonly runtimeObjectRootsById: Map<string, THREE.Object3D>;
+  /** Source meshes feeding the instanced portal rendering, keyed by render key; entries here are dropped on removal. */
   readonly runtimeObjectRenderSourcesByKey: Map<string, RuntimeObjectRenderSourceMesh>;
+  /** Instanced render archetypes by render key; invalidated entries are removed from the render root and disposed. */
   readonly runtimeObjectRenderArchetypesByKey: Map<string, RuntimeObjectRenderArchetype>;
+  /** Parent object of the instanced archetype meshes. */
   readonly runtimeObjectRenderRoot: THREE.Object3D;
+  /** Getter because the shell reassigns the player pose; used to re-measure lengths from the player's position. */
   getPlayerPose(): PlayerPose;
+  /** Resets the shell's protractor tool state to empty. */
   resetProtractorToolState(): void;
+  /** Removes the in-scene protractor preview feedback. */
   clearProtractorToolFeedback(): void;
+  /** Rebuilds the instanced copies of runtime objects seen through portals. */
   syncRuntimeObjectPortalInstances(): void;
+  /** Refreshes the selectable-hitbox debug wireframes. */
   syncSelectableHitboxDebug(): void;
 }
 
+/**
+ * Creates the tool-object runtime manager and returns its sync, removal, and refresh operations.
+ *
+ * Callers pass registry objects of the matching kind to `sync*Runtime` (other kinds are ignored). Runtimes are disposed
+ * only through the `remove*` functions, so whoever tears down the scene must call them (or the bulk
+ * `removePlacedFlags`, `removeMeasuredGeodesicLengths`, `removeProtractorAngles`) to release GPU resources.
+ */
 export function createToolObjectRuntimes(deps: ToolObjectRuntimesDeps) {
   const {
     assets,
@@ -79,11 +112,7 @@ export function createToolObjectRuntimes(deps: ToolObjectRuntimesDeps) {
     runtime.dispose();
     placedFlagRuntimes.delete(flagId);
     runtimeObjectRootsById.delete(flagId);
-    for (const [key, source] of [...runtimeObjectRenderSourcesByKey]) {
-      if (source.objectId === flagId) {
-        runtimeObjectRenderSourcesByKey.delete(key);
-      }
-    }
+    invalidateRuntimeObjectRenderState(flagId);
   }
 
   function syncMeasuredGeodesicLengthRuntime(object: RuntimeWorldObject): void {
@@ -144,6 +173,7 @@ export function createToolObjectRuntimes(deps: ToolObjectRuntimesDeps) {
     invalidateRuntimeObjectRenderState(objectId);
   }
 
+  // Drops cached instanced-render sources/archetypes for an object so the next portal-instance sync rebuilds them.
   function invalidateRuntimeObjectRenderState(objectId: string): void {
     for (const [key, source] of [...runtimeObjectRenderSourcesByKey]) {
       if (source.objectId === objectId) {
@@ -209,6 +239,7 @@ export function createToolObjectRuntimes(deps: ToolObjectRuntimesDeps) {
   function refreshMeasuredGeodesicLength(
     object: Extract<RuntimeWorldObject, { readonly kind: "measured-geodesic-length" }>,
   ): void {
+    // A falsy result means the measurement could not be recomputed: delete the object and its runtime.
     const refreshed = refreshMeasuredGeodesicLengthObject({
       registry: runtimeObjectRegistry,
       measurement: object,
@@ -221,6 +252,8 @@ export function createToolObjectRuntimes(deps: ToolObjectRuntimesDeps) {
       return;
     }
 
+    // Only the fields that affect rendering are compared; the rotation check covers just m00/m10 (the yaw),
+    // plus the pose translation.
     const changed =
       refreshed.cellId !== object.cellId ||
       refreshed.lengthMeters !== object.lengthMeters ||
@@ -229,6 +262,9 @@ export function createToolObjectRuntimes(deps: ToolObjectRuntimesDeps) {
       refreshed.labelPoint.z !== object.labelPoint.z ||
       refreshed.localPose.rotation.m00 !== object.localPose.rotation.m00 ||
       refreshed.localPose.rotation.m10 !== object.localPose.rotation.m10 ||
+      refreshed.localPose.translation.x !== object.localPose.translation.x ||
+      refreshed.localPose.translation.y !== object.localPose.translation.y ||
+      refreshed.localPose.translation.z !== object.localPose.translation.z ||
       refreshed.segmentId !== object.segmentId;
     if (!changed) {
       return;

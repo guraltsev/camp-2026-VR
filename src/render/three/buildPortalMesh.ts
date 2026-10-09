@@ -1,7 +1,18 @@
+/**
+ * Builds the visible wall panel of a portal side (the textured "doorway" surface) in a cell's local frame.
+ *
+ * The panel is a rectangle spanning the side's two base endpoints and the cell height, positioned in Three.js
+ * axes (world (x, y, z) -> (x, z, -y)) and offset 1 cm along the inward normal. It only exists for debugging
+ * the portal location: the actual see-through effect comes from rendering the destination cell clipped to the
+ * portal aperture (`visiblePortalPaths`, `portalClipMaterial`). Meshes are tagged `userData.kind = "portal-wall-mesh"`
+ * so `cellRenderArchetypes` instances them as "portal-frame" parts.
+ */
+
 import * as THREE from "three";
 import { createPortalWallMaterial } from "./portalWallTexture";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 
+/** Geometry and options for one portal wall: side endpoints (cell-local xy, meters), height and assets. */
 export interface PortalWallMeshSpec {
   readonly portalId: string;
   readonly sideIndex: number;
@@ -9,9 +20,11 @@ export interface PortalWallMeshSpec {
   readonly end: { readonly x: number; readonly y: number };
   readonly heightMeters: number;
   readonly assets: PreparedWorldAssets;
+  /** When false the group is created empty (portal is invisible apart from the clipped view). */
   readonly showWall: boolean;
 }
 
+/** Builds a `portal:<id>` group, containing the wall mesh when `showWall` is set; texture repeat is one tile per 8 m (at least 1). */
 export function buildPortalMesh(spec: PortalWallMeshSpec): THREE.Object3D {
   const group = new THREE.Group();
   group.name = `portal:${spec.portalId}`;

@@ -1,3 +1,13 @@
+/**
+ * Pure model of the immersive-VR session lifecycle shown in the UI and debug state, plus support detection.
+ * Typical flow: unknown -> (detect) available | unsupported | insecure-context | failed -> entering -> active -> ended; entering can go to failed.
+ * States are immutable values; `transitionXrSessionState` derives the next one while preserving `secureContext` and `immersiveVrSupported`.
+ * createThreeApp#shell holds the current state and passes it to xrEntryUi.
+ */
+
+/**
+ * Lifecycle status of the immersive VR session; see the module header for the usual transitions.
+ */
 export type XrSessionStatus =
   | "unknown"
   | "unsupported"
@@ -8,14 +18,24 @@ export type XrSessionStatus =
   | "ended"
   | "failed";
 
+/**
+ * Immutable snapshot of session status plus capability flags.
+ */
 export interface XrSessionState {
   readonly status: XrSessionStatus;
+  /** Short human-readable status text (includes the failure message for `failed`). */
   readonly label: string;
+  /** Whether the page is in a secure context (HTTPS/localhost), which WebXR requires. */
   readonly secureContext: boolean;
+  /** Whether `isSessionSupported("immersive-vr")` reported true; kept across later transitions except to "unsupported". */
   readonly immersiveVrSupported: boolean;
+  /** Error text for `failed`; undefined otherwise. */
   readonly failureMessage?: string;
 }
 
+/**
+ * Structural subset of `navigator` used by `detectXrSessionState`; `xr` is absent in unsupported browsers.
+ */
 export interface XrNavigatorLike {
   readonly xr?: {
     isSessionSupported(mode: "immersive-vr"): Promise<boolean>;
@@ -34,6 +54,9 @@ const labels: Record<XrSessionStatus, string> = {
   failed: "VR failed",
 };
 
+/**
+ * Builds a state for `status`. Omitted options default: `secureContext` true unless status is "insecure-context"; `immersiveVrSupported` true only for "available" or "active".
+ */
 export function createXrSessionState(
   status: XrSessionStatus,
   options: {
@@ -51,10 +74,17 @@ export function createXrSessionState(
   };
 }
 
+/**
+ * Returns the label text for `status`; for "failed" the optional message is appended.
+ */
 export function statusLabel(status: XrSessionStatus, failureMessage?: string): string {
   return createXrSessionState(status, { failureMessage }).label;
 }
 
+/**
+ * Probes WebXR support and returns the initial state: "insecure-context" if not secure, "unsupported" if `navigator.xr` is missing or reports no immersive-vr support,
+ * "available" if supported, or "failed" (with a readable message) if `isSessionSupported` rejects. Never throws.
+ */
 export async function detectXrSessionState(
   navigatorLike: XrNavigatorLike,
   secureContext: boolean,
@@ -89,6 +119,10 @@ export async function detectXrSessionState(
   }
 }
 
+/**
+ * Returns the state for `status`, keeping `secureContext` and `immersiveVrSupported` from `state` (support is cleared only when moving to "unsupported").
+ * `failureMessage` is attached only to the new state; it is not carried over automatically.
+ */
 export function transitionXrSessionState(
   state: XrSessionState,
   status: XrSessionStatus,

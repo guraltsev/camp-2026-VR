@@ -1,6 +1,12 @@
+/**
+ * Renderer-neutral definition of the tool/settings palette: createPaletteDefinition turns a RuntimeMenuState plus the app config and input mode into a PaletteDefinition, a plain-data description (header actions plus one page-specific content record) that the desktop DOM menu and the VR panel both render.
+ * The content types form a discriminated union keyed by kind (main, settings, debug-settings, place-flag-options, edit-sign, geodesic-cannon-actions, geometry-computer-actions, tutorial, goal, question-help).
+ * The module decides what is shown and enabled (config-gated sections, disabled buttons, tutorial text per input device, integer-meter limits for the geometry computer) but performs no rendering and holds no state; any page whose payload is missing falls back to the main page.
+ */
 import { appConfigCatalog, defaultAppConfig, getEnabledMainTools, type AppConfig, type ConfigurableToolId } from "../glue/appConfig";
+import { formatBodyForInputMode } from "./inputModeText";
 import { worldCatalog } from "../authoring/worldCatalog";
-import { helpHubHomeGuidance } from "../helpHubCopy";
+import { helpHubHomeGuidance } from "../world-objects/helpHubCopy";
 import { portalPanelModeDefinitions } from "../glue/portalPanelMode";
 import type {
   RuntimeDebugOverlayItemId,
@@ -12,42 +18,56 @@ import type {
 import type { InputMode } from "./inputIntents";
 import { placedFlagMaxMessageLength, placedFlagTypes, type PlacedFlagType } from "../world-objects/placedFlags";
 
+/** Option of a select-style control: stable id and display label. */
 export interface PaletteSelectOption {
   readonly id: string;
   readonly label: string;
 }
 
+/** Header button of the palette (left or right slot). */
 export interface PaletteHeaderAction {
+  /** Which button this is; "none" is an inert, empty placeholder that keeps the layout stable. */
   readonly id: "none" | "settings" | "close" | "back";
   readonly label: string;
+  /** Accessible name for the button. */
   readonly ariaLabel: string;
   readonly disabled: boolean;
 }
 
+/** Content of the main page: the tool picker. */
 export interface MainPaletteContent {
   readonly kind: "main";
   readonly selectedTool: RuntimeToolId;
   readonly placeFlagType: PlacedFlagType;
+  /** Tools enabled by the app config, in display order. */
   readonly toolOptions: readonly {
     readonly id: ConfigurableToolId;
     readonly label: string;
   }[];
 }
 
+/** Content of the settings page: world and config pickers, debug entry, comfort and reload. */
 export interface SettingsPaletteContent {
   readonly kind: "settings";
   readonly selectedWorldId: string;
   readonly worldOptions: readonly PaletteSelectOption[];
+  /** Whether the world picker section is shown, as dictated by the app config. */
   readonly worldSelectionSectionEnabled: boolean;
   readonly selectedAppConfigName: string;
   readonly appConfigOptions: readonly PaletteSelectOption[];
+  /** Whether the app-config picker section is shown, as dictated by the app config. */
   readonly configSelectionSectionEnabled: boolean;
+  /** Whether the debug toggle/entry is shown, as dictated by the app config. */
   readonly debugSectionEnabled: boolean;
   readonly debugEnabled: boolean;
   readonly antiNauseaModeEnabled: boolean;
+  /** True while a reload awaits its confirming second press. */
   readonly reloadConfirmationActive: boolean;
 }
 
+/**
+ * Content of the debug-settings page: console log level, overlay items and portal/collision debug switches.
+ */
 export interface DebugSettingsPaletteContent {
   readonly kind: "debug-settings";
   readonly consoleLogLevel: RuntimeMenuConsoleLogLevelId;
@@ -58,6 +78,7 @@ export interface DebugSettingsPaletteContent {
     readonly label: string;
     readonly checked: boolean;
   }[];
+  /** Selected portal panel mode id (matches an entry of portalPanelModeOptions). */
   readonly portalPanelMode: string;
   readonly portalPanelModeOptions: readonly PaletteSelectOption[];
   readonly portalInspectionEnabled: boolean;
@@ -65,19 +86,23 @@ export interface DebugSettingsPaletteContent {
   readonly aimCollisionOutlinesEnabled: boolean;
 }
 
+/** Content of the place-flag options page: choice of sign type. */
 export interface PlaceFlagOptionsPaletteContent {
   readonly kind: "place-flag-options";
   readonly selectedFlagType: PlacedFlagType;
   readonly flagTypeOptions: readonly PaletteSelectOption[];
 }
 
+/** Content of the edit-sign page for one placed flag. */
 export interface EditSignPaletteContent {
   readonly kind: "edit-sign";
   readonly flagId: string;
   readonly message: string;
+  /** Maximum number of characters allowed in the sign message. */
   readonly maxLength: number;
 }
 
+/** Content of the geodesic emitter menu: add/carry/tie-detach actions and one row per geodesic. */
 export interface GeodesicCannonActionsPaletteContent {
   readonly kind: "geodesic-cannon-actions";
   readonly cannonId: string;
@@ -93,6 +118,9 @@ export interface GeodesicCannonActionsPaletteContent {
     readonly label: string;
     readonly disabled: boolean;
   };
+  /**
+   * One entry per geodesic of the emitter; locked ones carry a connection label explaining they run between emitters.
+   */
   readonly geodesics: readonly {
     readonly id: string;
     readonly label: string;
@@ -102,38 +130,53 @@ export interface GeodesicCannonActionsPaletteContent {
   }[];
 }
 
+/**
+ * Content of the world-deformation (geometry computer) page, in whole meters: torus width, current and target (a, b), limits and step buttons.
+ */
 export interface GeometryComputerActionsPaletteContent {
   readonly kind: "geometry-computer-actions";
   readonly computerId: string;
   readonly available: boolean;
   readonly statusLabel: string;
   readonly widthMeters: number;
+  /** Currently committed skew a and depth b, clamped to limits and rounded to integer meters. */
   readonly current: {
     readonly aMeters: number;
     readonly bMeters: number;
   };
+  /** Requested skew a and depth b, clamped to limits and rounded; defaults to current. */
   readonly target: {
     readonly aMeters: number;
     readonly bMeters: number;
   };
+  /**
+   * Allowed ranges: a in [0, 2w], b in [w/2, 2w] where w is widthMeters (matching the torus-skew family's normalization).
+   */
   readonly limits: {
     readonly minAMeters: number;
     readonly maxAMeters: number;
     readonly minBMeters: number;
     readonly maxBMeters: number;
   };
+  /**
+   * Buttons that move the target along one axis by deltaMeters (+-1 m and +-w/2); all disabled when the page is unavailable.
+   */
   readonly stepActions: readonly {
     readonly axis: "a" | "b";
     readonly deltaMeters: number;
     readonly label: string;
     readonly disabled: boolean;
   }[];
+  /**
+   * The button that starts deforming toward the target; disabled when unavailable or when target equals current.
+   */
   readonly goAction: {
     readonly label: string;
     readonly disabled: boolean;
   };
 }
 
+/** Content of one tutorial page, with previous/next paging controls. */
 export interface TutorialPaletteContent {
   readonly kind: "tutorial";
   readonly objectId: string;
@@ -150,6 +193,7 @@ export interface TutorialPaletteContent {
   };
 }
 
+/** Content of one goal page, with previous/next paging controls. */
 export interface GoalPaletteContent {
   readonly kind: "goal";
   readonly objectId: string;
@@ -166,10 +210,12 @@ export interface GoalPaletteContent {
   };
 }
 
+/** Content of the help hub page that offers the tutorial and goal subpages. */
 export interface QuestionHelpPaletteContent {
   readonly kind: "question-help";
   readonly objectId: string;
   readonly body: string;
+  /** Buttons for the subpages; each is disabled if that subpage has no pages. */
   readonly options: readonly {
     readonly id: "tutorial" | "goal";
     readonly label: string;
@@ -177,13 +223,21 @@ export interface QuestionHelpPaletteContent {
   }[];
 }
 
+/** Body text of the help hub page (the shared home guidance). */
 export const questionHelpHubBody = helpHubHomeGuidance;
 
+/** Complete renderer-neutral description of the palette for the current menu state. */
 export interface PaletteDefinition {
+  /**
+   * Page actually presented; may be "main" even if state.page asked for a page whose payload or config gate is missing.
+   */
   readonly pageId: RuntimeMenuPageId;
+  /** Left header button (settings on the main page, otherwise inert). */
   readonly leftAction: PaletteHeaderAction;
+  /** Right header button (close or back). */
   readonly rightAction: PaletteHeaderAction;
   readonly reloadConfirmationActive: boolean;
+  /** Page-specific content; its kind equals pageId. */
   readonly content:
     | MainPaletteContent
     | SettingsPaletteContent
@@ -197,6 +251,9 @@ export interface PaletteDefinition {
     | QuestionHelpPaletteContent;
 }
 
+/**
+ * Builds the PaletteDefinition for the menu state: falls back to the main page when the requested page lacks its payload or is gated off (debug-settings needs appConfig.menu.debugSectionEnabled); reload confirmation is evaluated against Date.now(); tutorial text depends on inputMode.
+ */
 export function createPaletteDefinition(
   state: RuntimeMenuState,
   appConfig: AppConfig = defaultAppConfig,
@@ -204,6 +261,8 @@ export function createPaletteDefinition(
 ): PaletteDefinition {
   const reloadConfirmationActive = (state.reloadConfirmUntilMs ?? 0) > Date.now();
 
+  // A "debug-settings" request while the debug section is disabled deliberately falls through to the
+  // main page at the end of this function (the same fallback used for pages missing their payload).
   if (state.page === "debug-settings" && appConfig.menu.debugSectionEnabled) {
     return {
       pageId: "debug-settings",
@@ -412,7 +471,7 @@ function createPagedHelpContent(
   const pageIndex = pageCount === 0
     ? 0
     : Math.max(0, Math.min(pageCount - 1, options.pageIndex));
-  const page = options.pages[pageIndex] ?? { title: "Tutorial", body: "" };
+  const page = options.pages[pageIndex] ?? { title: kind === "goal" ? "Goal" : "Tutorial", body: "" };
 
   return {
     kind,
@@ -436,28 +495,10 @@ function resolveTutorialBodyForInputMode(
   inputMode: InputMode,
 ): string {
   if (inputMode === "desktop") {
-    return page.desktopBody ?? formatTutorialBodyForInputMode(page.body, "desktop");
+    return page.desktopBody ?? formatBodyForInputMode(page.body, "desktop");
   }
 
-  return page.xrBody ?? formatTutorialBodyForInputMode(page.body, "xr");
-}
-
-function formatTutorialBodyForInputMode(body: string, inputMode: InputMode): string {
-  if (inputMode === "desktop") {
-    return body
-      .replace("Move with Arrow keys or the left stick.", "Move with Arrow keys.")
-      .replace("Use primary action or trigger for the selected action.", "Left click uses the selected/default action.")
-      .replace("Use primary action or trigger for the selected/default action.", "Left click uses the selected/default action.")
-      .replace("Use context action or side trigger for tools and object menus.", "Right click opens tools and object menus.")
-      .replace("Press H or B while aiming at an object for its help.", "Press H while aiming at an object for its help.");
-  }
-
-  return body
-    .replace("Move with Arrow keys or the left stick.", "Move with the left stick.")
-    .replace("Use primary action or trigger for the selected action.", "Trigger uses the selected/default action.")
-    .replace("Use primary action or trigger for the selected/default action.", "Trigger uses the selected/default action.")
-    .replace("Use context action or side trigger for tools and object menus.", "Side trigger opens tools and object menus.")
-    .replace("Press H or B while aiming at an object for its help.", "Press B while aiming at an object for its help.");
+  return page.xrBody ?? formatBodyForInputMode(page.body, "xr");
 }
 
 function createToolOptions(appConfig: AppConfig): MainPaletteContent["toolOptions"] {

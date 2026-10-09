@@ -1,10 +1,19 @@
+/**
+ * Floor texture library: the named floor appearances world scripts can use, via the `floorTexture` helper.
+ * A floor is either a flat color or a tiled texture (an entry of `floorTextureDefinitions` with its fallback tint color and the world-space size, in meters, of one repeating tile). The helper returns a FloorMaterialSpec carrying a non-enumerable brand, which the builder normalizes into a plain spec stored on the cell; texture paths are relative to the assets directory.
+ */
 import type { FloorMaterialSpec } from "../cell-complex/specs";
 
 const floorMaterialBrand = Symbol("floor-material");
 
+/**
+ * Static description of a built-in floor texture: name, fallback tint color, default tile size in meters, and the paths of its optional texture maps.
+ */
 export interface FloorTextureDefinition {
   readonly name: string;
+  /** CSS color used as tint/fallback while or if the texture is unavailable. */
   readonly floorColor: string;
+  /** World-space edge length in meters of one repeating texture tile. */
   readonly defaultTileSizeMeters: number;
   readonly colorTexturePath?: string;
   readonly normalTexturePath?: string;
@@ -12,19 +21,33 @@ export interface FloorTextureDefinition {
   readonly roughnessTexturePath?: string;
 }
 
+/**
+ * Per-use overrides for a named floor texture.
+ */
 export interface FloorTextureOptions {
+  /** Overrides the tile edge length, in meters. */
   readonly tileSize?: number;
+  /** Overrides the fallback/tint color. */
   readonly floorColor?: string;
 }
 
+/**
+ * Options for a plain colored floor.
+ */
 export interface FloorColorOptions {
   readonly color: string;
 }
 
+/**
+ * A FloorMaterialSpec branded (non-enumerably) as produced by the floor texture library; shallow-copying it drops the brand.
+ */
 export type WorldFloorMaterialSpec = FloorMaterialSpec & {
   readonly [floorMaterialBrand]: true;
 };
 
+/**
+ * The built-in floor textures keyed by name (for example grass1, snow, wood_floor); `grass1` and `forest_leaves` currently share the same color texture file.
+ */
 export const floorTextureDefinitions = {
   grass1: {
     name: "grass1",
@@ -106,15 +129,25 @@ export const floorTextureDefinitions = {
   },
 } satisfies Record<string, FloorTextureDefinition>;
 
+/**
+ * Union of the built-in floor texture names.
+ */
 export type FloorTextureName = keyof typeof floorTextureDefinitions;
 
+/**
+ * The floor-related globals exposed to world scripts.
+ */
 export interface WorldFloorTextureLibrary {
+  /** Builds a floor material: `floorTexture("snow", { tileSize })` for a built-in texture, or `floorTexture({ color })` for a flat color. */
   readonly floorTexture: {
     (name: FloorTextureName, options?: FloorTextureOptions): WorldFloorMaterialSpec;
     (options: FloorColorOptions): WorldFloorMaterialSpec;
   };
 }
 
+/**
+ * Implementation of the floor helpers injected into world scripts; throws on an unknown texture name.
+ */
 export const worldFloorTextureLibrary: WorldFloorTextureLibrary = {
   floorTexture(input: FloorTextureName | FloorColorOptions, options: FloorTextureOptions = {}) {
     if (typeof input !== "string") {
@@ -143,14 +176,9 @@ export const worldFloorTextureLibrary: WorldFloorTextureLibrary = {
   },
 };
 
-export function isWorldFloorMaterialSpec(value: unknown): value is WorldFloorMaterialSpec {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  return floorMaterialBrand in value;
-}
-
+/**
+ * Converts a floor argument into a plain FloorMaterialSpec: a string becomes a flat-color floor, a library material is shallow-copied (dropping the brand).
+ */
 export function normalizeFloorMaterial(input: string | WorldFloorMaterialSpec): FloorMaterialSpec {
   if (typeof input === "string") {
     return {

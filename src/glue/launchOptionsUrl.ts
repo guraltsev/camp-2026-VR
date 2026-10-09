@@ -1,3 +1,7 @@
+/**
+ * Converts between launch options and URL query parameters: strips them from the visible address after startup (so reloads and shared links are clean) and builds a shareable URL that reproduces the current options.
+ * The stripped parameter set covers world, ui, debug flags, overlay, render quality and anti-nausea options but not config; the shareable URL additionally rewrites config/configName. Only the query string is modified; the path and hash are preserved.
+ */
 import type { LaunchOptions } from "./readLaunchOptions";
 import { serializeDebugOptions } from "./debugOptions";
 import { serializeUiOptions } from "./uiOptions";
@@ -25,6 +29,7 @@ const copiedUrlLaunchOptionSearchParams = [
   ...launchOptionSearchParams,
 ] as const;
 
+/** Returns the URL with all launch-option query parameters (but not config) removed. */
 export function removeLaunchOptionsFromUrl(href: string): string {
   return removeSearchParamsFromUrl(href, launchOptionSearchParams);
 }
@@ -43,6 +48,9 @@ function removeSearchParamsFromUrl(href: string, paramsToRemove: readonly string
   return url.toString();
 }
 
+/**
+ * Rewrites the browser address bar via history.replaceState without launch-option parameters; does nothing when none are present.
+ */
 export function replaceVisibleUrlWithoutLaunchOptions(window: Window): void {
   const cleanUrl = removeLaunchOptionsFromUrl(window.location.href);
 
@@ -51,6 +59,9 @@ export function replaceVisibleUrlWithoutLaunchOptions(window: Window): void {
   }
 }
 
+/**
+ * Returns the URL with the given options encoded as query parameters (config only when non-default, debugOptions only when non-empty), replacing any previous launch parameters; reading it back with readLaunchOptions reproduces the options.
+ */
 export function buildUrlWithLaunchOptions(href: string, options: LaunchOptions): string {
   const url = new URL(removeCopiedUrlLaunchOptionsFromUrl(href));
 

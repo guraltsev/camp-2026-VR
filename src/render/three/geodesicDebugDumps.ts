@@ -1,4 +1,11 @@
-/** Console debug dumps for geodesics and geodesic creatures, plus the periodic creature consistency check. */
+/**
+ * Console debug dumps for geodesics and geodesic creatures, plus the periodic creature consistency check.
+ *
+ * Read-only: every dump snapshots the runtime object registry (and, for creatures, the scene graph) and prints it with
+ * `console.info`/`console.table`, also returning the structured dump. Lengths are in meters and coordinates are cell-local
+ * (x right, y forward, z up), formatted to fixed precision for readability. The functions are installed as
+ * browser-console helpers by createThreeApp; the verbose per-frame check does nothing unless the debug level is "verbose".
+ */
 import * as THREE from "three";
 import { type CompiledCellComplex } from "../../cell-complex/compileCellComplex";
 import { type DebugLevelId } from "../../glue/debugLevels";
@@ -43,21 +50,42 @@ export interface GeodesicDebugToolState {
   readonly carryPortalWordsByGeodesicId?: Readonly<Record<string, readonly GeodesicPortalTraversal[]>>;
 }
 
+/** Dependencies of the geodesic debug dumps, supplied by createThreeApp's shell. */
 export interface GeodesicDebugDumpsDeps {
+  /** Selected world id; value (fixed for the app's lifetime), reported in the all-geodesics dump. */
   readonly worldId: string;
+  /** Registry read for geodesic segments, intervals, cannons, and anchors. */
   readonly runtimeObjectRegistry: RuntimeObjectRegistry;
+  /** Live creature runtimes checked by the creature dump and consistency check; the array is read each call, not copied. */
   readonly dynamicObjectRuntimes: readonly (GeodesicMarmotRuntime | SimpleGeoCreatureRuntime)[];
+  /** Per-cell root objects by cell id, used to verify creature parenting and visibility. */
   readonly cellMeshes: ReadonlyMap<string, THREE.Object3D>;
+  /** Getter for the active compiled world (it can be replaced at runtime). */
   getWorld(): CompiledCellComplex;
+  /** Getter for the current debug level; only "verbose" enables the periodic check. */
   getDebugLevel(): DebugLevelId;
+  /** Getter for the menu state; only the selected tool is reported. */
   getMenuState(): RuntimeMenuState;
+  /** Getter for the id of the cell currently rendered as visible, if any. */
   getVisibleCellId(): string | undefined;
+  /** Getter for the emitter tool state used to pick the default geodesic and carry-session words. */
   getCannonToolState(): GeodesicDebugToolState;
+  /** Getter for the most recent portal crossing by the player or carried emitter, if any. */
   getLatestPlayerPortalTransition(): GeodesicCarryPortalTransition | undefined;
   /** Geodesic or emitter the camera ray currently targets, if any. */
   resolveCameraAimTarget(): AimTarget | undefined;
 }
 
+/**
+ * Creates the geodesic debug-dump functions.
+ *
+ * Returns `dumpGeodesicCreatures` (creature parenting and visibility table), `dumpGeodesicPath` (segments and portal word of
+ * one geodesic; defaults to the active, selected, or aimed geodesic and returns `undefined` when none is found),
+ * `dumpLockedGeodesicWords` (portal words of all locked geodesics), `dumpAllGeodesics` (full registry snapshot, also
+ * printed as copyable JSON), and `updateGeodesicCreatureDebug(deltaSeconds)` for per-frame use. The last accumulates time and,
+ * in verbose mode, checks creatures every 0.1 s, warning on any issue and logging a healthy status at most every 5 s.
+ * Holds only timer state; nothing to dispose.
+ */
 export function createGeodesicDebugDumps(deps: GeodesicDebugDumpsDeps) {
   const { runtimeObjectRegistry, dynamicObjectRuntimes, cellMeshes } = deps;
   let geodesicCreatureDebugElapsedSeconds = 0;

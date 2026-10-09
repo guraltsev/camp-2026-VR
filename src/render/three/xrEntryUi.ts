@@ -1,13 +1,33 @@
+/**
+ * DOM overlay with the "Enter VR" button and a status message, driven by `XrSessionState`.
+ * It is anchored to the bottom-left of the host container and hidden while a session is active.
+ * The button is enabled only when immersive VR is supported and the status is available, ended, or failed.
+ * The "unsupported" and "insecure-context" messages auto-dismiss after `XR_UNAVAILABLE_MESSAGE_DURATION_MS`, once per status episode.
+ */
 import type { XrSessionState } from "./xrSessionState";
 
+/**
+ * How long, in milliseconds, the "VR unavailable" message stays visible before the overlay hides itself.
+ */
 export const XR_UNAVAILABLE_MESSAGE_DURATION_MS = 10_000;
 
+/**
+ * Handle to the entry overlay created by `createXrEntryUi`.
+ */
 export interface XrEntryUi {
+  /** Overlay root element, already appended to the container. */
   readonly root: HTMLElement;
+  /** Re-renders visibility, button availability, and message for `state`; call after every session-state change. */
   update(state: XrSessionState): void;
+  /** Cancels the dismissal timer, removes the click listener, and removes `root` from the DOM; the owner must call it. */
   dispose(): void;
 }
 
+/**
+ * Builds the overlay inside `container` (needs a positioned container; uses `document` and `window`).
+ * `onEnterVr` is invoked on every button click (createThreeApp#shell passes `enterVr`, which itself re-checks state and ignores invalid clicks).
+ * Initial text is "Checking VR support" until the first `update`.
+ */
 export function createXrEntryUi(container: HTMLElement, onEnterVr: () => void): XrEntryUi {
   const root = document.createElement("div");
   root.className = "xr-entry-ui";
@@ -43,6 +63,7 @@ export function createXrEntryUi(container: HTMLElement, onEnterVr: () => void): 
 
   button.addEventListener("click", onEnterVr);
 
+  // Timer state: the dismissed status is remembered so the message does not reappear until the status leaves the unavailable set.
   let unavailableMessageTimer: number | undefined;
   let unavailableMessageTimerStatus: XrSessionState["status"] | undefined;
   let dismissedUnavailableMessageStatus: XrSessionState["status"] | undefined;
@@ -103,6 +124,7 @@ export function createXrEntryUi(container: HTMLElement, onEnterVr: () => void): 
   };
 }
 
+// Statuses whose message is shown only briefly.
 function isTemporaryUnavailableState(state: XrSessionState): boolean {
   return state.status === "unsupported" || state.status === "insecure-context";
 }

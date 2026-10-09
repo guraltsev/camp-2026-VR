@@ -12,7 +12,11 @@ import {
   defaultTorusSkewDeformationState,
   type TorusSkewDeformationState,
 } from "../../src/runtime/deformations/torusSkewDeformation";
-import { transformRigidPoseWithMap } from "../../src/runtime/worldGeometryDeformations";
+import {
+  transformPositionedObjectSpecWithMap,
+  transformRigidPoseWithMap,
+} from "../../src/runtime/worldGeometryDeformations";
+import type { CellObjectSpec } from "../../src/cell-complex/specs";
 
 describe("torus skew deformation", () => {
   it("zero skew reproduces the current torus square", () => {
@@ -99,6 +103,46 @@ describe("torus skew deformation", () => {
         expect(Object.values(portal.transformToTarget.translation).every(Number.isFinite)).toBe(true);
       }
     }
+  });
+
+  it("keeps an explicit zero width or depth so range validation rejects it", () => {
+    const family = createTorusSkewDeformationFamily();
+
+    expect(() => family.normalizeState(torus, { ...skewState(0), widthMeters: 0 })).toThrowError(/widthMeters/);
+    expect(() => family.normalizeState(torus, { ...skewState(0), depthMeters: 0 })).toThrowError(/depthMeters/);
+    expect(family.normalizeState(torus, { ...skewState(0), widthMeters: Number.NaN }).widthMeters).toBe(15);
+    expect(
+      family.normalizeState(torus, { ...skewState(0), depthMeters: undefined as unknown as number }).depthMeters,
+    ).toBe(15);
+  });
+
+  it("transports the marmot's real walking direction by the linear part of the map", () => {
+    const map = createTorusSkewCellDeformationMaps(skewState(0), skewState(6)).get("torus-room")!;
+    const velocity = { x: 0.6, y: 0.8 };
+    const marmot = {
+      kind: "geodesci-marmot",
+      id: "m",
+      position: vec3(1, 2, 0),
+      velocity,
+      yawRadians: Math.atan2(velocity.x, velocity.y),
+    } as unknown as CellObjectSpec;
+
+    const mapped = transformPositionedObjectSpecWithMap(marmot, map) as unknown as {
+      velocity: { x: number; y: number };
+      yawRadians: number;
+    };
+
+    // The marmot walks along (-sin yaw, cos yaw) = (-vx, vy)/|v| (see geodesicMarmot.ts).
+    const walkBefore = vec3(-velocity.x, velocity.y, 0);
+    const expected = map.mapDirection(walkBefore);
+    const expectedLength = Math.hypot(expected.x, expected.y);
+    const walkAfter = { x: -Math.sin(mapped.yawRadians), y: Math.cos(mapped.yawRadians) };
+
+    expect(walkAfter.x).toBeCloseTo(expected.x / expectedLength, 10);
+    expect(walkAfter.y).toBeCloseTo(expected.y / expectedLength, 10);
+    expect(Math.hypot(mapped.velocity.x, mapped.velocity.y)).toBeCloseTo(1, 10);
+    expect(-mapped.velocity.x).toBeCloseTo(expected.x / expectedLength, 10);
+    expect(mapped.velocity.y).toBeCloseTo(expected.y / expectedLength, 10);
   });
 
   it("keeps immediate reverse paths filtered under depth-10 static culling", () => {
