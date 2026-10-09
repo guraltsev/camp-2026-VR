@@ -106,7 +106,9 @@ helper still has a legacy package-name fallback; its removal is tracked in
   shared by the desktop and VR front ends.
 - `src/render/three` holds Three.js rendering glue, including the in-scene
   palette and WebXR support; `src/render/dom` holds the few remaining DOM
-  overlays.
+  overlays. `createThreeApp.ts` is the application shell (scene, shared state,
+  frame loop); tool, aim, and debug behavior lives in `create*(deps)` factory
+  modules beside it (see the header comment in that file).
 - `src/authoring` holds the world builder, world-script compiler, validation,
   and world catalog; `src/examples` holds the authored world scripts.
 - `src/glue` holds launch options, debug settings, asset URLs, and other

@@ -31,6 +31,24 @@ palette/input modules and a legacy desktop editor path after issues 27 and 30.
   confirming no launch mode imports them.
 - Keep the refactor behavior-preserving and land it in reviewable slices.
 
+## Progress
+
+- `createThreeApp.ts` was reduced from 7,342 to about 3,300 lines. Module-level
+  helpers moved to focused modules (`appDebugHelpers`, `debugHitboxMeshes`,
+  `protractorToolFeedback`, `frameDiagnostics`, `runtimeSceneUtils`, ...), and
+  cohesive closure clusters became `create*(deps)` factories: geodesic emitter
+  tools (`geodesicCannonTools`), aim resolution (`aimInteraction`), tool object
+  runtimes, geometry-computer menu, debug visualization, geodesic debug dumps,
+  and the portal debug runtime.
+- Still in the shell: the frame loop, geometry-commit transforms, portal
+  instance sync (mono and stereo), runtime-object render sync, XR session
+  orchestration, and palette/help integration. These share the most mutable
+  state; the next slice should introduce an explicit shared-state holder
+  instead of more getter/setter pairs.
+- `geodesicCannonTools.ts` is about 1,200 lines and still contains the legacy
+  straightening and tie/detach paths, so it is the next target for the geodesic
+  work above.
+
 ## Acceptance criteria
 
 - Active runtime paths no longer depend on the old geodesic straightening model.
