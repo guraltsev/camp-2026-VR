@@ -4,48 +4,43 @@ Status: completed 2026-08-03.
 
 Priority: P2 legal clarity and onboarding.
 
-## Problem
+## Scope
 
-The root README contains only a title and two activity links. It does not tell a
-new contributor how to install, test, run, build, serve HTTPS for WebXR, choose
-a config, or find the active issue tracker.
+This issue made the project understandable to students and educators, set the
+license for project-authored work, and created a traceable record for the
+third-party assets that can be identified. It does not authorize a guessed
+license for an asset with missing history.
 
-The repository has no root project-license decision recorded. Many model
-folders carry local license files, but the large texture/source collection does
-not consistently record per-asset origin, license, downloaded version, or
-required attribution. This makes safe redistribution and later asset cleanup
-hard to audit.
+## Not done here
 
-## Required work
+- The legacy files still marked **Blocked** in the canonical
+  [asset provenance manifest](../../ASSET_PROVENANCE.md) need their original
+  source and terms verified, replacement with documented assets, or removal
+  from the public build input. This is the open, release-gated work in
+  [issue 40](../40_resolve_unverified_public_assets.md).
+- [Issue 34](../34_reduce_deployment_and_repository_asset_footprint.md) still
+  needs to separate source-only material from deployed public assets. Until
+  then, the manifest documents some files Vite copies even though the app does
+  not request them.
+- Running the full typecheck, test suite, and production build still requires a
+  Node-enabled environment; this documentation issue does not replace that
+  verification.
 
-- Expand the root README with purpose, prerequisites, common commands, config
-  URLs, browser/headset expectations, HTTPS guidance, documentation entrypoint,
-  and the `docs/issues` tracking convention.
-- Explain that the source repository is a multi-year project and that names
-  such as `camp-2026-VR` are examples of replaceable yearly/ad-hoc deployment
-  instances, not the canonical project name.
-- Decide and record the license for project-authored source, or explicitly state
-  that no reuse license is granted.
-- Create a third-party asset manifest with path, source URL/creator, license,
-  attribution text, and whether the file is source-only or runtime-distributed.
-- Preserve license/provenance metadata while issue 34 moves source assets.
-- Do not infer or relicense assets whose provenance is unknown; flag them for
-  replacement or removal.
+## Completed work
 
-## Acceptance criteria
-
-- [x] The main README now explains the project to students and educators. Per
-  the requested audience boundary, its final section links to the separate
-  [development guide](../../DEVELOPMENT.md) and
-  [deployment guide](../../DEPLOYMENT.md), where a fresh contributor can run
-  and verify the project without putting implementation material in the
-  learner-facing document.
-- [x] The project-authored licensing position is explicit in the root
-  [MIT License](../../../LICENSE).
-- [x] The canonical [asset provenance manifest](../../ASSET_PROVENANCE.md)
-  records public-asset paths, sources/creators, licenses, required credits, and
-  source/runtime status. It also preserves the link from derived KTX2 textures
-  to their source material.
-- [x] Unverified historical assets are explicitly blocked rather than relicensed
-  by assumption, and have a release-gated resolution task in
+- [x] Rewrote the main README for students age 12+ and their educators. Its
+  final section links to the separate [development guide](../../DEVELOPMENT.md)
+  and [deployment guide](../../DEPLOYMENT.md), keeping implementation and
+  deployment material out of the learner-facing document.
+- [x] Added the root [MIT License](../../../LICENSE) for project-authored code
+  and documentation, without changing third-party asset terms.
+- [x] Added the canonical
+  [asset provenance manifest](../../ASSET_PROVENANCE.md), including public
+  paths, sources, creators, licenses, required credits, and source/runtime
+  status. It records the source relationship for derived KTX2 textures.
+- [x] Reconciled local notices for documented assets, including the traffic
+  cone, bicycle, supplied UI icons, UXWing alphabet icons, and the UXWing carry
+  icon with its white UI derivative.
+- [x] Explicitly blocked unverified historical assets rather than relicensing
+  them by assumption, and created the release-gated follow-up in
   [issue 40](../40_resolve_unverified_public_assets.md).

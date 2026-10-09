@@ -1,5 +1,12 @@
 # 011 - VR Hand Tools Palette
 
+> **Status: historical design record.** The palette shipped as a shared
+> in-scene UI (`src/ui/paletteDefinition.ts`, `src/render/three/scenePalette*.ts`,
+> `src/render/three/vrPalette*.ts`). The DOM palette, `desktopPaletteInput`,
+> `vrPaletteController`, `xrPointers`, `xrDebugPanel`, `src/tools/*`, and
+> `renderLaunchControls` modules named below were removed as dead code; the
+> file lists in this document describe the original plan, not the current tree.
+
 This document designs the next interaction layer after the first WebXR locomotion pass.
 
 The goal is to let a student summon a shared menu in both normal FPS mode and immersive VR, see a placeholder tool area for future geometry tools, and open a settings cog for world selection, reload, and a debug overlay toggle. This is a design and blueprint only. It does not require immediate implementation.
@@ -14,8 +21,7 @@ The current app already has the right lower layers for this work:
 - `src/render/three/xrPlayerRig.ts` maps WebXR headset tracking to the project `PlayerPose`.
 - `src/render/three/renderState.ts` defines the shared frame/debug state shape.
 - `src/appState.ts` already has `selectedTool: "none" | "straight-ray" | "marker"`, but it is not yet a full runtime tool model.
-- `src/tools/*` contains early renderer-neutral tool contracts, not full tool execution systems.
-- `src/glue/renderLaunchControls.ts`, `src/glue/debugSettings.ts`, `src/glue/debugOptions.ts`, and `src/authoring/worldCatalog.ts` already define desktop world/debug configuration patterns.
+- `src/glue/debugSettings.ts`, `src/glue/debugOptions.ts`, and `src/authoring/worldCatalog.ts` already define desktop world/debug configuration patterns.
 
 The important architectural rule from the WebXR runtime design still applies: renderer/input code may adapt WebXR data, but movement, collision, portal traversal, geometry tracing, and tool algorithms should live outside controller or UI modules.
 

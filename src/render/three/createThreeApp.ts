@@ -78,10 +78,10 @@ import { createHelpLensDefinition } from "../../ui/helpLensDefinition";
 import { DEFAULT_PLAYER_EYE_HEIGHT_METERS } from "../../movement/playerBody";
 import { playerPoseToDynamicObject, type PlayerPose } from "../../movement/playerPose";
 import {
-  createGeodesciMarmotRuntime,
-  isGeodesciMarmotObjectSpec,
-  type GeodesciMarmotRuntime,
-} from "../../world-objects/geodesciMarmot";
+  createGeodesicMarmotRuntime,
+  isGeodesicMarmotObjectSpec,
+  type GeodesicMarmotRuntime,
+} from "../../world-objects/geodesicMarmot";
 import {
   createSimpleGeoCreatureRuntime,
   isSimpleGeoCreatureObjectSpec,
@@ -775,7 +775,7 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
     };
   }
 
-  const dynamicObjectRuntimes: Array<GeodesciMarmotRuntime | SimpleGeoCreatureRuntime> = [];
+  const dynamicObjectRuntimes: Array<GeodesicMarmotRuntime | SimpleGeoCreatureRuntime> = [];
   const placedFlagRuntimes = new Map<string, PlacedFlagRuntime>();
   const measuredGeodesicLengthRuntimes = new Map<string, MeasuredGeodesicLengthRuntime>();
   const protractorAngleRuntimes = new Map<string, ProtractorAngleRuntime>();
@@ -872,8 +872,8 @@ export function createThreeApp(container: HTMLElement, appState: AppState, optio
 
   for (const cell of activeWorld().cells) {
     for (const objectSpec of cell.objects) {
-      if (isGeodesciMarmotObjectSpec(objectSpec)) {
-        const runtime = createGeodesciMarmotRuntime(objectSpec, cell.id, options.assets, runtimeObjectRegistry);
+      if (isGeodesicMarmotObjectSpec(objectSpec)) {
+        const runtime = createGeodesicMarmotRuntime(objectSpec, cell.id, options.assets, runtimeObjectRegistry);
         runtime.syncParent(cellMeshes);
         dynamicObjectRuntimes.push(runtime);
         runtimeObjectRootsById.set(runtime.objectId, runtime.root);

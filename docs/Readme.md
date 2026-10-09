@@ -30,6 +30,25 @@ first.
   the prism-cell-first runtime direction.
 - [design/003-no-curvature-engine.md](design/003-no-curvature-engine.md)
   records the no-theorem-engine boundary for the first runtime.
+- [design/004-domain-model.md](design/004-domain-model.md) fixes the shared
+  vocabulary for cells, portals, rays, tools, and forbidden zones.
+- [design/005-stage-01-math-primitives-guide.md](design/005-stage-01-math-primitives-guide.md)
+  and [design/006-non-euclidean-renderer-general-01.md](design/006-non-euclidean-renderer-general-01.md)
+  hold the math-primitive and renderer background notes.
+- [design/007-authoring-model.md](design/007-authoring-model.md),
+  [design/008-runtime-contracts.md](design/008-runtime-contracts.md), and
+  [design/009-asset-system.md](design/009-asset-system.md) describe authoring,
+  runtime contracts, and the asset pipeline.
+- [design/010-webxr-vr-runtime.md](design/010-webxr-vr-runtime.md) and
+  [design/011-vr-hand-tools-palette.md](design/011-vr-hand-tools-palette.md)
+  cover WebXR and the shared tool palette (011 is a historical record).
+
+## Other Records
+
+- [testing.md](testing.md), [acceptance-checklists.md](acceptance-checklists.md),
+  and [llm-implementation-workflow.md](llm-implementation-workflow.md) cover
+  verification and LLM-assisted workflow.
+- Open work lives in `docs/issues`; closed work in `docs/issues/_closed`.
 
 ## Handoff Packet
 

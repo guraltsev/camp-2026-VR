@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { CompiledCellComplex } from "../cell-complex/compileCellComplex";
-import type { CellObjectSpec, GeodesciMarmotObjectSpec } from "../cell-complex/specs";
+import type { CellObjectSpec, GeodesicMarmotObjectSpec } from "../cell-complex/specs";
 import { yawRigidTransform3, transformDirection3, type RigidTransform3 } from "../math/rigidTransform3";
 import { vec3 } from "../math/vec3";
 import type { DynamicObjectState } from "../movement/dynamicObject";
@@ -23,7 +23,7 @@ import { runtimeObjectToDynamicObjectState, type RuntimeCreatureObject } from ".
 const defaultCollisionOffset = { x: 0, y: 0, z: 0.22 } as const;
 const defaultScale = 0.42;
 
-export interface CreateGeodesciMarmotOptions {
+export interface CreateGeodesicMarmotOptions {
   readonly id: string;
   readonly position: { readonly x: number; readonly y: number; readonly z: number };
   readonly velocity: { readonly x: number; readonly y: number };
@@ -33,7 +33,7 @@ export interface CreateGeodesciMarmotOptions {
   readonly displayHelpMessage?: string;
 }
 
-export interface GeodesciMarmotRuntime {
+export interface GeodesicMarmotRuntime {
   readonly root: THREE.Object3D;
   readonly objectId: string;
   readonly cellId: string;
@@ -44,7 +44,7 @@ export interface GeodesciMarmotRuntime {
   reset(cellRoots: ReadonlyMap<string, THREE.Object3D>): void;
 }
 
-export function createGeodesciMarmot(options: CreateGeodesciMarmotOptions): GeodesciMarmotObjectSpec {
+export function createGeodesicMarmot(options: CreateGeodesicMarmotOptions): GeodesicMarmotObjectSpec {
   return {
     id: options.id,
     kind: "geodesci-marmot",
@@ -64,16 +64,16 @@ export function createGeodesciMarmot(options: CreateGeodesciMarmotOptions): Geod
   };
 }
 
-export function isGeodesciMarmotObjectSpec(objectSpec: CellObjectSpec): objectSpec is GeodesciMarmotObjectSpec {
+export function isGeodesicMarmotObjectSpec(objectSpec: CellObjectSpec): objectSpec is GeodesicMarmotObjectSpec {
   return objectSpec.kind === "geodesci-marmot";
 }
 
-export function createGeodesciMarmotRuntime(
-  objectSpec: GeodesciMarmotObjectSpec,
+export function createGeodesicMarmotRuntime(
+  objectSpec: GeodesicMarmotObjectSpec,
   startCellId: string,
   _assets: PreparedWorldAssets,
   registry?: RuntimeObjectRegistry,
-): GeodesciMarmotRuntime {
+): GeodesicMarmotRuntime {
   const root = new THREE.Group();
   root.name = `geodesci-marmot:${objectSpec.id}`;
 
@@ -163,14 +163,14 @@ export function createGeodesciMarmotRuntime(
   };
 }
 
-export function createGeodesciMarmotRuntimeObject(
-  objectSpec: GeodesciMarmotObjectSpec,
+export function createGeodesicMarmotRuntimeObject(
+  objectSpec: GeodesicMarmotObjectSpec,
   cellId: string,
 ): RuntimeCreatureObject {
   return createRuntimeCreatureObject(objectSpec, cellId);
 }
 
-function createRuntimeCreatureObject(objectSpec: GeodesciMarmotObjectSpec, cellId: string): RuntimeCreatureObject {
+function createRuntimeCreatureObject(objectSpec: GeodesicMarmotObjectSpec, cellId: string): RuntimeCreatureObject {
   return {
     id: objectSpec.id,
     kind: "geodesci-marmot",
@@ -185,7 +185,7 @@ function createRuntimeCreatureObject(objectSpec: GeodesciMarmotObjectSpec, cellI
     portalRenderable: true,
     displayHelpMessage: objectSpec.displayHelpMessage ?? "A moving marmot that follows geodesic paths through the world.",
     tooltip: {
-      label: "geodesci marmot",
+      label: "geodesic marmot",
       rangeMeters: 2.25,
     },
   };
@@ -213,7 +213,7 @@ function syncRegistryObject(
   });
 }
 
-function yawFromVelocity(velocity: GeodesciMarmotObjectSpec["velocity"]): number {
+function yawFromVelocity(velocity: GeodesicMarmotObjectSpec["velocity"]): number {
   return Math.atan2(velocity.x, velocity.y);
 }
 

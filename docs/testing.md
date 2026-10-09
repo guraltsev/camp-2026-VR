@@ -41,12 +41,40 @@ Prioritize behavior tests for:
 - Portal transforms.
 - Forbidden-zone rejection near portal junctions.
 - Player movement, collision, and portal crossing.
-- Straight ray tracing through portals.
-- Tool outputs such as markers, paths, and measurements.
+- Geodesic and straight-ray tracing through portals.
+- Runtime object behavior (flags, emitters, measurement tools).
+- Runtime menu state and command dispatch.
 
 Renderer tests should be contract or smoke tests. They should prove that the app
 can build and that public render functions accept the expected domain outputs,
 not that Three.js internals have a particular object layout.
+
+## Test Layout
+
+`tests/` mirrors `src/`:
+
+```text
+tests/math/            tests/cell-complex/     tests/movement/
+tests/authoring/       tests/runtime/          tests/ui/
+tests/world-objects/   tests/render-contract/  tests/fixtures/
+```
+
+`tests/typecheck/` holds compile-time-only assertions checked by
+`npm run typecheck`.
+
+## Tests That Must Not Be Written
+
+Do not write tests that assert private helper names, exact source organization,
+exact renderer pass counts (unless a public debug-mode contract), identity of
+generated Three.js meshes, large snapshots, or implementation-only tolerances
+not exposed as behavior.
+
+## Failing Tests
+
+If a test fails, decide whether it expresses a public contract. Fix the
+behavior if it does; revise the test only if it does not. Never delete a
+failing test merely because the implementation changed. A skipped test needs a
+tracking issue.
 
 ## Browser Smoke Tests
 

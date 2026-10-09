@@ -2,7 +2,7 @@
 
 ## Repository audit status - 2026-08-03T14:24:10-05:00
 
-Status: archive candidate after a current headset interaction check.
+Status: archive candidate after a current headset interaction check. Note: `vrPaletteController`, `xrPointers`, and `xrDebugPanel` listed below were later removed as unused; the live path is `scenePaletteController` + `vrPaletteLibraryAdapter`.
 
 Priority: P2 for manual verification only.
 

@@ -2,11 +2,11 @@ import * as THREE from "three";
 import type { CompiledCellComplex } from "../../cell-complex/compileCellComplex";
 import { getDynamicObjectCollisionBounds, signedDistanceToSide, testCellCollision } from "../../movement/collision";
 import { runtimeObjectToDynamicObjectState, type RuntimeObjectRegistry } from "../../world-objects/runtimeObjectRegistry";
-import type { GeodesciMarmotRuntime } from "../../world-objects/geodesciMarmot";
+import type { GeodesicMarmotRuntime } from "../../world-objects/geodesicMarmot";
 import type { SimpleGeoCreatureRuntime } from "../../world-objects/simpleGeoCreature";
 import { worldPointToThree } from "./worldAxes";
 
-export type GeodesicCreatureRuntime = GeodesciMarmotRuntime | SimpleGeoCreatureRuntime;
+export type GeodesicCreatureRuntime = GeodesicMarmotRuntime | SimpleGeoCreatureRuntime;
 
 export interface GeodesicCreatureDebugRecord {
   readonly id: string;

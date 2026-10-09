@@ -1,18 +1,18 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { compileCellComplex } from "../../src/cell-complex/compileCellComplex";
-import { createGeodesciMarmot, createGeodesciMarmotRuntime } from "../../src/world-objects/geodesciMarmot";
+import { createGeodesicMarmot, createGeodesicMarmotRuntime } from "../../src/world-objects/geodesicMarmot";
 import type { PreparedWorldAssets } from "../../src/render/three/preloadWorldAssets";
 
-describe("createGeodesciMarmotRuntime", () => {
+describe("createGeodesicMarmotRuntime", () => {
   it("uses anchor crossing semantics and reparents on the same crossing frame", () => {
     const world = compileCellComplex(twoRoomsWithPortal());
-    const marmot = createGeodesciMarmot({
+    const marmot = createGeodesicMarmot({
       id: "front-runner",
       position: { x: 0.75, y: 0, z: 0.5 },
       velocity: { x: -2, y: 0 },
     });
-    const runtime = createGeodesciMarmotRuntime(marmot, "room-a", stubAssets());
+    const runtime = createGeodesicMarmotRuntime(marmot, "room-a", stubAssets());
     const roomARoot = new THREE.Group();
     const roomBRoot = new THREE.Group();
     const cellRoots = new Map<string, THREE.Object3D>([

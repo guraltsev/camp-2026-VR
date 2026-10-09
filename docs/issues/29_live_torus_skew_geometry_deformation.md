@@ -990,7 +990,7 @@ src/render/three/createThreeApp.ts
 src/render/three/renderState.ts
 src/render/three/debugOverlay.ts
 src/world-objects/simpleGeoCreature.ts
-src/world-objects/geodesciMarmot.ts
+src/world-objects/geodesicMarmot.ts
 src/world-objects/runtimeObjectRegistry.ts
 src/glue/debugOptions.ts
 src/runtime/runtimeMenuState.ts

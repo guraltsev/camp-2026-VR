@@ -155,7 +155,7 @@ Do not hard-code crossing behavior around `PlayerPose` alone.
 - [docs/design/003-no-curvature-engine.md](../design/003-no-curvature-engine.md)
 - [docs/design/004-domain-model.md](../design/004-domain-model.md)
 - [docs/design/008-runtime-contracts.md](../design/008-runtime-contracts.md)
-- [docs/testing-strategy.md](../testing-strategy.md)
+- [docs/testing.md](../testing-strategy.md)
 - [docs/llm-handoff/12_stage_02_prism_cell_compiler.md](../llm-handoff/12_stage_02_prism_cell_compiler.md)
 - [docs/llm-handoff/13_stage_03_movement_collision_portals.md](../llm-handoff/13_stage_03_movement_collision_portals.md)
 - [docs/acceptance-checklists.md](../acceptance-checklists.md)

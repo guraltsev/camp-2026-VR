@@ -1,5 +1,5 @@
-import type { CellObjectSpec, GeodesciMarmotObjectSpec, SimpleCollisionCylinderSpec } from "../cell-complex/specs";
-import { createGeodesciMarmot } from "./geodesciMarmot";
+import type { CellObjectSpec, GeodesicMarmotObjectSpec, SimpleCollisionCylinderSpec } from "../cell-complex/specs";
+import { createGeodesicMarmot } from "./geodesicMarmot";
 import { createSimpleGeoCreature, type SimpleGeoCreatureAuthoringParams } from "./simpleGeoCreature";
 import { createStaticAssetObject, type StaticObjectAuthoringParams } from "./staticAssets";
 import { userObjectClass } from "./objectMetadata";
@@ -296,7 +296,7 @@ export const worldObjectLibrary: WorldObjectLibrary = {
   computer_large: (name, params) => createDefinedStaticLibraryObject("computer_large", name, params),
   geodesic_marmot: (name, params) =>
     brandLibraryObject(
-      createGeodesciMarmot({
+      createGeodesicMarmot({
         id: name,
         position: {
           x: params.position[0],
@@ -357,7 +357,7 @@ function treeScaleXYZ(scale = 1): readonly [number, number, number] {
   return [assetScale / 1.5, (assetScale * 2.5) / 3, assetScale / 1.5];
 }
 
-function brandLibraryObject<T extends CellObjectSpec | GeodesciMarmotObjectSpec>(objectSpec: T): T & WorldLibraryObjectSpec {
+function brandLibraryObject<T extends CellObjectSpec | GeodesicMarmotObjectSpec>(objectSpec: T): T & WorldLibraryObjectSpec {
   Object.defineProperty(objectSpec, libraryObjectBrand, {
     value: true,
     enumerable: false,

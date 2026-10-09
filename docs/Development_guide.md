@@ -93,17 +93,27 @@ helper still has a legacy package-name fallback; its removal is tracked in
 - `src/main.ts` is the small browser entrypoint.
 - `src/appState.ts` holds app-level state contracts.
 - `src/math` holds low-level geometry primitives and tolerances.
-- `src/cell-complex` holds cell, portal, compiler, transform, and forbidden-zone
-  rules.
+- `src/cell-complex` holds cell, portal, compiler, transform, portal-path, and
+  forbidden-zone rules.
 - `src/movement` holds player body, collision, movement, and portal-crossing
   behavior.
-- `src/tools` holds ray, marker, path trace, and measurement contracts.
-- `src/render/three` holds Three.js rendering glue.
-- `src/classroom` holds reset, discovery log, and preflight helpers.
-- `src/authoring` holds world spec and future authoring validation code.
-- `src/glue` holds browser storage, asset URLs, and deployment-specific helpers.
-- `public/assets` holds small static assets that support scene legibility.
-- `tests` holds behavior and contract tests.
+- `src/world-objects` holds placeable runtime objects (flags, geodesic emitters,
+  measurement tools, creatures) and the object library.
+- `src/world-assets` holds floor-texture and other world asset descriptors.
+- `src/runtime` holds the runtime menu state, command dispatch, and the
+  geometry session, worker, and deformation families.
+- `src/ui` holds renderer-neutral palette, help, and input-intent definitions
+  shared by the desktop and VR front ends.
+- `src/render/three` holds Three.js rendering glue, including the in-scene
+  palette and WebXR support; `src/render/dom` holds the few remaining DOM
+  overlays.
+- `src/authoring` holds the world builder, world-script compiler, validation,
+  and world catalog; `src/examples` holds the authored world scripts.
+- `src/glue` holds launch options, debug settings, asset URLs, and other
+  browser-facing helpers.
+- `public/assets` holds static assets; every asset must be listed in
+  [ASSET_PROVENANCE.md](ASSET_PROVENANCE.md).
+- `tests` mirrors the `src` layout and holds behavior and contract tests.
 
 ## Import Direction
 
@@ -115,15 +125,16 @@ Use this dependency direction:
 math -> no project imports
 cell-complex -> math
 movement -> math + cell-complex
-tools -> math + cell-complex + movement public types
-render/three -> math + cell-complex + movement + tools public outputs
-classroom -> public app/tool state only
+world-objects -> math + cell-complex + movement public types
+runtime -> math + cell-complex + movement + world-objects + ui definitions
+ui -> renderer-neutral definitions only
+render/three, render/dom -> all of the above
 authoring -> cell-complex specs and validation
-glue -> browser APIs, storage, URLs, deployment-specific helpers
+glue -> browser APIs, URLs, launch/debug settings
 ```
 
-`math`, `cell-complex`, `movement`, and `tools` must not import from
-`render/three`.
+`math`, `cell-complex`, `movement`, `world-objects`, and `runtime` must not
+import from `render`.
 
 ## Focused Guides
 
@@ -131,7 +142,7 @@ glue -> browser APIs, storage, URLs, deployment-specific helpers
   public modules, and import boundaries.
 - [documentation_style.md](documentation_style.md) covers public docs, JSDoc,
   and in-code narration.
-- [testing.md](testing.md) covers testing philosophy, scripts, and stage gates.
+- [testing.md](testing.md) covers testing philosophy, layout, scripts, and stage gates.
 - [design/001-stack.md](design/001-stack.md) explains the stack decision.
 - [design/002-cell-complex-first.md](design/002-cell-complex-first.md) explains
   the prism-cell-first decision.

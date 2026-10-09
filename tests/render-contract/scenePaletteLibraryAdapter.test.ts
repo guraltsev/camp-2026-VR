@@ -79,13 +79,26 @@ describe("scenePaletteLibraryAdapter", () => {
     expect(itemIds).toContain("geodesic-cannon-action:delete:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:add-geodesic");
     expect(actionIds).toContain("geodesic-cannon-action:carry");
-    expect(actionIds).not.toContain("geodesic-cannon-action:tie-and-detach");
+    expect(actionIds).toContain("geodesic-cannon-action:tie-and-detach");
     expect(actionIds).not.toContain("geodesic-cannon-action:rotate:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:aim:g-a");
     expect(actionIds).toContain("geodesic-cannon-action:delete:g-a");
     expect(imageSources).toContain(publicAssetUrl("icons/aim-inverted.png"));
     expect(imageSources).toContain(publicAssetUrl("icons/carry-inverted.svg"));
     expect(imageSources).toContain(publicAssetUrl("icons/unlink-inverted.png"));
+
+    adapter.dispose();
+  });
+
+  it("omits the tie-and-detach action when it is unavailable", () => {
+    const adapter = createScenePaletteLibraryAdapter(createNoopOptions());
+    adapter.setDefinition(createPaletteDefinition(showRuntimeMenuGeodesicCannonActions(
+      createRuntimeMenuState({ selectedWorldId: "cube" }),
+      { cannonId: "cannon-a", geodesicIds: ["g-a"], canTieAndDetach: false },
+    )));
+
+    expect(collectPaletteItemIds(adapter.root)).toContain("geodesic-cannon-action:tie-and-detach");
+    expect(collectPaletteActionItemIds(adapter.root)).not.toContain("geodesic-cannon-action:tie-and-detach");
 
     adapter.dispose();
   });

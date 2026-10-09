@@ -9,7 +9,7 @@ import {
 } from "../../glue/portalPanelMode";
 import { buildDecorationMesh } from "./buildDecorationMesh";
 import { buildPortalMesh } from "./buildPortalMesh";
-import { isGeodesciMarmotObjectSpec } from "../../world-objects/geodesciMarmot";
+import { isGeodesicMarmotObjectSpec } from "../../world-objects/geodesicMarmot";
 import { isSimpleGeoCreatureObjectSpec } from "../../world-objects/simpleGeoCreature";
 import type { PreparedWorldAssets } from "./preloadWorldAssets";
 import { SCENE_BACKGROUND_COLOR } from "./sceneColors";
@@ -50,7 +50,7 @@ export function buildCellMesh(cell: CompiledPrismCell, options: BuildCellMeshOpt
   }
 
   for (const objectSpec of cell.objects) {
-    if (isGeodesciMarmotObjectSpec(objectSpec) || isSimpleGeoCreatureObjectSpec(objectSpec)) {
+    if (isGeodesicMarmotObjectSpec(objectSpec) || isSimpleGeoCreatureObjectSpec(objectSpec)) {
       continue;
     }
 

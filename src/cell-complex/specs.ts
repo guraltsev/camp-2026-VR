@@ -93,7 +93,8 @@ export interface SimpleCollisionCylinderSpec {
   readonly offset?: { readonly x: number; readonly y: number; readonly z: number };
 }
 
-export interface GeodesciMarmotObjectSpec extends PositionedCellObjectSpec {
+export interface GeodesicMarmotObjectSpec extends PositionedCellObjectSpec {
+  /** Historical spelling; this string is the stable id used by authored worlds, so it is not corrected. */
   readonly kind: "geodesci-marmot";
   readonly assetPath: string;
   readonly velocity: { readonly x: number; readonly y: number };
@@ -110,4 +111,4 @@ export interface SimpleGeoCreatureObjectSpec extends PositionedCellObjectSpec {
   readonly collision: SimpleCollisionCylinderSpec;
 }
 
-export type CellObjectSpec = AssetObjectSpec | GeodesciMarmotObjectSpec | SimpleGeoCreatureObjectSpec;
+export type CellObjectSpec = AssetObjectSpec | GeodesicMarmotObjectSpec | SimpleGeoCreatureObjectSpec;

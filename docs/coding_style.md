@@ -23,7 +23,7 @@ Mathematically and physically meaningful code belongs in:
 src/math
 src/cell-complex
 src/movement
-src/tools
+src/world-objects
 ```
 
 Skippable glue belongs in:
@@ -31,7 +31,6 @@ Skippable glue belongs in:
 ```text
 src/render/three
 src/glue
-src/classroom
 ```
 
 A future reader should be able to understand cells, portals, movement,
@@ -89,7 +88,7 @@ Prefer small public modules named after behavior or concepts:
 ```text
 src/cell-complex/compileCellComplex.ts
 src/movement/movePlayer.ts
-src/tools/traceStraightRay.ts
+src/world-objects/geodesicCannon.ts
 src/render/three/buildCellMesh.ts
 ```
 
